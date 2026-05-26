@@ -430,10 +430,24 @@ async function saveConversationConclusions(
     conclusions: string[];
     solutions_exercises: string[];
     clinical_studies: string;
-  }
+  },
+  status: string = 'completed'
 ): Promise<void> {
   try {
     const url = `${supabaseUrl}/rest/v1/conversations?id=eq.${conversationId}`;
+    const patchBody: any = {
+      captured_fact: conclusionsData.captured_fact,
+      conclusions: JSON.stringify(conclusionsData.conclusions),
+      solutions_exercises: JSON.stringify(conclusionsData.solutions_exercises),
+      clinical_studies: conclusionsData.clinical_studies,
+      updated_at: new Date().toISOString()
+    };
+    if (status === 'completed') {
+      patchBody.status = 'completed';
+      patchBody.closed_at = new Date().toISOString();
+    } else {
+      patchBody.status = status;
+    }
     const response = await fetch(url, {
       method: "PATCH",
       headers: {
@@ -441,15 +455,7 @@ async function saveConversationConclusions(
         "Authorization": `Bearer ${serviceKey}`,
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({
-        status: 'completed',
-        captured_fact: conclusionsData.captured_fact,
-        conclusions: JSON.stringify(conclusionsData.conclusions),
-        solutions_exercises: JSON.stringify(conclusionsData.solutions_exercises),
-        clinical_studies: conclusionsData.clinical_studies,
-        closed_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      })
+      body: JSON.stringify(patchBody)
     });
 
     if (!response.ok) {
@@ -825,7 +831,7 @@ Deno.serve(async (req) => {
 
     // 2. Parse request body
     const body = await req.json();
-    const { action, messages, currentMood, conversationId, tradingviewContext, model } = body;
+    const { action, messages, currentMood, conversationId, tradingviewContext, model, reset } = body;
 
     // ACTION: debug_env
     if (action === "debug_env") {
@@ -932,8 +938,8 @@ Deno.serve(async (req) => {
       });
     }
 
-    // ACTION: close_conversation
-    if (action === "close_conversation") {
+    // ACTION: prepare_close_conversation
+    if (action === "prepare_close_conversation") {
       const openrouterApiKey = Deno.env.get("OPENROUTER_API_KEY");
       
       if (!openrouterApiKey) {
@@ -961,19 +967,22 @@ Deno.serve(async (req) => {
 
       const conversationText = dbMessages.map(m => `${m.role === 'user' ? 'Emilio' : 'Walter'}: ${m.content}`).join('\n');
 
-      const prompt = `Analiza la siguiente conversación de terapia entre Emilio (paciente) y Walter (terapeuta) y extrae las conclusiones estructuradas en formato JSON estricto.
+      const prompt = `Analiza de forma sumamente detallada, amplia y clínica la siguiente conversación de terapia entre Emilio (paciente) y Walter (terapeuta) y extrae las conclusiones estructuradas en formato JSON estricto.
 
 Estructura JSON requerida:
 {
   "captured_fact": "El hecho clínico, disparador o síntoma principal que desencadenó la sesión de forma breve y precisa (ej: ansiedad por flotante negativo en futuros de oro, recaída impulsiva o trigger familiar)",
-  "analisis_evolutivo": "Un análisis clínico redactado y bien estudiado (de 80 a 150 palabras) indicando sobre qué se trabajó (si se conecta con la base traumática/TDAH inicial del paciente, si retoma algún tema del pasado o si emerge algo nuevo), evaluando sus progresos conductuales y barreras.",
-  "conclusions": ["Conclusión 1 sobre el comportamiento y defensas de Emilio", "Conclusión 2 sobre sus patrones cognitivos"],
-  "solutions_exercises": ["Ejercicio conductual o solución prescrita 1", "Pauta o compromiso concreto 2"],
-  "clinical_studies": "Casos clínicos de referencia o estudios que respaldan este análisis (ej: Dr Russell Barkley sobre TDAH adulto, trauma complejo o CPTSD, Francine Shapiro y EMDR, etc.)"
+  "analisis_evolutivo": "Un informe de análisis clínico exhaustivo y detallado (de 250 a 400 palabras en español) sobre todo lo valioso ocurrido en esta sesión. Debe estructurar detalladamente: (1) El núcleo temático trabajado y su conexión con la base traumática/TDAH de Emilio, (2) Los avances cognitivos o emocionales logrados en el chat, (3) Los mecanismos de defensa, resistencias y bloqueos detectados en el paciente durante la sesión, (4) El sentido y desglose de las pautas y compromisos prácticos acordados.",
+  "conclusions": ["Conclusión 1 detallada sobre el comportamiento de Emilio", "Conclusión 2 detallada sobre sus patrones cognitivos", "Conclusión 3 sobre su estado de regulación"],
+  "solutions_exercises": ["Pauta o ejercicio práctico detallado 1", "Pauta o compromiso práctico detallado 2", "Pauta o ejercicio detallado 3"],
+  "clinical_studies": "Libros de referencia, autores, o estudios clínicos aplicables a Emilio (ej: Dr. Russell Barkley sobre TDAH, trauma complejo, etc.)",
+  "assistant_summary": "Un texto explicativo y de cierre redactado como Walter (de 200 a 350 palabras en español) para mostrar en el chat. Debe detallar la investigación de lo que pasa, por qué y cómo solucionarlo, citando los libros, autores y estudios de apoyo de forma clara y directa, indicando al paciente que revise el panel derecho."
 }
 
 Historial de conversación:
 ${conversationText}
+
+IMPORTANTE: Devuelve un JSON válido. Si usas comillas dobles dentro de una cadena de texto (por ejemplo en "analisis_evolutivo"), debes escaparlas estrictamente con barra invertida (\"), o preferiblemente usa comillas simples (') en su lugar.
 
 Devuelve ÚNICAMENTE el objeto JSON válido. No incluyas explicaciones previas ni posteriores, ni bloques de código de markdown.`;
 
@@ -984,7 +993,8 @@ Devuelve ÚNICAMENTE el objeto JSON válido. No incluyas explicaciones previas n
           model: "google/gemini-3.5-flash",
           messages: [{ role: "user", content: prompt }],
           temperature: 0.2,
-          max_tokens: 3000
+          max_tokens: 3000,
+          response_format: { type: "json_object" }
         };
         const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
           method: "POST",
@@ -998,7 +1008,7 @@ Devuelve ÚNICAMENTE el objeto JSON válido. No incluyas explicaciones previas n
           const json = await res.json();
           replyText = json.choices?.[0]?.message?.content || "";
         } else {
-          console.error("OpenRouter failed for close_conversation:", await res.text());
+          console.error("OpenRouter failed for prepare_close_conversation:", await res.text());
         }
 
         if (replyText) {
@@ -1017,27 +1027,33 @@ Devuelve ÚNICAMENTE el objeto JSON válido. No incluyas explicaciones previas n
 
       if (!conclusionsData) {
         conclusionsData = {
-          captured_fact: "Sesión completada y archivada.",
-          analisis_evolutivo: "Se cerró la sesión activa. Se observa resistencia emocional o falta de datos suficientes para un análisis evolutivo completo.",
+          captured_fact: "Preparación de cierre completada.",
+          analisis_evolutivo: "Se preparó el cierre de la sesión activa.",
           conclusions: ["Patrón de impulsividad reactiva en trading.", "Activación de autodefensas límbicas por trauma infantil."],
           solutions_exercises: ["Realizar parada cognitiva de 5 minutos al notar aumento de ritmo cardíaco.", "Revisar el checklist de control antes de operar."],
-          clinical_studies: "Teoría del TDAH del Dr. Russell Barkley y reprocesamiento de trauma de Francine Shapiro (EMDR)."
+          clinical_studies: "Teoría del TDAH del Dr. Russell Barkley y reprocesamiento de trauma de Francine Shapiro (EMDR).",
+          assistant_summary: "He analizado nuestra conversación y preparado las conclusiones del cierre de esta sesión. Puedes revisarlas en detalle en el panel de la derecha."
         };
       }
 
-      // Save to conversations table
-      await saveConversationConclusions(supabaseUrl, supabaseServiceKey, conversationId, conclusionsData);
+      // Save to conversations table with active status (draft)
+      await saveConversationConclusions(supabaseUrl, supabaseServiceKey, conversationId, conclusionsData, 'active');
+
+      // Save Walter's assistant summary text to DB (marked with model tag)
+      const formattedSummary = conclusionsData.assistant_summary || "Borrador de cierre preparado.";
+      const summaryWithMessage = `${formattedSummary}\n\n[model:3.5]`;
+      await saveMessageToDb(supabaseUrl, supabaseServiceKey, conversationId, 'assistant', summaryWithMessage);
 
       // Fetch title and profile to build chronological evolution
       const currentTitle = await fetchConversationTitle(supabaseUrl, supabaseServiceKey, conversationId);
       const profile = await fetchUserProfile(supabaseUrl, supabaseServiceKey, userId);
       
+      let mergedCtx = null;
       if (profile) {
         const currentCtx = profile.contexto_terapeutico || {};
         
-        // Contexto base por defecto
         const defaultContextoBase = {
-          diagnostico_inicial: "TDAH del adulto con fallas ejecutivas graves, trauma de desarrollo (CPTSD) por maltrato físico paterno y abuso de hermana mayor, depresión severa recurrente e ideación suicida previa, y estrés financiero severo (deuda de 160.000€).",
+          diagnostico_inicial: "TDAH del adulto con fallas ejecutivas graves, trauma de desarrollo (CPTSD) por maltrato físico paterno y abuso de hermana mayor. Depresión severa recurrente con ideación suicida planificada (crisis extrema en junio de 2025 con intento autolítico por la pérdida total de contacto con su hija, alienada por su ex al mudarse Emilio a casa de su madre; lleva más de un año sin verla ni hablar con ella). Estrés financiero severo (deuda de 160.000€) y obsesión con el trading para conseguir capital rápido y 'recuperar' a su hija, quien no acepta su situación habitacional.",
           mecanismos_defensa: [
             "Autosabotaje financiero para validar la etiqueta paterna de 'inútil'.",
             "Parálisis ejecutiva (freeze) ante el éxito operativo por pánico identitario.",
@@ -1057,7 +1073,6 @@ Devuelve ÚNICAMENTE el objeto JSON válido. No incluyas explicaciones previas n
           pautas_y_compromisos: conclusionsData.solutions_exercises || []
         };
 
-        // Añadir al inicio para que esté ordenado cronológicamente (más reciente primero)
         const updatedEvoluciones = [nuevaEvolucion, ...evoluciones];
 
         const mergeArrays = (arr1: any[], arr2: any[]) => {
@@ -1065,11 +1080,10 @@ Devuelve ÚNICAMENTE el objeto JSON válido. No incluyas explicaciones previas n
           return Array.from(new Set(combined.map(s => String(s).trim()))).filter(Boolean);
         };
 
-        const mergedCtx = {
+        mergedCtx = {
           ...currentCtx,
           contexto_base: ctxBase,
           evoluciones: updatedEvoluciones,
-          // Mantener compatibilidad con los widgets rápidos del frontend
           conclusiones: mergeArrays(currentCtx.conclusiones, conclusionsData.conclusiones),
           compromisos: currentCtx.compromisos || [],
           pautas_accion: mergeArrays(currentCtx.pautas_accion, conclusionsData.solutions_exercises)
@@ -1078,10 +1092,211 @@ Devuelve ÚNICAMENTE el objeto JSON válido. No incluyas explicaciones previas n
         await saveUserProfileContext(supabaseUrl, supabaseServiceKey, userId, mergedCtx);
       }
 
-      return new Response(JSON.stringify({ success: true, data: conclusionsData }), {
+      return new Response(JSON.stringify({ success: true, data: conclusionsData, updatedContext: mergedCtx || profile?.contexto_terapeutico }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" }
       });
     }
+
+    // ACTION: close_conversation
+    if (action === "close_conversation") {
+      if (!conversationId) {
+        return new Response(JSON.stringify({ error: "conversationId is required" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" }
+        });
+      }
+
+      try {
+        const url = `${supabaseUrl}/rest/v1/conversations?id=eq.${conversationId}`;
+        const response = await fetch(url, {
+          method: "PATCH",
+          headers: {
+            "apikey": supabaseServiceKey,
+            "Authorization": `Bearer ${supabaseServiceKey}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            status: 'completed',
+            closed_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to complete conversation: ${response.status}`);
+        }
+      } catch (err) {
+        console.error("Error setting status to completed:", err.message);
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" }
+        });
+      }
+
+      return new Response(JSON.stringify({ success: true }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+
+// Helper to sanitize JSON string by replacing real newlines inside strings with escaped \n
+function cleanJsonString(jsonStr: string): string {
+  let clean = jsonStr.trim();
+  if (clean.startsWith("```json")) {
+    clean = clean.substring(7);
+  } else if (clean.startsWith("```")) {
+    clean = clean.substring(3);
+  }
+  if (clean.endsWith("```")) {
+    clean = clean.substring(0, clean.length - 3);
+  }
+  clean = clean.trim();
+
+  let insideString = false;
+  let escaped = false;
+  let result = "";
+  
+  for (let i = 0; i < clean.length; i++) {
+    const char = clean[i];
+    
+    if (char === '"' && !escaped) {
+      insideString = !insideString;
+      result += char;
+    } else if (char === '\\' && !escaped) {
+      escaped = true;
+      result += char;
+    } else {
+      if (insideString) {
+        if (char === '\n') {
+          result += '\\n';
+        } else if (char === '\r') {
+          // ignore \r
+        } else {
+          result += char;
+        }
+      } else {
+        result += char;
+      }
+      escaped = false;
+    }
+  }
+  
+  return result;
+}
+
+// Fallback JSON parser using Regex when JSON.parse fails due to syntax errors or truncations
+function extractJSONFieldsFallback(jsonStr: string): any {
+  console.warn("JSON.parse failed. Initiating robust regex fallback extractor...");
+  
+  // 1. Extract foto_persona
+  const fotoMatch = jsonStr.match(/"foto_persona"\s*:\s*"([\s\S]*?)"(?=\s*,\s*"|\s*\})/);
+  let fotoPersona = fotoMatch ? fotoMatch[1] : "";
+  if (!fotoPersona) {
+    const fotoTruncatedMatch = jsonStr.match(/"foto_persona"\s*:\s*"([\s\S]*)/);
+    if (fotoTruncatedMatch) {
+      fotoPersona = fotoTruncatedMatch[1].trim().substring(0, 800) + "... [Texto truncado por el modelo]";
+    } else {
+      fotoPersona = "No se pudo extraer la síntesis de la foto de la persona.";
+    }
+  }
+
+  // Helper to clean array elements
+  const cleanArrayItems = (rawItems: string): string[] => {
+    return rawItems
+      .split(/",\s*"/g)
+      .map(item => item.replace(/^\[?\s*"/, "").replace(/"\s*\]?$/, "").replace(/"/g, "").trim())
+      .filter(Boolean);
+  };
+
+  // 2. Extract conclusiones
+  const conclusionsMatch = jsonStr.match(/"conclusiones"\s*:\s*\[([\s\S]*?)\]/);
+  let conclusiones: string[] = [];
+  if (conclusionsMatch) {
+    conclusiones = cleanArrayItems(conclusionsMatch[1]);
+  } else {
+    const lines = jsonStr.split('\n');
+    lines.forEach(l => {
+      if (l.includes('"conclusiones"') || conclusiones.length > 0 && !l.includes(']')) {
+        const itemMatch = l.match(/"([^"]+)"/g);
+        if (itemMatch) {
+          itemMatch.forEach(it => {
+            const cleanIt = it.replace(/"/g, "").trim();
+            if (cleanIt && cleanIt !== "conclusiones" && cleanIt.length > 10) conclusiones.push(cleanIt);
+          });
+        }
+      }
+    });
+  }
+
+  // 3. Extract compromisos
+  const compromisosMatch = jsonStr.match(/"compromisos"\s*:\s*\[([\s\S]*?)\]/);
+  let compromisos: string[] = [];
+  if (compromisosMatch) {
+    compromisos = cleanArrayItems(compromisosMatch[1]);
+  } else {
+    const lines = jsonStr.split('\n');
+    lines.forEach(l => {
+      if (l.includes('"compromisos"') || compromisos.length > 0 && !l.includes(']')) {
+        const itemMatch = l.match(/"([^"]+)"/g);
+        if (itemMatch) {
+          itemMatch.forEach(it => {
+            const cleanIt = it.replace(/"/g, "").trim();
+            if (cleanIt && cleanIt !== "compromisos" && cleanIt.length > 10) compromisos.push(cleanIt);
+          });
+        }
+      }
+    });
+  }
+
+  // 4. Extract pautas_accion
+  const pautasMatch = jsonStr.match(/"pautas_accion"\s*:\s*\[([\s\S]*?)\]/);
+  let pautas_accion: string[] = [];
+  if (pautasMatch) {
+    pautas_accion = cleanArrayItems(pautasMatch[1]);
+  } else {
+    const lines = jsonStr.split('\n');
+    lines.forEach(l => {
+      if (l.includes('"pautas_accion"') || pautas_accion.length > 0 && !l.includes(']')) {
+        const itemMatch = l.match(/"([^"]+)"/g);
+        if (itemMatch) {
+          itemMatch.forEach(it => {
+            const cleanIt = it.replace(/"/g, "").trim();
+            if (cleanIt && cleanIt !== "pautas_accion" && cleanIt.length > 10) pautas_accion.push(cleanIt);
+          });
+        }
+      }
+    });
+  }
+
+  // 5. Extract temas list
+  const temasMatch = jsonStr.match(/"temas"\s*:\s*\[([\s\S]*?)\]/);
+  let temas: any[] = [];
+  if (temasMatch) {
+    const temaBlock = temasMatch[1];
+    const objBlocks = temaBlock.match(/\{[\s\S]*?\}/g);
+    if (objBlocks) {
+      objBlocks.forEach(block => {
+        const tMatch = block.match(/"title"\s*:\s*"([^"]*)"/);
+        const sMatch = block.match(/"status"\s*:\s*"([^"]*)"/);
+        const dMatch = block.match(/"description"\s*:\s*"([^"]*)"/);
+        if (tMatch) {
+          temas.push({
+            title: tMatch[1],
+            status: sMatch ? sMatch[1] : "active",
+            description: dMatch ? dMatch[1] : ""
+          });
+        }
+      });
+    }
+  }
+
+  return {
+    foto_persona: fotoPersona.replace(/\\n/g, "\n"),
+    temas,
+    conclusiones: conclusiones.slice(0, 10),
+    compromisos: compromisos.slice(0, 10),
+    pautas_accion: pautas_accion.slice(0, 10)
+  };
+}
 
     // ACTION: sync_clinical_profile
     if (action === "sync_clinical_profile") {
@@ -1094,86 +1309,219 @@ Devuelve ÚNICAMENTE el objeto JSON válido. No incluyas explicaciones previas n
         });
       }
 
-      const sources = await fetchMenteSources(supabaseUrl, supabaseServiceKey, userId);
-      
-      // Filtrar fuentes no leídas (nuevas) para evitar sobrecargar el prompt
-      const unreadSources = sources.filter((src: any) => !src.processed);
+      // 1. Si se solicita reset, limpiar el estado de procesamiento y el contexto consolidado
+      if (reset) {
+        console.log("Forzando reset de sincronización clínica y reprocesamiento completo...");
+        try {
+          // Resetear processed en mente_sources
+          await fetch(`${supabaseUrl}/rest/v1/mente_sources?user_id=eq.${userId}`, {
+            method: "PATCH",
+            headers: {
+              "apikey": supabaseServiceKey,
+              "Authorization": `Bearer ${supabaseServiceKey}`,
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ processed: false })
+          });
 
-      // Procesar en lotes de un máximo de 3 archivos por llamada para evitar timeout de Supabase (15s)
-      const BATCH_SIZE = 3;
-      const sourcesToProcess = unreadSources.slice(0, BATCH_SIZE);
+          // Guardar contexto inicial con el diagnóstico base actualizado
+          const initialCtx = {
+            contexto_base: {
+              diagnostico_inicial: "TDAH del adulto con fallas ejecutivas graves, trauma de desarrollo (CPTSD) por maltrato físico paterno y abuso de hermana mayor. Depresión severa recurrente con ideación suicida planificada (crisis extrema en junio de 2025 con intento autolítico por la pérdida total de contacto con su hija, alienada por su ex al mudarse Emilio a casa de su madre; lleva más de un año sin verla ni hablar con ella). Estrés financiero severo (deuda de 160.000€) y obsesión con el trading para conseguir capital rápido y 'recuperar' a su hija, quien no acepta su situación habitacional.",
+              mecanismos_defensa: [
+                "Autosabotaje financiero para validar la etiqueta paterna de 'inútil'.",
+                "Parálisis ejecutiva (freeze) ante el éxito operativo por pánico identitario.",
+                "Búsqueda de validación rápida a través del sobre-apalancamiento."
+              ]
+            },
+            evoluciones: [],
+            conclusiones: [],
+            compromisos: [],
+            pautas_accion: [],
+            foto_persona: "Iniciando consolidación clínica desde cero...",
+            temas: [],
+            procesados: { sources: [], conversations: [] }
+          };
+          await saveUserProfileContext(supabaseUrl, supabaseServiceKey, userId, initialCtx);
+        } catch (resetErr) {
+          console.error("Error durante el reset de sincronización:", resetErr.message);
+        }
+      }
 
-      // Fetch all completed conversations (closed sessions)
-      const resConvs = await fetch(
-        `${supabaseUrl}/rest/v1/conversations?user_id=eq.${userId}&status=eq.completed&order=closed_at.desc`,
-        {
+      // 2. Obtener fuentes de mente, perfil y conversaciones en paralelo
+      const [sources, profile, resConvs] = await Promise.all([
+        fetchMenteSources(supabaseUrl, supabaseServiceKey, userId),
+        fetchUserProfile(supabaseUrl, supabaseServiceKey, userId),
+        fetch(`${supabaseUrl}/rest/v1/conversations?user_id=eq.${userId}&status=eq.completed`, {
           headers: {
             "apikey": supabaseServiceKey,
             "Authorization": `Bearer ${supabaseServiceKey}`,
             "Accept": "application/json"
           }
+        }).then(res => res.ok ? res.json() : [])
+      ]);
+
+      const currentCtx = profile?.contexto_terapeutico || { conclusiones: [], compromisos: [], pautas_accion: [], procesados: { sources: [], conversations: [] } };
+      if (!currentCtx.procesados) { currentCtx.procesados = { sources: [], conversations: [] }; }
+      if (!currentCtx.procesados.sources) { currentCtx.procesados.sources = []; }
+      if (!currentCtx.procesados.conversations) { currentCtx.procesados.conversations = []; }
+      if (!currentCtx.evoluciones) { currentCtx.evoluciones = []; }
+      if (!currentCtx.temas) { currentCtx.temas = []; }
+
+      // 3. Unificar fuentes de Mente y conversaciones completadas en una lista cronológica ascendente
+      const unifiedItems: any[] = [];
+
+      // Añadir fuentes no procesadas
+      sources.forEach((src: any) => {
+        if (!currentCtx.procesados.sources.includes(src.id)) {
+          unifiedItems.push({
+            type: 'source',
+            id: src.id,
+            timestamp: new Date(src.created_at).getTime(),
+            name: src.name || 'Nota de Emilio',
+            rawItem: src
+          });
         }
-      );
-      const closedConvs = resConvs.ok ? await resConvs.json() : [];
+      });
 
-      const profile = await fetchUserProfile(supabaseUrl, supabaseServiceKey, userId);
-      const currentCtx = profile?.contexto_terapeutico || { conclusiones: [], compromisos: [], pautas_accion: [] };
+      // Añadir conversaciones completadas no procesadas
+      resConvs.forEach((conv: any) => {
+        if (!currentCtx.procesados.conversations.includes(conv.id)) {
+          unifiedItems.push({
+            type: 'conversation',
+            id: conv.id,
+            timestamp: new Date(conv.closed_at || conv.updated_at || Date.now()).getTime(),
+            name: conv.title || 'Conversación de Emilio',
+            rawItem: conv
+          });
+        }
+      });
 
-      // Clean and format text notes/sources for Gemini context (on-the-fly DOCX parsing)
-      const textSourcesList: string[] = [];
-      for (const src of sourcesToProcess) {
-        if (src.content_type && !src.content_type.startsWith("image/") && src.content_type !== "application/pdf") {
-          const cleanText = await getCleanTextContent(src, supabaseUrl, supabaseServiceKey);
-          textSourcesList.push(`Fuente Nueva "${src.name}":\n"""\n${cleanText}\n"""`);
+      // Ordenar cronológicamente de más antiguas a más recientes
+      unifiedItems.sort((a, b) => a.timestamp - b.timestamp);
+
+      // Reducir a 1 para evitar timeouts con archivos grandes en Supabase (límite 150s)
+      const BATCH_SIZE = 1;
+      const batchItems = unifiedItems.slice(0, BATCH_SIZE);
+      const remainingCount = unifiedItems.length - batchItems.length;
+
+      if (batchItems.length === 0) {
+        return new Response(JSON.stringify({ 
+          success: true, 
+          message: "Todo el contexto ya está consolidado.", 
+          data: currentCtx, 
+          processedCount: 0, 
+          remainingCount: 0 
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" }
+        });
+      }
+
+      // 4. Extraer contenidos de texto y multimedia del lote a procesar
+      const textContents: string[] = [];
+      const imageParts: any[] = [];
+      const processedSourcesIds: string[] = [];
+      const processedConversationsIds: string[] = [];
+
+      for (const item of batchItems) {
+        if (item.type === 'source') {
+          processedSourcesIds.push(item.id);
+          const src = item.rawItem;
+          if (src.content_type && !src.content_type.startsWith("image/") && src.content_type !== "application/pdf") {
+            const cleanText = await getCleanTextContent(src, supabaseUrl, supabaseServiceKey);
+            textContents.push(`[DOCUMENTO/NOTA del ${new Date(src.created_at).toLocaleDateString('es-ES')}] "${src.name}":\n"""\n${cleanText}\n"""`);
+          } else if (src.content_type && src.content_type.startsWith("image/")) {
+            const base64Raw = src.text_content || "";
+            const base64Data = base64Raw.includes(",") ? base64Raw.split(",")[1] : base64Raw;
+            if (base64Data.trim()) {
+              imageParts.push({
+                type: "image_url",
+                image_url: {
+                  url: `data:${src.content_type};base64,${base64Data.trim()}`
+                }
+              });
+            }
+            textContents.push(`[IMAGEN del ${new Date(src.created_at).toLocaleDateString('es-ES')}] "${src.name}" adjunta como contexto visual.`);
+          } else if (src.content_type === "application/pdf") {
+            const base64Raw = src.text_content || "";
+            const base64Data = base64Raw.includes(",") ? base64Raw.split(",")[1] : base64Raw;
+            if (base64Data.trim()) {
+              imageParts.push({
+                type: "file",
+                file: {
+                  filename: src.name || "document.pdf",
+                  file_data: `data:application/pdf;base64,${base64Data.trim()}`
+                }
+              });
+            }
+            textContents.push(`[PDF del ${new Date(src.created_at).toLocaleDateString('es-ES')}] "${src.name}" adjunto como contexto de archivo.`);
+          }
+        } else if (item.type === 'conversation') {
+          processedConversationsIds.push(item.id);
+          const conv = item.rawItem;
+          const dbMessages = await fetchConversationMessages(supabaseUrl, supabaseServiceKey, conv.id);
+          const conversationText = dbMessages
+            .map(m => `${m.role === 'user' ? 'Emilio' : 'Walter'}: ${m.content.replace(/\[model:.*?\]/g, "").trim()}`)
+            .join('\n');
+          textContents.push(`[SESIÓN DE TERAPIA del ${new Date(conv.closed_at || conv.updated_at).toLocaleDateString('es-ES')}] Título: "${conv.title}":\n"""\n${conversationText}\n"""`);
         }
       }
-      const textSources = textSourcesList.join("\n\n");
 
-      // Format binary sources list (metadata) (solo las no leídas en el lote actual)
-      const binarySourcesMetadata = sourcesToProcess
-        .filter((src: any) => src.content_type && (src.content_type.startsWith("image/") || src.content_type === "application/pdf"))
-        .map((src: any) => `- Archivo multimedia nuevo: "${src.name}" (${src.content_type})`)
-        .join("\n");
+      const unifiedTextContext = textContents.join("\n\n---\n\n");
 
-      // Format closed conversations for Gemini context
-      const historySummary = (closedConvs || [])
-        .map((c: any) => `- Sesión "${c.title}" (Cerrada el ${c.closed_at}):\n  * Hecho Clínico: ${c.captured_fact || ''}\n  * Conclusiones: ${c.conclusions || ''}\n  * Ejercicios: ${c.solutions_exercises || ''}`)
-        .join("\n\n");
-
-      const prompt = `Como Walter, el psicólogo clínico y gestor de riesgos de Emilio, consolida toda la información disponible para elaborar un diagnóstico clínico estructurado, la "foto de la persona" actual, y el mapa de temas que están evolucionando (abiertos, emergentes, cerrados).
+      // 5. Construir el prompt MoE para DeepSeek V4 Pro
+      const prompt = `Como Walter, el psicólogo clínico y gestor de riesgos de Emilio, consolida y refina la información clínica del paciente integrando este nuevo lote cronológico de documentos y sesiones cerradas.
 
 INFORMACIÓN DISPONIBLE:
-1. Perfil y memoria clínica previa de Emilio (incluye el Contexto Base inmutable, temas pasados y el histórico de Evoluciones por fecha y sesión):
-${JSON.stringify(currentCtx)}
+1. Perfil clínico consolidado actual de Emilio (incluye Contexto Base inmutable, conclusiones, pautas y la foto clínica general):
+${JSON.stringify({
+  contexto_base: currentCtx.contexto_base,
+  foto_persona: currentCtx.foto_persona,
+  conclusiones: currentCtx.conclusiones,
+  compromisos: currentCtx.compromisos,
+  pautas_accion: currentCtx.pautas_accion,
+  temas: currentCtx.temas
+})}
 
-2. NUEVAS Fuentes de contexto (documentos de texto y notas cargadas recientemente por Emilio que NO han sido integradas en el perfil):
-${textSources || '(Ninguna nueva fuente de texto cargada recientemente)'}
-${binarySourcesMetadata ? `\nArchivos multimedia nuevos adjuntos (inyectados al modelo en su formato nativo):\n${binarySourcesMetadata}` : ''}
-
-3. Sesiones de chat cerradas recientes (con sus hechos clínicos, análisis y pautas):
-${historySummary || '(Ninguna nueva sesión cerrada recientemente)'}
+2. NUEVO LOTE CRONOLÓGICO A INTEGRAR (Documentos, notas y sesiones cerradas en orden temporal):
+${unifiedTextContext}
 
 TU TAREA:
-Sintetiza e integra de manera incremental la nueva información (nuevas fuentes y nuevas sesiones de chat cerradas) en el diagnóstico clínico estructurado actual de Emilio.
+Sintetiza e integra incrementalmente este nuevo lote en la "foto de la persona" actual, las conclusiones, compromisos, pautas y temas.
+Debes mantener una fidelidad absoluta a la historia clínica. Presta especial atención al hecho traumático nuclear de junio de 2025 (alienación parental de su hija, distanciamiento total desde hace un año y la parálisis/obsesión de trading que Emilio desarrolla como escape e intento de recuperarla). Asegúrate de que este hecho esté visible y reflejado tanto en la foto_persona como en las pautas y conclusiones si se discute o influye.
+
 Devuelve un objeto JSON con el siguiente esquema estricto:
 {
-  "foto_persona": "Una síntesis redactada (de 150 a 250 palabras en español) del perfil psicológico actual de Emilio, integrando los nuevos datos de forma fluida con lo que ya sabíamos en su perfil de memoria.",
+  "foto_persona": "Una síntesis clínica exhaustiva, depurada y actualizada (de 400 a 600 palabras en español) del perfil de Emilio, incorporando los nuevos hallazgos e hitos de este lote. Debe analizar su estado emocional, TDAH, depresión, trauma familiar, operativa de trading y deudas de forma integrada.",
   "temas": [
     {
-      "title": "Nombre corto del tema o conflicto (ej: Custodia de Lola, Impulsividad por Flotante de Oro, Trauma de Rechazo Paterno)",
+      "title": "Nombre corto del tema",
       "status": "active" | "closed" | "emerging",
-      "description": "Una descripción breve del conflicto, su estado y cómo se está abordando."
+      "description": "Descripción del conflicto y su abordaje clínico actual"
     }
   ],
-  "conclusiones": ["Conclusión conductual consolidada 1", "Conclusión consolidada 2"],
-  "compromisos": ["Compromiso de gestión de riesgo consolidado 1", "Compromiso consolidado 2"],
-  "pautas_accion": ["Pauta o ejercicio de reset conductual consolidado 1", "Pauta consolidada 2"]
+  "conclusiones": ["Conclusión clínica consolidada detallada 1", "Conclusión consolidada detallada 2"],
+  "compromisos": ["Compromiso de Emilio consolidado detallado 1", "Compromiso consolidado detallado 2"],
+  "pautas_accion": ["Pauta o ejercicio clínico consolidado 1", "Pauta consolidada 2"],
+  "nuevas_evoluciones": [
+    {
+      "fecha": "AAAA-MM-DD",
+      "sesion_id": "ID de la sesión de este lote (si aplica)",
+      "titulo_sesion": "Título del documento o sesión consolidada",
+      "hecho_clinico": "El hecho clínico, disparador o síntoma principal que describe este documento o sesión",
+      "analisis_evolutivo": "Un análisis clínico amplio (de 150 a 300 palabras en español) de lo que aporta esta sesión o nota al progreso de Emilio",
+      "pautas_y_compromisos": ["Pauta o compromiso acordado en este hito 1", "Pauta o compromiso 2"]
+    }
+  ]
 }
 
 Instrucciones de consolidación:
-- Mantén la empatía clínica y la asertividad científica de Walter.
-- No deseches ni olvides el diagnóstico previo; incorpórale de forma coherente los hallazgos de las nuevas sesiones y archivos.
-- Combina duplicados y mantén las conclusiones y pautas depuradas (máximo 8-10 ítems por lista).
+- Mantén el tono clínico y el estilo científico-analítico de Walter.
+- Combina duplicados de conclusiones y pautas. Mantén las listas optimizadas (máximo 8-10 elementos por lista).
+- Si en el lote hay documentos o notas que no sean sesiones de chat, agrégalas a 'nuevas_evoluciones' como hitos de tipo 'Asimilación de Nota/Documento' indicando la fecha de creación en el formato AAAA-MM-DD.
+- IMPORTANTE: Devuelve un JSON válido. Si usas comillas dobles dentro de una cadena de texto (por ejemplo en "foto_persona"), debes escaparlas estrictamente con barra invertida (\\"), o preferiblemente usa comillas simples (') en su lugar.
+- No uses saltos de línea reales (enters) dentro de las cadenas del JSON; usa la secuencia literal '\\n' si necesitas separar párrafos.
+- El valor del campo 'status' en los temas debe ser exactamente 'active', 'closed' o 'emerging'.
 
 Devuelve ÚNICAMENTE el objeto JSON válido. No incluyas explicaciones previas ni posteriores, ni bloques de código de markdown.`;
 
@@ -1183,38 +1531,15 @@ Devuelve ÚNICAMENTE el objeto JSON válido. No incluyas explicaciones previas n
         let replyText = "";
         const contentParts: any[] = [{ type: "text", text: prompt }];
 
-        sourcesToProcess.forEach((src: any) => {
-          if (src.content_type && src.content_type.startsWith("image/")) {
-            const base64Raw = src.text_content || "";
-            const base64Data = base64Raw.includes(",") ? base64Raw.split(",")[1] : base64Raw;
-            if (base64Data.trim()) {
-              contentParts.push({
-                type: "image_url",
-                image_url: {
-                  url: `data:${src.content_type};base64,${base64Data.trim()}`
-                }
-              });
-            }
-          } else if (src.content_type === "application/pdf") {
-            const base64Raw = src.text_content || "";
-            const base64Data = base64Raw.includes(",") ? base64Raw.split(",")[1] : base64Raw;
-            if (base64Data.trim()) {
-              contentParts.push({
-                type: "file",
-                file: {
-                  filename: src.name || "document.pdf",
-                  file_data: `data:application/pdf;base64,${base64Data.trim()}`
-                }
-              });
-            }
-          }
-        });
+        // Agregar imágenes/PDFs si las hay
+        imageParts.forEach(p => contentParts.push(p));
 
         const openrouterPayload = {
-          model: "google/gemini-3.5-flash",
+          model: "deepseek/deepseek-v4-pro",
           messages: [{ role: "user", content: contentParts }],
           temperature: 0.3,
-          max_tokens: 4000
+          max_tokens: 4000,
+          response_format: { type: "json_object" }
         };
         const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
           method: "POST",
@@ -1227,6 +1552,11 @@ Devuelve ÚNICAMENTE el objeto JSON válido. No incluyas explicaciones previas n
         if (res.ok) {
           const json = await res.json();
           replyText = json.choices?.[0]?.message?.content || "";
+          if (!replyText) {
+            console.warn("OpenRouter response choices content was empty. Full JSON:", JSON.stringify(json));
+          } else {
+            console.log("Successfully received OpenRouter synthesis content. Snippet:", replyText.substring(0, 150) + "...");
+          }
         } else {
           const errText = await res.text();
           lastErrorMessage = `API de OpenRouter devolvió error ${res.status}: ${errText}`;
@@ -1234,14 +1564,18 @@ Devuelve ÚNICAMENTE el objeto JSON válido. No incluyas explicaciones previas n
         }
 
         if (replyText) {
-          let cleanJson = replyText.trim();
-          if (cleanJson.startsWith("```json")) {
-            cleanJson = cleanJson.substring(7);
+          const sanitizedJson = cleanJsonString(replyText);
+          try {
+            consolidatedProfile = JSON.parse(sanitizedJson);
+          } catch (jsonErr) {
+            console.error("Failed to parse JSON using standard JSON.parse, using regex fallback:", jsonErr.message);
+            try {
+              consolidatedProfile = extractJSONFieldsFallback(replyText);
+            } catch (fallbackErr) {
+              lastErrorMessage = `Error al parsear el JSON incluso con extractor fallback: ${fallbackErr.message}`;
+              console.error(lastErrorMessage);
+            }
           }
-          if (cleanJson.endsWith("```")) {
-            cleanJson = cleanJson.substring(0, cleanJson.length - 3);
-          }
-          consolidatedProfile = JSON.parse(cleanJson.trim());
         } else if (!lastErrorMessage) {
           lastErrorMessage = "La API del modelo generó una respuesta vacía.";
         }
@@ -1257,9 +1591,13 @@ Devuelve ÚNICAMENTE el objeto JSON válido. No incluyas explicaciones previas n
         });
       }
 
-      // Preservar el contexto base y las evoluciones históricas del paciente para evitar su borrado
+      // Combinar las nuevas evoluciones y el historial
+      const nuevasEvs = Array.isArray(consolidatedProfile.nuevas_evoluciones) 
+        ? consolidatedProfile.nuevas_evoluciones 
+        : [];
+      
       const defaultContextoBase = {
-        diagnostico_inicial: "TDAH del adulto con fallas ejecutivas graves, trauma de desarrollo (CPTSD) por maltrato físico paterno y abuso de hermana mayor, depresión severa recurrente e ideación suicida previa, y estrés financiero severo (deuda de 160.000€).",
+        diagnostico_inicial: "TDAH del adulto con fallas ejecutivas graves, trauma de desarrollo (CPTSD) por maltrato físico paterno y abuso de hermana mayor. Depresión severa recurrente con ideación suicida planificada (crisis extrema en junio de 2025 con intento autolítico por la pérdida total de contacto con su hija, alienada por su ex al mudarse Emilio a casa de su madre; lleva más de un año sin verla ni hablar con ella). Estrés financiero severo (deuda de 160.000€) y obsesión con el trading para conseguir capital rápido y 'recuperar' a su hija, quien no acepta su situación habitacional.",
         mecanismos_defensa: [
           "Autosabotaje financiero para validar la etiqueta paterna de 'inútil'.",
           "Parálisis ejecutiva (freeze) ante el éxito operativo por pánico identitario.",
@@ -1267,18 +1605,36 @@ Devuelve ÚNICAMENTE el objeto JSON válido. No incluyas explicaciones previas n
         ]
       };
 
-      consolidatedProfile.contexto_base = currentCtx.contexto_base || defaultContextoBase;
-      consolidatedProfile.evoluciones = currentCtx.evoluciones || [];
+      const finalCtx = {
+        contexto_base: currentCtx.contexto_base || defaultContextoBase,
+        foto_persona: consolidatedProfile.foto_persona || currentCtx.foto_persona,
+        conclusiones: consolidatedProfile.conclusiones && consolidatedProfile.conclusiones.length > 0
+          ? consolidatedProfile.conclusiones 
+          : currentCtx.conclusiones,
+        compromisos: consolidatedProfile.compromisos && consolidatedProfile.compromisos.length > 0
+          ? consolidatedProfile.compromisos 
+          : currentCtx.compromisos,
+        pautas_accion: consolidatedProfile.pautas_accion && consolidatedProfile.pautas_accion.length > 0
+          ? consolidatedProfile.pautas_accion 
+          : currentCtx.pautas_accion,
+        temas: consolidatedProfile.temas && consolidatedProfile.temas.length > 0
+          ? consolidatedProfile.temas 
+          : currentCtx.temas,
+        evoluciones: [...nuevasEvs, ...currentCtx.evoluciones],
+        procesados: {
+          sources: [...currentCtx.procesados.sources, ...processedSourcesIds],
+          conversations: [...currentCtx.procesados.conversations, ...processedConversationsIds]
+        }
+      };
 
-      // Save back to Supabase public.profiles (contexto_terapeutico)
-      await saveUserProfileContext(supabaseUrl, supabaseServiceKey, userId, consolidatedProfile);
+      // Guardar perfil en la base de datos
+      await saveUserProfileContext(supabaseUrl, supabaseServiceKey, userId, finalCtx);
 
-      // Marcar las fuentes procesadas en Supabase para el lote actual
-      if (sourcesToProcess.length > 0) {
+      // Marcar las fuentes procesadas en Supabase (tabla mente_sources) para este lote
+      if (processedSourcesIds.length > 0) {
         try {
-          const processedIds = sourcesToProcess.map((src: any) => src.id);
-          const patchUrl = `${supabaseUrl}/rest/v1/mente_sources?id=in.(${processedIds.join(",")})`;
-          const patchRes = await fetch(patchUrl, {
+          const patchUrl = `${supabaseUrl}/rest/v1/mente_sources?id=in.(${processedSourcesIds.join(",")})`;
+          await fetch(patchUrl, {
             method: "PATCH",
             headers: {
               "apikey": supabaseServiceKey,
@@ -1287,22 +1643,16 @@ Devuelve ÚNICAMENTE el objeto JSON válido. No incluyas explicaciones previas n
             },
             body: JSON.stringify({ processed: true })
           });
-          if (patchRes.ok) {
-            console.log(`Marcadas con éxito ${sourcesToProcess.length} fuentes como procesadas.`);
-          } else {
-            const errText = await patchRes.text();
-            console.error(`Error al marcar fuentes como procesadas: ${patchRes.status} - ${errText}`);
-          }
         } catch (patchErr) {
-          console.error("Error patching mente_sources processed status:", patchErr.message);
+          console.error("Error marking sources as processed:", patchErr.message);
         }
       }
 
       return new Response(JSON.stringify({ 
         success: true, 
-        data: consolidatedProfile,
-        processedCount: sourcesToProcess.length,
-        remainingCount: unreadSources.length - sourcesToProcess.length
+        data: finalCtx,
+        processedCount: batchItems.length,
+        remainingCount: remainingCount
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" }
       });
@@ -1477,7 +1827,10 @@ Devuelve ÚNICAMENTE el objeto JSON válido. No incluyas explicaciones previas n
       });
     }
 
-    let auditPrompt = "";
+const currentDateStr = new Date().toLocaleDateString('es-ES', { timeZone: 'Europe/Madrid', year: 'numeric', month: 'long', day: 'numeric' });
+    let auditPrompt = `--- FECHA DE LA SESIÓN DE HOY ---
+Fecha: ${currentDateStr}
+\n`;
     // INJECT CONVERSATION FOCUS TOPIC
     if (conversationTitle) {
       auditPrompt += `--- TEMA O TÍTULO DE LA SESIÓN ACTUAL (MARCADO POR EL USUARIO) ---
@@ -1614,7 +1967,16 @@ Temas terapéuticos vigentes en seguimiento:
     const systemInstruction = `Eres Walter, el psicólogo clínico y asesor de psicología de trading de Emilio (47 años, fotoperiodista de la Agencia EFE). Conoces su diagnóstico de TDAH del adulto, trauma de desarrollo y su situación de deuda de 160.000€.
 
 REGLA FUNDAMENTAL DE TRATO Y DINÁMICA DE CHAT (MANDATORIA):
-- **Concisión absoluta y control de verborrea (CRÍTICO):** Tus respuestas deben ser cortas, directas y ágiles, de entre 100 y 180 palabras (máximo 3 párrafos breves). Los textos largos, explicaciones teóricas densas o discursos diagnósticos abruman al paciente y ralentizan la sesión.
+- **Foco estricto en el tema de la sesión (CRÍTICO):** No saques a relucir constantemente datos del pasado de Emilio (como su historial suicida, detalles de deudas o traumas de la infancia) de forma no solicitada en tus respuestas ordinarias de chat. Mantén el chat enfocado de forma práctica, objetiva y directa sobre el tema específico que se está tratando en la sesión activa. La memoria general de Emilio ya está disponible en su panel derecho de Mente; no la repitas ni la lectures en tus contestaciones de chat a menos que Emilio la mencione directamente o sea el tema central de la sesión.
+- **Formato ultra-visual y legible (MANDATORIO):** Para que tus intervenciones entren por la mente de Emilio con mayor facilidad, estructura tus respuestas de manera altamente visual. Utiliza saltos de línea frecuentes (párrafos de máximo 2-3 líneas), negritas ('**texto**') para destacar ideas clave, viñetas limpias para listas de pautas o reflexiones, y bloques de cita ('>') para validaciones emocionales. Utiliza iconos y emojis de forma elegante para separar ideas (ej. 🧠, 💡, 🛡️). Evita bloques monolíticos de texto.
+- **Explicaciones desarrolladas y estructuradas:** Tus respuestas deben ser detalladas, explicativas y más desarrolladas (entre 180 y 300 palabras). Debes aportar explicaciones claras, reflexiones profundas y desarrollar tus ideas terapéuticas para dar contexto y claridad a Emilio, sin ser excesivamente conciso, pero manteniendo el hilo clínico estructurado y centrado.
+- **Estructura de Organización Clínica (OBLIGATORIA al investigar, concluir o proponer soluciones):** Si Emilio te solicita "investigar contexto", "extraer conclusiones" o "posibles soluciones" (mediante los botones clínicos o explícitamente), debes comenzar obligatoriamente tu respuesta con el bloque estructurado **[Filtro de Organización]** que contenga la fecha de la sesión y el tema o temas tratados en forma de lista.
+  Ejemplo de cabecera obligatoria al inicio de la respuesta:
+  **[Filtro de Organización]**
+  - **Fecha:** [Fecha actual de la sesión]
+  - **Temas Tratados:** [Tema 1], [Tema 2]
+  ---
+  (A continuación, desarrolla tu respuesta explicativa detalladamente...)
 - **Método Clínico: Indagar antes de diagnosticar:** Como psicólogo en sesión, no des por sentado el diagnóstico ni saques conclusiones apresuradas. Valida la emoción de Emilio brevemente (1 o 2 frases con empatía real, ej: "Te leo y ese peso es real...") y pasa a hacer preguntas abiertas y socráticas para recopilar información sobre lo que piensa y siente en este momento. No intentes solucionar todo en cada respuesta. Primero indaga y recopila información.
 - **Hacerlo paso a paso:** Deja que Emilio elabore el hilo de la conversación respondiendo a tus preguntas. Cierra siempre tu intervención con una o máximo dos preguntas claras y dirigidas que inviten a la autoreflexión.
 - **Escucha activa y adaptación al tema/título:** Emilio marca la pauta de lo que quiere trabajar mediante el título de la sesión o el texto de su mensaje. Adáptate estrictamente a ese tema. Si Emilio abre un tema del pasado o de su historia de forma explícita, indaga y desarróllalo terapéuticamente mediante preguntas precisas, evitando sermones.
@@ -1707,7 +2069,7 @@ Tu rol es DUAL:
 
     let replyText = "";
     const openrouterPayload = {
-      model: model === '3.5' ? "google/gemini-3.5-flash" : "google/gemini-2.5-flash",
+      model: model === '5.5-high' ? "openai/gpt-5.5-pro" : (model === '3.5' ? "google/gemini-3.5-flash" : "google/gemini-2.5-flash"),
       messages: [
         { role: "system", content: `${systemInstruction}\n\n[DATOS DINÁMICOS DE EMILIO Y MERCADOS EN TIEMPO REAL]\n${auditPrompt}` },
         ...recentMessages.map(msg => {
@@ -1874,9 +2236,11 @@ Tu rol es DUAL:
       cleanReply = cleanReply.replace(titleRegex, "").trim();
     }
 
+    const replyWithModel = `${cleanReply}\n\n[model:${model || '2.5'}]`;
+
     if (conversationId) {
       // Guardar mensaje de Walter en base de datos
-      await saveMessageToDb(supabaseUrl, supabaseServiceKey, conversationId, 'assistant', cleanReply);
+      await saveMessageToDb(supabaseUrl, supabaseServiceKey, conversationId, 'assistant', replyWithModel);
       await updateConversationTimestamp(supabaseUrl, supabaseServiceKey, conversationId);
 
       // Comprobar si el título es el por defecto (solo si no se generó por update_title)
@@ -1894,7 +2258,7 @@ Tu rol es DUAL:
     }
 
     return new Response(JSON.stringify({ 
-      reply: cleanReply, 
+      reply: replyWithModel, 
       actions: actions,
       updatedContext: mergedCtx || userCtx,
       generatedTitle: generatedTitle
@@ -1903,8 +2267,8 @@ Tu rol es DUAL:
     });
 
   } catch (e) {
-    console.error("Edge Function error:", e.message);
-    return new Response(JSON.stringify({ error: e.message }), {
+    console.error("Edge Function error:", e.stack || e.message);
+    return new Response(JSON.stringify({ error: e.stack || e.message }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" }
     });

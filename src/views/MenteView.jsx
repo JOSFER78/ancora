@@ -42,6 +42,14 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
   const [sessionMessages, setSessionMessages] = useState([]);
   const [transcriptLoading, setTranscriptLoading] = useState(false);
 
+  // Estados para edición manual de Mente
+  const [isEditingMente, setIsEditingMente] = useState(false);
+  const [editDiagnosticoBase, setEditDiagnosticoBase] = useState('');
+  const [editMecanismosDefensa, setEditMecanismosDefensa] = useState('');
+  const [editConclusiones, setEditConclusiones] = useState('');
+  const [editCompromisos, setEditCompromisos] = useState('');
+  const [editPautasAccion, setEditPautasAccion] = useState('');
+
   // Fetch patient sources
   const fetchSources = async () => {
     if (!user) return;
@@ -107,6 +115,8 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
   const [syncLoading, setSyncLoading] = useState(false);
 
   const handleSyncProfile = async () => {
+    const isReset = confirm("¿Deseas RECONSTRUIR de forma completa todo tu historial clínico desde el principio (Aceptar) o realizar una sincronización incremental de las nuevas fuentes (Cancelar)?");
+    
     setSyncLoading(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -115,6 +125,7 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
       let remaining = 1;
       let latestData = null;
       let totalProcessed = 0;
+      let isFirstCall = true;
 
       while (remaining > 0) {
         const response = await fetch('https://ysnorelkaccaikvuqgnv.supabase.co/functions/v1/chat-terapeuta', {
@@ -124,9 +135,11 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
             'Authorization': `Bearer ${session.access_token}`
           },
           body: JSON.stringify({
-            action: 'sync_clinical_profile'
+            action: 'sync_clinical_profile',
+            reset: isReset && isFirstCall
           })
         });
+        isFirstCall = false;
 
         let errorMessage = "Fallo al consolidar análisis";
         if (!response.ok) {
@@ -168,6 +181,63 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
       alert("Error al sincronizar análisis: " + err.message);
     } finally {
       setSyncLoading(false);
+    }
+  };
+
+  // Cargar estados e iniciar edición manual de Mente
+  const startEditingMente = () => {
+    if (!profile) return;
+    const ctx = profile.contexto_terapeutico || {};
+    setEditDiagnosticoBase(ctx.contexto_base?.diagnostico_inicial || ctx.foto_persona || '');
+    
+    const defensa = ctx.contexto_base?.mecanismos_defensa;
+    setEditMecanismosDefensa(
+      Array.isArray(defensa) ? defensa.join('\n') : String(defensa || '')
+    );
+    
+    setEditConclusiones(Array.isArray(ctx.conclusiones) ? ctx.conclusiones.join('\n') : '');
+    setEditCompromisos(Array.isArray(ctx.compromisos) ? ctx.compromisos.join('\n') : '');
+    setEditPautasAccion(Array.isArray(ctx.pautas_accion) ? ctx.pautas_accion.join('\n') : '');
+    setIsEditingMente(true);
+  };
+
+  // Guardar cambios manuales de Mente en la base de datos Supabase
+  const handleSaveMente = async (e) => {
+    if (e) e.preventDefault();
+    if (!user) return;
+    setLoading(true);
+    try {
+      const updatedCtx = {
+        ...(profile.contexto_terapeutico || {}),
+        contexto_base: {
+          diagnostico_inicial: editDiagnosticoBase.trim(),
+          mecanismos_defensa: editMecanismosDefensa.split('\n').map(x => x.trim()).filter(Boolean)
+        },
+        conclusiones: editConclusiones.split('\n').map(x => x.trim()).filter(Boolean),
+        compromisos: editCompromisos.split('\n').map(x => x.trim()).filter(Boolean),
+        pautas_accion: editPautasAccion.split('\n').map(x => x.trim()).filter(Boolean)
+      };
+
+      const { error } = await supabase
+        .from('profiles')
+        .update({ contexto_terapeutico: updatedCtx })
+        .eq('id', user.id);
+
+      if (error) throw error;
+
+      if (onProfileUpdated) {
+        onProfileUpdated({
+          ...profile,
+          contexto_terapeutico: updatedCtx
+        });
+      }
+      setIsEditingMente(false);
+      alert("Memoria consolidada (Mente) actualizada correctamente.");
+    } catch (err) {
+      console.error("Error saving mente:", err.message);
+      alert("Error al guardar la memoria: " + err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -942,239 +1012,339 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
                 </div>
               </div>
               
-              <button 
-                onClick={handleSyncProfile}
-                className="btn btn-cyan flex-center animate-glow-cyan"
-                style={{ gap: '8px', height: '36px', padding: '0 16px', fontSize: '0.78rem', fontWeight: 700 }}
-                disabled={syncLoading}
-              >
-                <RefreshCw size={14} className={syncLoading ? 'animate-spin' : ''} />
-                <span>{syncLoading ? 'Sincronizando Diagnóstico...' : 'Sincronizar Análisis de Walter'}</span>
-              </button>
-            </div>
-
-            {/* --- CONTEXTO CLÍNICO DE BASE (INMUTABLE) --- */}
-            <div>
-              <h4 style={{ fontSize: '0.85rem', fontWeight: 800, color: '#ffffff', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                📌 Contexto Clínico de Base (Inmutable)
-              </h4>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
-                {/* Diagnóstico Inicial */}
-                <div className="glass-panel" style={{ 
-                  padding: '20px', 
-                  background: 'linear-gradient(135deg, rgba(6, 182, 212, 0.04), rgba(15, 23, 42, 0.4))', 
-                  border: '1px solid hsla(var(--cyan), 0.2)',
-                  borderRadius: '12px'
-                }}>
-                  <h5 style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--color-cyan)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px', marginTop: 0 }}>
-                    🧠 Diagnóstico Inicial de Base
-                  </h5>
-                  <p style={{ fontSize: '0.78rem', lineHeight: 1.55, color: '#ffffff', fontStyle: 'italic', margin: 0 }}>
-                    {profile?.contexto_terapeutico?.contexto_base?.diagnostico_inicial || profile?.contexto_terapeutico?.foto_persona || "Paciente con TDAH del adulto con perfil impulsivo severo agravado por trauma complejo de la infancia, lo que desencadena patrones repetitivos de autosabotaje financiero ante hitos de éxito."}
-                  </p>
-                </div>
-
-                {/* Mecanismos de Defensa Inmutables */}
-                <div className="glass-panel" style={{ 
-                  padding: '20px', 
-                  background: 'linear-gradient(135deg, rgba(244, 63, 94, 0.04), rgba(15, 23, 42, 0.4))', 
-                  border: '1px solid rgba(244, 63, 94, 0.2)',
-                  borderRadius: '12px'
-                }}>
-                  <h5 style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--color-rose)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px', marginTop: 0 }}>
-                    ⚠️ Mecanismos de Defensa Crónicos
-                  </h5>
-                  <p style={{ fontSize: '0.78rem', lineHeight: 1.55, color: '#ffffff', margin: 0, whiteSpace: 'pre-line' }}>
-                    {profile?.contexto_terapeutico?.contexto_base?.mecanismos_defensa || "1. Negación de la escala de pérdida (ceguera de escala).\n2. Racionalización del riesgo post-pérdida.\n3. Autosabotaje inconsciente para retornar a la zona de confort traumática (fracaso conocido)."}
-                  </p>
-                </div>
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                {!isEditingMente ? (
+                  <button 
+                    onClick={startEditingMente}
+                    className="btn btn-outline flex-center"
+                    style={{ gap: '8px', height: '36px', padding: '0 16px', fontSize: '0.78rem', fontWeight: 700 }}
+                  >
+                    ✏️ Editar Memoria
+                  </button>
+                ) : (
+                  <>
+                    <button 
+                      onClick={handleSaveMente}
+                      className="btn btn-emerald flex-center animate-glow-emerald"
+                      style={{ gap: '8px', height: '36px', padding: '0 16px', fontSize: '0.78rem', fontWeight: 700 }}
+                    >
+                      💾 Guardar Memoria
+                    </button>
+                    <button 
+                      onClick={() => setIsEditingMente(false)}
+                      className="btn btn-outline flex-center"
+                      style={{ gap: '8px', height: '36px', padding: '0 16px', fontSize: '0.78rem', fontWeight: 700 }}
+                    >
+                      Cancelar
+                    </button>
+                  </>
+                )}
+                <button 
+                  onClick={handleSyncProfile}
+                  className="btn btn-cyan flex-center animate-glow-cyan"
+                  style={{ gap: '8px', height: '36px', padding: '0 16px', fontSize: '0.78rem', fontWeight: 700 }}
+                  disabled={syncLoading || isEditingMente}
+                >
+                  <RefreshCw size={14} className={syncLoading ? 'animate-spin' : ''} />
+                  <span>{syncLoading ? 'Sincronizando Diagnóstico...' : 'Sincronizar Análisis de Walter'}</span>
+                </button>
               </div>
             </div>
 
-            {/* --- LÍNEA DE EVOLUCIÓN DE SESIONES (CRONOLÓGICA) --- */}
-            <div style={{ borderTop: '1px solid var(--border)', paddingTop: '20px' }}>
-              <h4 style={{ fontSize: '0.85rem', fontWeight: 800, color: '#ffffff', marginBottom: '16px', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <Clock size={16} color="var(--color-cyan)" />
-                Línea de Evolución de Sesiones
-              </h4>
-
-              {(!profile?.contexto_terapeutico?.evoluciones || profile.contexto_terapeutico.evoluciones.length === 0) ? (
-                <div style={{ padding: '24px', background: 'rgba(255,255,255,0.01)', border: '1px dashed var(--border)', borderRadius: '12px', textAlign: 'center' }}>
-                  <span style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', fontStyle: 'italic' }}>
-                    No hay hitos evolutivos registrados todavía. Las evoluciones cronológicas se generan automáticamente al cerrar y consolidar sesiones terapéuticas con Walter.
-                  </span>
+            {/* --- EDICIÓN O VISUALIZACIÓN DE MEMORIA CLÍNICA --- */}
+            {isEditingMente ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                <h4 style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--color-cyan)', margin: 0, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  ✏️ Editando Memoria Clínica de Emilio
+                </h4>
+                
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
+                  <div className="form-group">
+                    <label className="form-label" style={{ color: 'var(--color-cyan)', fontWeight: 800, fontSize: '0.78rem', marginBottom: '6px', display: 'block' }}>🧠 Diagnóstico Inicial de Base</label>
+                    <textarea 
+                      className="form-input" 
+                      rows="6" 
+                      value={editDiagnosticoBase} 
+                      onChange={(e) => setEditDiagnosticoBase(e.target.value)} 
+                      style={{ width: '100%', fontSize: '0.78rem', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border)', color: '#fff', resize: 'none', padding: '10px', borderRadius: '6px' }}
+                    />
+                  </div>
+                  
+                  <div className="form-group">
+                    <label className="form-label" style={{ color: 'var(--color-rose)', fontWeight: 800, fontSize: '0.78rem', marginBottom: '6px', display: 'block' }}>⚠️ Mecanismos de Defensa Crónicos (uno por línea)</label>
+                    <textarea 
+                      className="form-input" 
+                      rows="6" 
+                      value={editMecanismosDefensa} 
+                      onChange={(e) => setEditMecanismosDefensa(e.target.value)} 
+                      style={{ width: '100%', fontSize: '0.78rem', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border)', color: '#fff', resize: 'none', padding: '10px', borderRadius: '6px' }}
+                    />
+                  </div>
                 </div>
-              ) : (
-                <div style={{ 
-                  display: 'flex', 
-                  flexDirection: 'column', 
-                  gap: '20px', 
-                  position: 'relative', 
-                  paddingLeft: '22px',
-                  borderLeft: '2px solid rgba(6, 182, 212, 0.15)',
-                  marginLeft: '10px'
-                }}>
-                  {profile.contexto_terapeutico.evoluciones.map((ev, idx) => (
-                    <div key={idx} style={{ position: 'relative' }}>
-                      {/* Punto de la línea de tiempo */}
-                      <div style={{ 
-                        position: 'absolute', 
-                        left: '-29px', 
-                        top: '4px', 
-                        width: '12px', 
-                        height: '12px', 
-                        borderRadius: '50%', 
-                        background: 'var(--color-cyan)', 
-                        border: '2px solid var(--background-primary)',
-                        boxShadow: '0 0 8px var(--color-cyan)'
-                      }} />
-                      
-                      {/* Card de la Sesión */}
-                      <div className="glass-panel" style={{ 
-                        padding: '16px', 
-                        background: 'rgba(255, 255, 255, 0.015)', 
-                        border: '1px solid var(--border)',
-                        borderRadius: '10px',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '8px'
-                      }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.03)', paddingBottom: '6px' }}>
-                          <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#ffffff' }}>
-                            {ev.titulo_sesion || `Sesión Clínica`}
-                          </span>
-                          <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
-                            📅 {ev.fecha ? new Date(ev.fecha).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Fecha no registrada'}
-                          </span>
-                        </div>
 
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.74rem', lineHeight: 1.45 }}>
-                          <p style={{ margin: 0, color: '#ffffff' }}>
-                            <strong>Hecho Clínico Analizado:</strong> <span style={{ color: 'var(--color-cyan)' }}>{ev.hecho_clinico}</span>
-                          </p>
-                          <p style={{ margin: 0, color: 'var(--text-secondary)' }}>
-                            <strong>Análisis Evolutivo:</strong> {ev.analisis_evolutivo}
-                          </p>
-                          {ev.pautas_y_compromisos && (
-                            <div style={{ 
-                              marginTop: '4px', 
-                              padding: '8px 12px', 
-                              background: 'rgba(16, 185, 129, 0.03)', 
-                              border: '1px solid rgba(16, 185, 129, 0.12)', 
-                              borderRadius: '6px',
-                              color: 'var(--color-emerald)'
-                            }}>
-                              <strong>Pautas y Compromisos de esta sesión:</strong>
-                              <p style={{ margin: '2px 0 0 0', fontSize: '0.7rem', color: 'rgba(16, 185, 129, 0.95)' }}>{ev.pautas_y_compromisos}</p>
-                            </div>
-                          )}
-                        </div>
-                      </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px', borderTop: '1px solid var(--border)', paddingTop: '20px' }}>
+                  <div className="form-group">
+                    <label className="form-label" style={{ color: 'var(--color-cyan)', fontWeight: 800, fontSize: '0.78rem', marginBottom: '6px', display: 'block' }}>🧠 Conclusiones Psicológicas (una por línea)</label>
+                    <textarea 
+                      className="form-input" 
+                      rows="8" 
+                      value={editConclusiones} 
+                      onChange={(e) => setEditConclusiones(e.target.value)} 
+                      style={{ width: '100%', fontSize: '0.78rem', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border)', color: '#fff', resize: 'none', padding: '10px', borderRadius: '6px' }}
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label" style={{ color: 'var(--color-emerald)', fontWeight: 800, fontSize: '0.78rem', marginBottom: '6px', display: 'block' }}>⚖️ Compromisos de Operativa (uno por línea)</label>
+                    <textarea 
+                      className="form-input" 
+                      rows="8" 
+                      value={editCompromisos} 
+                      onChange={(e) => setEditCompromisos(e.target.value)} 
+                      style={{ width: '100%', fontSize: '0.78rem', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border)', color: '#fff', resize: 'none', padding: '10px', borderRadius: '6px' }}
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label" style={{ color: 'var(--color-rose)', fontWeight: 800, fontSize: '0.78rem', marginBottom: '6px', display: 'block' }}>📋 Pautas de Acción Consolidadas (una por línea)</label>
+                    <textarea 
+                      className="form-input" 
+                      rows="8" 
+                      value={editPautasAccion} 
+                      onChange={(e) => setEditPautasAccion(e.target.value)} 
+                      style={{ width: '100%', fontSize: '0.78rem', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border)', color: '#fff', resize: 'none', padding: '10px', borderRadius: '6px' }}
+                    />
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <>
+                {/* --- CONTEXTO CLÍNICO DE BASE (INMUTABLE) --- */}
+                <div>
+                  <h4 style={{ fontSize: '0.85rem', fontWeight: 800, color: '#ffffff', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    📌 Contexto Clínico de Base (Inmutable)
+                  </h4>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
+                    {/* Diagnóstico Inicial */}
+                    <div className="glass-panel" style={{ 
+                      padding: '20px', 
+                      background: 'linear-gradient(135deg, rgba(6, 182, 212, 0.04), rgba(15, 23, 42, 0.4))', 
+                      border: '1px solid hsla(var(--cyan), 0.2)',
+                      borderRadius: '12px'
+                    }}>
+                      <h5 style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--color-cyan)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px', marginTop: 0 }}>
+                        🧠 Diagnóstico Inicial de Base
+                      </h5>
+                      <p style={{ fontSize: '0.78rem', lineHeight: 1.55, color: '#ffffff', fontStyle: 'italic', margin: 0 }}>
+                        {profile?.contexto_terapeutico?.contexto_base?.diagnostico_inicial || profile?.contexto_terapeutico?.foto_persona || "Paciente con TDAH del adulto con perfil impulsivo severo agravado por trauma complejo de la infancia, lo que desencadena patrones repetitivos de autosabotaje financiero ante hitos de éxito."}
+                      </p>
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
 
-            {/* --- MAPA DE TEMAS CLÍNICOS GLOBALES --- */}
-            <div style={{ borderTop: '1px solid var(--border)', paddingTop: '20px' }}>
-              <h4 style={{ fontSize: '0.85rem', fontWeight: 800, color: '#ffffff', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                🗺️ Temas Terapéuticos Globales (Eje Conductual)
-              </h4>
-              {(!profile?.contexto_terapeutico?.temas || profile.contexto_terapeutico.temas.length === 0) ? (
-                <p style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', fontStyle: 'italic', margin: 0 }}>
-                  Walter mapeará los temas clínicos activos, cerrados y emergentes tras sincronizar el análisis.
-                </p>
-              ) : (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
-                  {profile.contexto_terapeutico.temas.map((tema, idx) => {
-                    let badgeClass = 'badge-cyan';
-                    let statusLabel = 'Emergente';
-                    if (tema.status === 'active') {
-                      badgeClass = 'badge-rose';
-                      statusLabel = 'Activo';
-                    } else if (tema.status === 'closed') {
-                      badgeClass = 'badge-emerald';
-                      statusLabel = 'Controlado / Cerrado';
-                    }
-                    return (
-                      <div 
-                        key={idx} 
-                        style={{ 
-                          padding: '12px 14px', 
-                          background: 'rgba(255,255,255,0.01)', 
-                          border: '1px solid var(--border)',
-                          borderRadius: '8px',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: '6px'
-                        }}
-                        className="conv-item-hover"
-                      >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#ffffff' }}>{tema.title}</span>
-                          <span className={`badge ${badgeClass}`} style={{ fontSize: '0.52rem', padding: '1px 5px', fontWeight: 700 }}>{statusLabel}</span>
+                    {/* Mecanismos de Defensa Inmutables */}
+                    <div className="glass-panel" style={{ 
+                      padding: '20px', 
+                      background: 'linear-gradient(135deg, rgba(244, 63, 94, 0.04), rgba(15, 23, 42, 0.4))', 
+                      border: '1px solid rgba(244, 63, 94, 0.2)',
+                      borderRadius: '12px'
+                    }}>
+                      <h5 style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--color-rose)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px', marginTop: 0 }}>
+                        ⚠️ Mecanismos de Defensa Crónicos
+                      </h5>
+                      <p style={{ fontSize: '0.78rem', lineHeight: 1.55, color: '#ffffff', margin: 0, whiteSpace: 'pre-line' }}>
+                        {Array.isArray(profile?.contexto_terapeutico?.contexto_base?.mecanismos_defensa)
+                          ? profile.contexto_terapeutico.contexto_base.mecanismos_defensa.join('\n')
+                          : profile?.contexto_terapeutico?.contexto_base?.mecanismos_defensa || "1. Negación de la escala de pérdida (ceguera de escala).\n2. Racionalización del riesgo post-pérdida.\n3. Autosabotaje inconsciente para retornar a la zona de confort traumática (fracaso conocido)."}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* --- LÍNEA DE EVOLUCIÓN DE SESIONES (CRONOLÓGICA) --- */}
+                <div style={{ borderTop: '1px solid var(--border)', paddingTop: '20px' }}>
+                  <h4 style={{ fontSize: '0.85rem', fontWeight: 800, color: '#ffffff', marginBottom: '16px', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Clock size={16} color="var(--color-cyan)" />
+                    Línea de Evolución de Sesiones
+                  </h4>
+
+                  {(!profile?.contexto_terapeutico?.evoluciones || profile.contexto_terapeutico.evoluciones.length === 0) ? (
+                    <div style={{ padding: '24px', background: 'rgba(255,255,255,0.01)', border: '1px dashed var(--border)', borderRadius: '12px', textAlign: 'center' }}>
+                      <span style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', fontStyle: 'italic' }}>
+                        No hay hitos evolutivos registrados todavía. Las evoluciones cronológicas se generan automáticamente al cerrar y consolidar sesiones terapéuticas con Walter.
+                      </span>
+                    </div>
+                  ) : (
+                    <div style={{ 
+                      display: 'flex', 
+                      flexDirection: 'column', 
+                      gap: '20px', 
+                      position: 'relative', 
+                      paddingLeft: '22px',
+                      borderLeft: '2px solid rgba(6, 182, 212, 0.15)',
+                      marginLeft: '10px'
+                    }}>
+                      {profile.contexto_terapeutico.evoluciones.map((ev, idx) => (
+                        <div key={idx} style={{ position: 'relative' }}>
+                          {/* Punto de la línea de tiempo */}
+                          <div style={{ 
+                            position: 'absolute', 
+                            left: '-29px', 
+                            top: '4px', 
+                            width: '12px', 
+                            height: '12px', 
+                            borderRadius: '50%', 
+                            background: 'var(--color-cyan)', 
+                            border: '2px solid var(--background-primary)',
+                            boxShadow: '0 0 8px var(--color-cyan)'
+                          }} />
+                          
+                          {/* Card de la Sesión */}
+                          <div className="glass-panel" style={{ 
+                            padding: '16px', 
+                            background: 'rgba(255, 255, 255, 0.015)', 
+                            border: '1px solid var(--border)',
+                            borderRadius: '10px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '8px'
+                          }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.03)', paddingBottom: '6px' }}>
+                              <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#ffffff' }}>
+                                {ev.titulo_sesion || `Sesión Clínica`}
+                              </span>
+                              <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                                📅 {ev.fecha ? new Date(ev.fecha).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Fecha no registrada'}
+                              </span>
+                            </div>
+
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.74rem', lineHeight: 1.45 }}>
+                              <p style={{ margin: 0, color: '#ffffff' }}>
+                                <strong>Hecho Clínico Analizado:</strong> <span style={{ color: 'var(--color-cyan)' }}>{ev.hecho_clinico}</span>
+                              </p>
+                              <p style={{ margin: 0, color: 'var(--text-secondary)' }}>
+                                <strong>Análisis Evolutivo:</strong> {ev.analisis_evolutivo}
+                              </p>
+                              {ev.pautas_y_compromisos && (
+                                <div style={{ 
+                                  marginTop: '4px', 
+                                  padding: '8px 12px', 
+                                  background: 'rgba(16, 185, 129, 0.03)', 
+                                  border: '1px solid rgba(16, 185, 129, 0.12)', 
+                                  borderRadius: '6px',
+                                  color: 'var(--color-emerald)'
+                                }}>
+                                  <strong>Pautas y Compromisos de esta sesión:</strong>
+                                  <p style={{ margin: '2px 0 0 0', fontSize: '0.7rem', color: 'rgba(16, 185, 129, 0.95)' }}>{ev.pautas_y_compromisos}</p>
+                                </div>
+                              )}
+                            </div>
+                          </div>
                         </div>
-                        <p style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', lineHeight: 1.4, margin: 0 }}>
-                          {tema.description}
-                        </p>
-                      </div>
-                    );
-                  })}
+                      ))}
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
 
-            {/* --- MEDIDAS Y CONCLUSIONES CONSOLIDADAS VIGENTES --- */}
-            <div style={{ borderTop: '1px solid var(--border)', paddingTop: '20px' }} className="grid-3">
-              {/* Conclusiones */}
-              <div style={{ background: 'rgba(255,255,255,0.012)', border: '1px solid var(--border)', padding: '16px', borderRadius: 'var(--radius-md)' }}>
-                <h5 style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--color-cyan)', margin: '0 0 10px 0', borderBottom: '1px solid rgba(6,182,212,0.15)', paddingBottom: '6px' }}>
-                  🧠 Conclusiones Psicológicas Consolidadas
-                </h5>
-                <ul style={{ paddingLeft: '14px', fontSize: '0.72rem', color: 'var(--text-primary)', display: 'flex', flexDirection: 'column', gap: '6px', margin: 0 }}>
-                  {profile?.contexto_terapeutico?.conclusiones && profile.contexto_terapeutico.conclusiones.length > 0 ? (
-                    profile.contexto_terapeutico.conclusiones.map((item, idx) => (
-                      <li key={idx} style={{ lineHeight: 1.4 }}>{item}</li>
-                    ))
+                {/* --- MAPA DE TEMAS CLÍNICOS GLOBALES --- */}
+                <div style={{ borderTop: '1px solid var(--border)', paddingTop: '20px' }}>
+                  <h4 style={{ fontSize: '0.85rem', fontWeight: 800, color: '#ffffff', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    🗺️ Temas Terapéuticos Globales (Eje Conductual)
+                  </h4>
+                  {(!profile?.contexto_terapeutico?.temas || profile.contexto_terapeutico.temas.length === 0) ? (
+                    <p style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', fontStyle: 'italic', margin: 0 }}>
+                      Walter mapeará los temas clínicos activos, cerrados y emergentes tras sincronizar el análisis.
+                    </p>
                   ) : (
-                    <span style={{ color: 'var(--text-secondary)', fontStyle: 'italic' }}>Sin conclusiones registradas. Se consolidarán al archivar sesiones.</span>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
+                      {profile.contexto_terapeutico.temas.map((tema, idx) => {
+                        let badgeClass = 'badge-cyan';
+                        let statusLabel = 'Emergente';
+                        if (tema.status === 'active') {
+                          badgeClass = 'badge-rose';
+                          statusLabel = 'Activo';
+                        } else if (tema.status === 'closed') {
+                          badgeClass = 'badge-emerald';
+                          statusLabel = 'Controlado / Cerrado';
+                        }
+                        return (
+                          <div 
+                            key={idx} 
+                            style={{ 
+                              padding: '12px 14px', 
+                              background: 'rgba(255,255,255,0.01)', 
+                              border: '1px solid var(--border)',
+                              borderRadius: '8px',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '6px'
+                            }}
+                            className="conv-item-hover"
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#ffffff' }}>{tema.title}</span>
+                              <span className={`badge ${badgeClass}`} style={{ fontSize: '0.52rem', padding: '1px 5px', fontWeight: 700 }}>{statusLabel}</span>
+                            </div>
+                            <p style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', lineHeight: 1.4, margin: 0 }}>
+                              {tema.description}
+                            </p>
+                          </div>
+                        );
+                      })}
+                    </div>
                   )}
-                </ul>
-              </div>
+                </div>
 
-              {/* Compromisos */}
-              <div style={{ background: 'rgba(255,255,255,0.012)', border: '1px solid var(--border)', padding: '16px', borderRadius: 'var(--radius-md)' }}>
-                <h5 style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--color-emerald)', margin: '0 0 10px 0', borderBottom: '1px solid rgba(16,185,129,0.15)', paddingBottom: '6px' }}>
-                  ⚖️ Compromisos de Operativa Consolidados
-                </h5>
-                <ul style={{ paddingLeft: '14px', fontSize: '0.72rem', color: 'var(--text-primary)', display: 'flex', flexDirection: 'column', gap: '6px', margin: 0 }}>
-                  {profile?.contexto_terapeutico?.compromisos && profile.contexto_terapeutico.compromisos.length > 0 ? (
-                    profile.contexto_terapeutico.compromisos.map((item, idx) => (
-                      <li key={idx} style={{ lineHeight: 1.4 }}>{item}</li>
-                    ))
-                  ) : (
-                    <span style={{ color: 'var(--text-secondary)', fontStyle: 'italic' }}>Sin compromisos activos de gestión de riesgo.</span>
-                  )}
-                </ul>
-              </div>
+                {/* --- MEDIDAS Y CONCLUSIONES CONSOLIDADAS VIGENTES --- */}
+                <div style={{ borderTop: '1px solid var(--border)', paddingTop: '20px' }} className="grid-3">
+                  {/* Conclusiones */}
+                  <div style={{ background: 'rgba(255,255,255,0.012)', border: '1px solid var(--border)', padding: '16px', borderRadius: 'var(--radius-md)' }}>
+                    <h5 style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--color-cyan)', margin: '0 0 10px 0', borderBottom: '1px solid rgba(6,182,212,0.15)', paddingBottom: '6px' }}>
+                      🧠 Conclusiones Psicológicas Consolidadas
+                    </h5>
+                    <ul style={{ paddingLeft: '14px', fontSize: '0.72rem', color: 'var(--text-primary)', display: 'flex', flexDirection: 'column', gap: '6px', margin: 0 }}>
+                      {profile?.contexto_terapeutico?.conclusiones && profile.contexto_terapeutico.conclusiones.length > 0 ? (
+                        profile.contexto_terapeutico.conclusiones.map((item, idx) => (
+                          <li key={idx} style={{ lineHeight: 1.4 }}>{item}</li>
+                        ))
+                      ) : (
+                        <span style={{ color: 'var(--text-secondary)', fontStyle: 'italic' }}>Sin conclusiones registradas. Se consolidarán al archivar sesiones.</span>
+                      )}
+                    </ul>
+                  </div>
 
-              {/* Pautas de Accion */}
-              <div style={{ background: 'rgba(255,255,255,0.012)', border: '1px solid var(--border)', padding: '16px', borderRadius: 'var(--radius-md)' }}>
-                <h5 style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--color-rose)', margin: '0 0 10px 0', borderBottom: '1px solid rgba(244,63,94,0.15)', paddingBottom: '6px' }}>
-                  📋 Pautas de Acción Consolidadas
-                </h5>
-                <ul style={{ paddingLeft: '14px', fontSize: '0.72rem', color: 'var(--text-primary)', display: 'flex', flexDirection: 'column', gap: '6px', margin: 0 }}>
-                  {profile?.contexto_terapeutico?.pautas_accion && profile.contexto_terapeutico.pautas_accion.length > 0 ? (
-                    profile.contexto_terapeutico.pautas_accion.map((item, idx) => (
-                      <li key={idx} style={{ lineHeight: 1.4 }}>{item}</li>
-                    ))
-                  ) : (
-                    <span style={{ color: 'var(--text-secondary)', fontStyle: 'italic' }}>Sin pautas o ejercicios prescritos aún.</span>
-                  )}
-                </ul>
-              </div>
-            </div>
+                  {/* Compromisos */}
+                  <div style={{ background: 'rgba(255,255,255,0.012)', border: '1px solid var(--border)', padding: '16px', borderRadius: 'var(--radius-md)' }}>
+                    <h5 style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--color-emerald)', margin: '0 0 10px 0', borderBottom: '1px solid rgba(16,185,129,0.15)', paddingBottom: '6px' }}>
+                      ⚖️ Compromisos de Operativa Consolidados
+                    </h5>
+                    <ul style={{ paddingLeft: '14px', fontSize: '0.72rem', color: 'var(--text-primary)', display: 'flex', flexDirection: 'column', gap: '6px', margin: 0 }}>
+                      {profile?.contexto_terapeutico?.compromisos && profile.contexto_terapeutico.compromisos.length > 0 ? (
+                        profile.contexto_terapeutico.compromisos.map((item, idx) => (
+                          <li key={idx} style={{ lineHeight: 1.4 }}>{item}</li>
+                        ))
+                      ) : (
+                        <span style={{ color: 'var(--text-secondary)', fontStyle: 'italic' }}>Sin compromisos activos de gestión de riesgo.</span>
+                      )}
+                    </ul>
+                  </div>
+
+                  {/* Pautas de Accion */}
+                  <div style={{ background: 'rgba(255,255,255,0.012)', border: '1px solid var(--border)', padding: '16px', borderRadius: 'var(--radius-md)' }}>
+                    <h5 style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--color-rose)', margin: '0 0 10px 0', borderBottom: '1px solid rgba(244,63,94,0.15)', paddingBottom: '6px' }}>
+                      📋 Pautas de Acción Consolidadas
+                    </h5>
+                    <ul style={{ paddingLeft: '14px', fontSize: '0.72rem', color: 'var(--text-primary)', display: 'flex', flexDirection: 'column', gap: '6px', margin: 0 }}>
+                      {profile?.contexto_terapeutico?.pautas_accion && profile.contexto_terapeutico.pautas_accion.length > 0 ? (
+                        profile.contexto_terapeutico.pautas_accion.map((item, idx) => (
+                          <li key={idx} style={{ lineHeight: 1.4 }}>{item}</li>
+                        ))
+                      ) : (
+                        <span style={{ color: 'var(--text-secondary)', fontStyle: 'italic' }}>Sin pautas o ejercicios prescritos aún.</span>
+                      )}
+                    </ul>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
 
           {/* Archived Sessions Grid */}

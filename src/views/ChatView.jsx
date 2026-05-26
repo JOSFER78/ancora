@@ -34,6 +34,7 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
   const [editingTitle, setEditingTitle] = useState('');
   const [mobileShowSidebar, setMobileShowSidebar] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1150);
+  const [selectedModel, setSelectedModel] = useState('2.5');
 
   // States and refs for intelligent voice transcription
   const [isRecording, setIsRecording] = useState(false);
@@ -446,7 +447,8 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
           messages: apiMessages,
           currentMood: dailyMoodToday,
           conversationId: activeConversationId,
-          tradingviewContext
+          tradingviewContext,
+          model: selectedModel
         }
       });
 
@@ -885,6 +887,27 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
           </div>
           
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <button 
+              type="button"
+              onClick={() => setSelectedModel(prev => prev === '2.5' ? '3.5' : '2.5')}
+              className="btn btn-outline flex-center"
+              title={selectedModel === '2.5' ? "Modo Indagación (Gemini 2.5 Flash - Ultra-económico y rápido). Clic para cambiar a Análisis." : "Modo Análisis (Gemini 3.5 Flash - Razonamiento clínico profundo). Clic para cambiar a Indagación."}
+              style={{ 
+                padding: '8px 12px', 
+                borderRadius: 'var(--radius-sm)', 
+                height: '36px', 
+                gap: '6px', 
+                fontSize: '0.72rem', 
+                borderColor: selectedModel === '3.5' ? 'var(--color-cyan)' : 'var(--border)', 
+                color: selectedModel === '3.5' ? 'var(--color-cyan)' : 'var(--text-secondary)',
+                fontWeight: 700,
+                background: selectedModel === '3.5' ? 'hsla(var(--cyan), 0.08)' : 'transparent',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              {selectedModel === '3.5' ? '🧠' : '⚡'} <span>Gemini {selectedModel}</span>
+            </button>
+
             {!isClosed && (
               <button 
                 onClick={handleCloseSession}
@@ -1143,23 +1166,6 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
                     color: transcribingAudio ? 'var(--color-cyan)' : 'var(--text-primary)'
                   }}
                 />
-                <button
-                  type="button"
-                  onClick={() => {
-                    const marketPrompt = 'Dame un análisis rápido del mercado: XAUUSD, BTCUSD, EURUSD. Necesito precios actuales y tu perspectiva.';
-                    setInput(marketPrompt);
-                    setTimeout(() => {
-                      const form = document.querySelector('.chat-input-area');
-                      if (form) form.requestSubmit();
-                    }, 50);
-                  }}
-                  className="btn btn-outline flex-center"
-                  title="Análisis rápido de mercado"
-                  disabled={loading}
-                  style={{ width: '46px', height: '46px', padding: 0, borderRadius: 'var(--radius-sm)', flexShrink: 0, fontSize: '1.2rem' }}
-                >
-                  📊
-                </button>
                 <button 
                   type="submit" 
                   className="btn btn-cyan animate-glow-cyan" 

@@ -825,7 +825,7 @@ Deno.serve(async (req) => {
 
     // 2. Parse request body
     const body = await req.json();
-    const { action, messages, currentMood, conversationId, tradingviewContext } = body;
+    const { action, messages, currentMood, conversationId, tradingviewContext, model } = body;
 
     // ACTION: debug_env
     if (action === "debug_env") {
@@ -1707,7 +1707,7 @@ Tu rol es DUAL:
 
     let replyText = "";
     const openrouterPayload = {
-      model: "google/gemini-2.5-flash",
+      model: model === '3.5' ? "google/gemini-3.5-flash" : "google/gemini-2.5-flash",
       messages: [
         { role: "system", content: `${systemInstruction}\n\n[DATOS DINÁMICOS DE EMILIO Y MERCADOS EN TIEMPO REAL]\n${auditPrompt}` },
         ...recentMessages.map(msg => {

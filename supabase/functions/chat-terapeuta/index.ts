@@ -1404,8 +1404,26 @@ function extractJSONFieldsFallback(jsonStr: string): any {
       // Ordenar cronológicamente de más antiguas a más recientes
       unifiedItems.sort((a, b) => a.timestamp - b.timestamp);
 
-      // Reducir a 1 para evitar timeouts con archivos grandes en Supabase (límite 150s)
-      const BATCH_SIZE = 1;
+      // Optimización inteligente de lote: procesar conversaciones en grupo (hasta 8) y documentos individuales (1 en 1)
+      let BATCH_SIZE = 1;
+      if (unifiedItems.length > 0) {
+        if (unifiedItems[0].type === 'conversation') {
+          // Tomar hasta 8 conversaciones consecutivas juntas para reducir peticiones secuenciales y latencia
+          const consecutiveConversations = [];
+          for (const item of unifiedItems) {
+            if (item.type === 'conversation') {
+              consecutiveConversations.push(item);
+              if (consecutiveConversations.length >= 8) break;
+            } else {
+              break; // Detenerse si encontramos un documento para procesarlo de forma individual
+            }
+          }
+          BATCH_SIZE = Math.max(1, consecutiveConversations.length);
+        } else {
+          // Documentos se procesan de uno en uno para evitar timeouts por tamaño
+          BATCH_SIZE = 1;
+        }
+      }
       const batchItems = unifiedItems.slice(0, BATCH_SIZE);
       const remainingCount = unifiedItems.length - batchItems.length;
 
@@ -1538,21 +1556,42 @@ Devuelve ÚNICAMENTE el objeto JSON válido. No incluyas explicaciones previas n
         // Agregar imágenes/PDFs si las hay
         imageParts.forEach(p => contentParts.push(p));
 
-        const openrouterPayload = {
-          model: "deepseek/deepseek-v4-pro",
-          messages: [{ role: "user", content: contentParts }],
-          temperature: 0.3,
-          max_tokens: 4000,
-          response_format: { type: "json_object" }
-        };
-        const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        let res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             "Authorization": `Bearer ${openrouterApiKey}`
           },
-          body: JSON.stringify(openrouterPayload)
+          body: JSON.stringify({
+            model: "deepseek/deepseek-v4-pro",
+            messages: [{ role: "user", content: contentParts }],
+            temperature: 0.3,
+            max_tokens: 4000,
+            response_format: { type: "json_object" }
+          })
         });
+
+        // Robustez ante timeouts/sobrecargas de OpenRouter: si deepseek-v4-pro falla, se reintenta inmediatamente con deepseek-chat
+        if (!res.ok) {
+          const errText = await res.text();
+          console.warn(`Fallo al llamar a deepseek/deepseek-v4-pro (${res.status}): ${errText}. Reintentando con deepseek/deepseek-chat...`);
+          
+          res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${openrouterApiKey}`
+            },
+            body: JSON.stringify({
+              model: "deepseek/deepseek-chat",
+              messages: [{ role: "user", content: contentParts }],
+              temperature: 0.3,
+              max_tokens: 4000,
+              response_format: { type: "json_object" }
+            })
+          });
+        }
+
         if (res.ok) {
           const json = await res.json();
           replyText = json.choices?.[0]?.message?.content || "";
@@ -1563,7 +1602,7 @@ Devuelve ÚNICAMENTE el objeto JSON válido. No incluyas explicaciones previas n
           }
         } else {
           const errText = await res.text();
-          lastErrorMessage = `API de OpenRouter devolvió error ${res.status}: ${errText}`;
+          lastErrorMessage = `API de OpenRouter devolvió error tras fallback ${res.status}: ${errText}`;
           console.error(lastErrorMessage);
         }
 

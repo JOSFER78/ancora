@@ -658,6 +658,9 @@ export default function ViabilityWidget({ user, totalDebts, onDebtsUpdated, targ
       
       const totalDebtsPaid = days.reduce((sum, d) => sum + d.debtsPaid, 0);
 
+      const totalIngresos = days.reduce((sum, d) => sum + d.efeIncome + (d.pnlEur > 0 ? d.pnlEur : 0), 0);
+      const totalGastos = days.reduce((sum, d) => sum + d.fixedExpense + d.debtsPaid + (d.pnlEur < 0 ? Math.abs(d.pnlEur) : 0), 0);
+
       // Calcular tasa de acierto (win rate) del mes
       const tradedDays = days.filter(d => !d.isProjected && d.trades > 0 && d.pnl !== 0);
       const winningDays = tradedDays.filter(d => d.pnl > 0);
@@ -671,6 +674,8 @@ export default function ViabilityWidget({ user, totalDebts, onDebtsUpdated, targ
         sobrante: totalSobranteReal,
         projectedSobrante: totalSobranteProjected,
         debtsPaid: totalDebtsPaid,
+        ingresos: totalIngresos,
+        gastos: totalGastos,
         winRate: winRate.toFixed(0),
         tradedDaysCount: tradedDays.length
       };
@@ -739,10 +744,19 @@ export default function ViabilityWidget({ user, totalDebts, onDebtsUpdated, targ
 
       currentTotalDebt = tempDebts.reduce((sum, d) => sum + d.remaining, 0);
 
+      let extraIncome = 0;
+      if (simMonth === 5 || simMonth === 11) {
+        extraIncome = efeExtraAmount;
+      }
+      const totalIncomeThisMonth = simMonthlyIncome + extraIncome;
+      const totalExpensesThisMonth = simMonthlyExpenses;
+
       results.push({
         monthName: MONTH_NAMES[simMonth],
         year: simYear,
         caja: monthlyCaja,
+        ingresos: totalIncomeThisMonth,
+        gastos: totalExpensesThisMonth,
         initialDebt: initialDebtThisMonth,
         finalDebt: currentTotalDebt,
         settled: settledThisMonth,
@@ -895,8 +909,12 @@ export default function ViabilityWidget({ user, totalDebts, onDebtsUpdated, targ
                   <strong style={{ fontSize: '1.05rem', color: 'var(--color-cyan)' }}>+${annualProjectedTrading.toLocaleString(undefined, {maximumFractionDigits:0})}</strong>
                 </div>
                 <div style={{ padding: '12px 10px', background: 'rgba(255,255,255,0.01)', border: '1px solid var(--border)', borderRadius: '8px', textAlign: 'center' }}>
-                  <span style={{ fontSize: '0.55rem', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase' }}>Sobrante Total de Caja</span>
-                  <strong style={{ fontSize: '1.05rem', color: annualSobrante >= 0 ? 'var(--color-emerald)' : 'var(--color-rose)' }}>{annualSobrante.toFixed(0)} €</strong>
+                  <span style={{ fontSize: '0.55rem', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase' }}>
+                    {annualSobrante >= 0 ? 'Sobrante Total de Caja' : 'Déficit Total de Caja'}
+                  </span>
+                  <strong style={{ fontSize: '1.05rem', color: annualSobrante >= 0 ? 'var(--color-emerald)' : 'var(--color-rose)' }}>
+                    {annualSobrante >= 0 ? `+${annualSobrante.toFixed(0)} €` : `-${Math.abs(annualSobrante).toFixed(0)} €`}
+                  </strong>
                 </div>
                 <div style={{ padding: '12px 10px', background: 'rgba(255,255,255,0.01)', border: '1px solid var(--border)', borderRadius: '8px', textAlign: 'center' }}>
                   <span style={{ fontSize: '0.55rem', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase' }}>Deudas Amortizadas este Año</span>
@@ -994,18 +1012,30 @@ export default function ViabilityWidget({ user, totalDebts, onDebtsUpdated, targ
                     )}
                   </div>
 
-                  {/* Sobrante y Amortizaciones de Caja */}
+                  {/* Desglose de Caja Diaria */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', borderTop: '1px solid rgba(255,255,255,0.02)', paddingTop: '3px' }}>
-                    {debtsPaid > 0 && (
-                      <div style={{ fontSize: '0.52rem', color: 'var(--color-rose)', display: 'flex', justifyContent: 'space-between' }}>
-                        <span>Deuda:</span>
-                        <span style={{ fontWeight: 700 }}>-{debtsPaid.toFixed(0)}€</span>
-                      </div>
-                    )}
-                    <div style={{ fontSize: '0.54rem', display: 'flex', justifyContent: 'space-between', color: sobrante >= 0 ? 'rgba(16,185,129,0.7)' : 'rgba(244,63,94,0.7)' }}>
-                      <span>Sobrante:</span>
-                      <span style={{ fontWeight: 700 }}>{sobrante >= 0 ? '+' : ''}{sobrante.toFixed(0)}€</span>
-                    </div>
+                    {(() => {
+                      const dailyIng = efeIncome + (pnlEur > 0 ? pnlEur : 0);
+                      const dailyGas = fixedExpense + debtsPaid + (pnlEur < 0 ? Math.abs(pnlEur) : 0);
+                      return (
+                        <>
+                          <div style={{ fontSize: '0.50rem', display: 'flex', justifyContent: 'space-between', color: 'rgba(16, 185, 129, 0.7)' }}>
+                            <span>Ingreso:</span>
+                            <span style={{ fontWeight: 600 }}>+{dailyIng.toFixed(0)}€</span>
+                          </div>
+                          <div style={{ fontSize: '0.50rem', display: 'flex', justifyContent: 'space-between', color: 'rgba(244, 63, 94, 0.7)' }}>
+                            <span>Gasto:</span>
+                            <span style={{ fontWeight: 600 }}>-{dailyGas.toFixed(0)}€</span>
+                          </div>
+                          <div style={{ fontSize: '0.54rem', display: 'flex', justifyContent: 'space-between', color: sobrante >= 0 ? 'var(--color-emerald)' : 'var(--color-rose)', marginTop: '1px', borderTop: '1px dashed rgba(255,255,255,0.03)', paddingTop: '1px' }}>
+                            <span>{sobrante >= 0 ? 'Sobrante:' : 'Déficit:'}</span>
+                            <span style={{ fontWeight: 700 }}>
+                              {sobrante >= 0 ? `+${sobrante.toFixed(0)}` : `-${Math.abs(sobrante).toFixed(0)}`}€
+                            </span>
+                          </div>
+                        </>
+                      );
+                    })()}
                     
                     {/* Equity Acumulada */}
                     <div style={{ fontSize: '0.54rem', display: 'flex', justifyContent: 'space-between', color: 'rgba(255,255,255,0.4)', marginTop: '2px' }}>
@@ -1066,23 +1096,23 @@ export default function ViabilityWidget({ user, totalDebts, onDebtsUpdated, targ
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', fontSize: '0.62rem' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: 'var(--text-secondary)' }}>Trading P&L:</span>
-                    <strong style={{ color: netTrading >= 0 ? 'var(--color-emerald)' : 'var(--color-rose)' }}>
-                      +${netTrading.toLocaleString(undefined, {maximumFractionDigits:0})}
+                    <span style={{ color: 'var(--text-secondary)' }}>Ingresos:</span>
+                    <strong style={{ color: 'var(--color-emerald)' }}>
+                      +{m.ingresos.toLocaleString(undefined, {maximumFractionDigits:0})} €
                     </strong>
                   </div>
 
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: 'var(--text-secondary)' }}>Amortizado:</span>
-                    <strong style={{ color: m.debtsPaid > 0 ? 'var(--color-emerald)' : 'rgba(255,255,255,0.2)' }}>
-                      {m.debtsPaid > 0 ? `${m.debtsPaid.toFixed(0)} €` : '—'}
+                    <span style={{ color: 'var(--text-secondary)' }}>Gastos:</span>
+                    <strong style={{ color: 'var(--color-rose)' }}>
+                      -{m.gastos.toLocaleString(undefined, {maximumFractionDigits:0})} €
                     </strong>
                   </div>
 
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: 'var(--text-secondary)' }}>Sobrante Neto:</span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed rgba(255,255,255,0.05)', paddingTop: '2px', marginTop: '1px' }}>
+                    <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{netSobrante >= 0 ? 'Sobrante Neto:' : 'Déficit Neto:'}</span>
                     <strong style={{ color: netSobrante >= 0 ? 'var(--color-emerald)' : 'var(--color-rose)' }}>
-                      {netSobrante.toFixed(0)} €
+                      {netSobrante >= 0 ? `+${netSobrante.toLocaleString(undefined, {maximumFractionDigits:0})} €` : `-${Math.abs(netSobrante).toLocaleString(undefined, {maximumFractionDigits:0})} €`}
                     </strong>
                   </div>
 
@@ -1350,9 +1380,23 @@ export default function ViabilityWidget({ user, totalDebts, onDebtsUpdated, targ
                         }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.03)', paddingBottom: '4px' }}>
                             <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#ffffff' }}>{m.monthName} {m.year}</span>
-                            <span style={{ fontSize: '0.62rem', color: 'var(--text-secondary)' }}>
-                              Caja: <strong style={{ color: 'var(--color-emerald)' }}>+{m.caja.toLocaleString(undefined, {maximumFractionDigits:0})} €</strong>
-                            </span>
+                          </div>
+
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', fontSize: '0.68rem', margin: '4px 0', borderBottom: '1px solid rgba(255,255,255,0.02)', paddingBottom: '6px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>Ingresos:</span>
+                              <strong style={{ color: 'var(--color-emerald)' }}>+{m.ingresos.toLocaleString(undefined, {maximumFractionDigits:0})} €</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>Gastos:</span>
+                              <strong style={{ color: 'var(--color-rose)' }}>-{m.gastos.toLocaleString(undefined, {maximumFractionDigits:0})} €</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '2px', paddingTop: '2px', borderTop: '1px dashed rgba(255,255,255,0.05)' }}>
+                              <span style={{ color: 'var(--text-primary)', fontWeight: 700 }}>Excedente:</span>
+                              <strong style={{ color: m.caja >= 0 ? 'var(--color-emerald)' : 'var(--color-rose)' }}>
+                                {m.caja >= 0 ? `+${m.caja.toLocaleString(undefined, {maximumFractionDigits:0})} €` : `-${Math.abs(m.caja).toLocaleString(undefined, {maximumFractionDigits:0})} €`}
+                              </strong>
+                            </div>
                           </div>
 
                           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem', marginTop: '2px' }}>
@@ -1869,11 +1913,30 @@ export default function ViabilityWidget({ user, totalDebts, onDebtsUpdated, targ
             </h5>
             
             {/* Contexto Rápido de Caja */}
-            <div style={{ background: 'rgba(255,255,255,0.01)', border: '1px solid var(--border)', borderRadius: '6px', padding: '8px', marginTop: '10px', fontSize: '0.65rem', color: 'var(--text-secondary)' }}>
-              <div>Excedente base EFE: <span style={{ color: '#ffffff', fontWeight: 700 }}>+{selectedJournalDay.efeIncome.toFixed(1)} €</span></div>
-              {selectedJournalDay.debtsPaid > 0 && <div>Amortizaciones de deudas: <span style={{ color: 'var(--color-rose)', fontWeight: 700 }}>-{selectedJournalDay.debtsPaid.toFixed(0)} €</span></div>}
-              <div>Gasto fijo diario: <span style={{ color: 'var(--color-rose)' }}>-{selectedJournalDay.fixedExpense.toFixed(1)} €</span></div>
-            </div>
+            {(() => {
+              const dailyPnlEur = (parseFloat(journalDayPnl) || 0) * usdToEurRate;
+              const totalIng = selectedJournalDay.efeIncome + (dailyPnlEur > 0 ? dailyPnlEur : 0);
+              const totalGas = selectedJournalDay.fixedExpense + selectedJournalDay.debtsPaid + (dailyPnlEur < 0 ? Math.abs(dailyPnlEur) : 0);
+              const netSobrante = totalIng - totalGas;
+              return (
+                <div style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border)', borderRadius: '6px', padding: '10px', marginTop: '10px', fontSize: '0.68rem', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Ingresos totales:</span>
+                    <strong style={{ color: 'var(--color-emerald)' }}>+{totalIng.toFixed(1)} €</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Gastos totales:</span>
+                    <strong style={{ color: 'var(--color-rose)' }}>-{totalGas.toFixed(1)} €</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed rgba(255,255,255,0.08)', paddingTop: '4px', marginTop: '2px' }}>
+                    <span style={{ color: '#ffffff', fontWeight: 700 }}>{netSobrante >= 0 ? 'Excedente Neto:' : 'Déficit Neto:'}</span>
+                    <strong style={{ color: netSobrante >= 0 ? 'var(--color-emerald)' : 'var(--color-rose)' }}>
+                      {netSobrante >= 0 ? `+${netSobrante.toFixed(1)}` : `-${Math.abs(netSobrante).toFixed(1)}`} €
+                    </strong>
+                  </div>
+                </div>
+              );
+            })()}
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '12px' }}>
               <div>

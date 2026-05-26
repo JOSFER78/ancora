@@ -1564,50 +1564,39 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
           </h4>
         </div>
 
-        {/* COMPONENTE COMPACTO: ESTADO DEL PACIENTE */}
-        <div style={{
-          background: 'rgba(255, 255, 255, 0.03)',
-          border: '1px solid rgba(255, 255, 255, 0.06)',
-          borderRadius: 'var(--radius-md)',
-          padding: '12px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '8px',
-          marginBottom: '14px',
-          fontSize: '0.72rem'
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontWeight: 800, color: '#ffffff' }}>Emilio José Naranjo</span>
-            <span style={{ fontSize: '0.62rem', color: 'var(--text-tertiary)' }}>47 años</span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid rgba(255,255,255,0.04)', paddingTop: '6px' }}>
-            <span style={{ color: 'var(--text-secondary)' }}>Ánimo hoy:</span>
-            {dailyMoodToday ? (
-              <span style={{ 
-                fontWeight: 700, 
-                color: dailyMoodToday.score > 7 ? 'var(--color-emerald)' : (dailyMoodToday.score > 4 ? 'var(--color-cyan)' : 'var(--color-rose)') 
-              }}>
-                {dailyMoodToday.score}/10 {dailyMoodToday.score > 7 ? '🟢' : (dailyMoodToday.score > 4 ? '🟡' : '🔴')}
-              </span>
-            ) : (
-              <span style={{ color: 'var(--text-tertiary)', fontStyle: 'italic' }}>Sin registrar</span>
+        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
+          {/* SECCIÓN BASE: DIAGNÓSTICO BASE (MENTE) */}
+          <div style={{
+            background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.005))',
+            border: '1px solid rgba(255, 255, 255, 0.05)',
+            borderRadius: 'var(--radius-md)',
+            padding: '14px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '10px',
+            fontSize: '0.72rem'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', borderBottom: '1px solid rgba(255,255,255,0.04)', paddingBottom: '8px', color: 'var(--color-cyan)' }}>
+              <Brain size={14} />
+              <span style={{ fontSize: '0.64rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Diagnóstico Base (Mente)</span>
+            </div>
+            <div>
+              <p style={{ color: 'var(--text-primary)', margin: 0, lineHeight: 1.45, whiteSpace: 'pre-wrap', fontWeight: 500 }}>
+                {userCtx.contexto_base?.diagnostico_inicial || "Sin registrar"}
+              </p>
+            </div>
+            {userCtx.contexto_base?.mecanismos_defensa && Array.isArray(userCtx.contexto_base.mecanismos_defensa) && userCtx.contexto_base.mecanismos_defensa.length > 0 && (
+              <div style={{ borderTop: '1px solid rgba(255,255,255,0.03)', paddingTop: '8px', marginTop: '2px' }}>
+                <span style={{ fontSize: '0.58rem', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase', fontWeight: 800, marginBottom: '6px', letterSpacing: '0.04em' }}>Mecanismos de Defensa</span>
+                <ul style={{ margin: 0, paddingLeft: '12px', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '4px', listStyleType: 'disc' }}>
+                  {userCtx.contexto_base.mecanismos_defensa.map((d, idx) => (
+                    <li key={idx} style={{ lineHeight: 1.4 }}>{d}</li>
+                  ))}
+                </ul>
+              </div>
             )}
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ color: 'var(--text-secondary)' }}>Modelo de Chat:</span>
-            <span style={{ fontWeight: 700, color: 'var(--color-cyan)' }}>
-              {selectedModel === 'deepseek' ? '🐳 DeepSeek V4' : (selectedModel === '5.5-high' ? '💎 GPT 5.5' : (selectedModel === '3.5' ? '🧠 Gemini 3.5' : '⚡ Gemini 2.5'))}
-            </span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ color: 'var(--text-secondary)' }}>Riesgo de Trading:</span>
-            <span style={{ fontWeight: 700, color: 'var(--color-emerald)' }}>
-              Controlado
-            </span>
-          </div>
-        </div>
-
-        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
           
           {/* SECCIÓN ÚNICA: DIAGNÓSTICO DE ESTA SESIÓN */}
           <div style={{ 
@@ -1814,62 +1803,6 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
             )}
           </div>
 
-          {/* ACCORDEÓN COLAPSIBLE: MEMORIA HISTÓRICA (MENTE) */}
-          <div style={{
-            background: 'rgba(255, 255, 255, 0.02)',
-            border: '1px solid rgba(255, 255, 255, 0.05)',
-            borderRadius: 'var(--radius-md)',
-            overflow: 'hidden',
-            marginTop: '8px'
-          }}>
-            <button
-              type="button"
-              onClick={() => setShowBaseHistory(!showBaseHistory)}
-              style={{
-                width: '100%',
-                background: 'rgba(255, 255, 255, 0.01)',
-                border: 'none',
-                padding: '12px 14px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                color: 'var(--color-cyan)',
-                fontWeight: 800,
-                fontSize: '0.74rem',
-                cursor: 'pointer',
-                textAlign: 'left'
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <ClipboardList size={14} />
-                <span>Memoria General (Mente)</span>
-              </div>
-              <span style={{ fontSize: '0.62rem', color: 'var(--text-tertiary)' }}>
-                {showBaseHistory ? '▼ Ocultar' : '▲ Mostrar'}
-              </span>
-            </button>
-            
-            {showBaseHistory && (
-              <div style={{ padding: '14px', display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '0.7rem', borderTop: '1px solid rgba(255, 255, 255, 0.05)' }}>
-                <div>
-                  <span style={{ fontSize: '0.58rem', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase', fontWeight: 800, marginBottom: '4px' }}>Diagnóstico Base</span>
-                  <p style={{ color: 'var(--text-primary)', margin: 0, lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>
-                    {userCtx.contexto_base?.diagnostico_inicial || "Sin registrar"}
-                  </p>
-                </div>
-                {userCtx.contexto_base?.mecanismos_defensa && Array.isArray(userCtx.contexto_base.mecanismos_defensa) && userCtx.contexto_base.mecanismos_defensa.length > 0 && (
-                  <div>
-                    <span style={{ fontSize: '0.58rem', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase', fontWeight: 800, marginBottom: '4px' }}>Mecanismos de Defensa</span>
-                    <ul style={{ margin: 0, paddingLeft: '14px', color: 'var(--text-primary)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                      {userCtx.contexto_base.mecanismos_defensa.map((d, idx) => (
-                        <li key={idx} style={{ lineHeight: 1.4 }}>{d}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
         </div>
 
         <div style={{ borderTop: '1px solid var(--border)', paddingTop: '10px', marginTop: '14px', fontSize: '0.62rem', color: 'var(--text-tertiary)', lineHeight: 1.3 }}>

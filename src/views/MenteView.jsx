@@ -42,6 +42,17 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
   const [sessionMessages, setSessionMessages] = useState([]);
   const [transcriptLoading, setTranscriptLoading] = useState(false);
 
+  // Estados para sincronización interactiva y progreso en tiempo real
+  const [showSyncModal, setShowSyncModal] = useState(false);
+  const [syncStatus, setSyncStatus] = useState({
+    active: false,
+    percentage: 0,
+    totalProcessed: 0,
+    remainingCount: 0,
+    processedItems: [], // lista de { name, type }
+    currentActivity: ''
+  });
+
   // Estados para edición manual de Mente
   const [isEditingMente, setIsEditingMente] = useState(false);
   const [editDiagnosticoBase, setEditDiagnosticoBase] = useState('');
@@ -114,20 +125,43 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
 
   const [syncLoading, setSyncLoading] = useState(false);
 
-  const handleSyncProfile = async () => {
-    const isReset = confirm("¿Deseas RECONSTRUIR de forma completa todo tu historial clínico desde el principio (Aceptar) o realizar una sincronización incremental de las nuevas fuentes (Cancelar)?");
-    
+  const handleSyncProfile = () => {
+    setShowSyncModal(true);
+  };
+
+  const startSyncProcess = async (resetOption, onlyOption) => {
+    setShowSyncModal(false);
     setSyncLoading(true);
+    setSyncStatus({
+      active: true,
+      percentage: 0,
+      totalProcessed: 0,
+      remainingCount: 0,
+      processedItems: [],
+      currentActivity: 'Iniciando conexión con Walter...'
+    });
+
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
+      if (!session) {
+        throw new Error("No se pudo obtener la sesión activa de Supabase.");
+      }
 
       let remaining = 1;
       let latestData = null;
       let totalProcessed = 0;
       let isFirstCall = true;
+      let itemsList = [];
+      let totalEstimated = 0;
 
       while (remaining > 0) {
+        setSyncStatus(prev => ({
+          ...prev,
+          currentActivity: isFirstCall 
+            ? 'Preparando cola de análisis clínico...' 
+            : `Consolidando diagnóstico de la sesión/nota...`
+        }));
+
         const response = await fetch('https://ysnorelkaccaikvuqgnv.supabase.co/functions/v1/chat-terapeuta', {
           method: 'POST',
           headers: {
@@ -136,10 +170,10 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
           },
           body: JSON.stringify({
             action: 'sync_clinical_profile',
-            reset: isReset && isFirstCall
+            reset: resetOption && isFirstCall,
+            only: onlyOption
           })
         });
-        isFirstCall = false;
 
         let errorMessage = "Fallo al consolidar análisis";
         if (!response.ok) {
@@ -158,29 +192,78 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
         }
 
         const res = await response.json();
-        if (res && res.success && res.data) {
+        if (res && res.success) {
           latestData = res.data;
-          totalProcessed += (res.processedCount || 0);
+          const processedBatch = res.processedCount || 0;
           remaining = res.remainingCount || 0;
-          console.log(`Procesados ${totalProcessed} archivos. Quedan ${remaining} restantes.`);
+          totalProcessed += processedBatch;
+
+          // Si el lote y los restantes son 0 de inmediato en la primera llamada
+          if (processedBatch === 0 && remaining === 0) {
+            setSyncStatus(prev => ({
+              ...prev,
+              percentage: 100,
+              currentActivity: 'Todo el historial clínico ya está consolidado.',
+              remainingCount: 0
+            }));
+            break;
+          }
+
+          // Agregar items procesados
+          if (res.processedItems && Array.isArray(res.processedItems)) {
+            itemsList = [...itemsList, ...res.processedItems];
+          }
+
+          // Estimar total del progreso
+          if (isFirstCall) {
+            totalEstimated = totalProcessed + remaining;
+          } else {
+            totalEstimated = Math.max(totalEstimated, totalProcessed + remaining);
+          }
+
+          const percentage = totalEstimated > 0 
+            ? Math.min(99, Math.round((totalProcessed / totalEstimated) * 100)) 
+            : 99;
+
+          setSyncStatus(prev => ({
+            ...prev,
+            percentage,
+            totalProcessed,
+            remainingCount: remaining,
+            processedItems: itemsList,
+            currentActivity: remaining > 0 
+              ? `Analizado: ${res.processedItems?.[0]?.name || 'Hito de historial'}`
+              : 'Estructurando conclusiones y evolución general...'
+          }));
+
+          isFirstCall = false;
         } else {
-          throw new Error(res.error || "Fallo en la consolidación");
+          throw new Error(res.error || "Fallo en la consolidación clínica");
         }
       }
 
-      alert(`Diagnóstico y evolución consolidada con éxito. Procesadas ${totalProcessed} nuevas fuentes.`);
+      // Sincronización exitosa terminada al 100%
+      setSyncStatus(prev => ({
+        ...prev,
+        percentage: 100,
+        currentActivity: '¡Análisis clínico consolidado correctamente!'
+      }));
+
+      await new Promise(resolve => setTimeout(resolve, 1500));
+
       if (onProfileUpdated && latestData) {
         onProfileUpdated({
           ...profile,
           contexto_terapeutico: latestData
         });
       }
-      fetchSources(); // Refrescar las fuentes para ver el cambio de badges
+      fetchSources(); // Refrescar fuentes para badges
     } catch (err) {
       console.error(err);
       alert("Error al sincronizar análisis: " + err.message);
     } finally {
       setSyncLoading(false);
+      setSyncStatus(prev => ({ ...prev, active: false }));
     }
   };
 
@@ -1650,6 +1733,333 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
               >
                 Cerrar Transcripción
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE OPCIONES DE SINCRONIZACIÓN */}
+      {showSyncModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(8, 13, 28, 0.75)',
+          backdropFilter: 'blur(12px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1100
+        }}>
+          <div className="glass-panel" style={{
+            width: '100%',
+            maxWidth: '620px',
+            padding: '30px',
+            borderRadius: 'var(--radius-lg)',
+            border: '1px solid rgba(6, 182, 212, 0.3)',
+            background: 'linear-gradient(135deg, rgba(8, 13, 28, 0.95), rgba(15, 23, 42, 0.98))',
+            boxShadow: 'var(--shadow-cyan)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '24px'
+          }}>
+            <div style={{ borderBottom: '1px solid var(--border)', paddingBottom: '14px' }}>
+              <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#ffffff', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <RefreshCw size={20} className="animate-pulse-soft" color="var(--color-cyan)" />
+                Sincronizar Análisis de Walter
+              </h3>
+              <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', margin: '6px 0 0 0' }}>
+                Selecciona el método de consolidación para actualizar tu perfil clínico en Mente.
+              </p>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              
+              {/* Tarjeta Incremental */}
+              <div 
+                onClick={() => startSyncProcess(false, 'all')}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.02)',
+                  border: '1px solid rgba(6, 182, 212, 0.15)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: '16px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '16px',
+                  transition: 'all 0.25s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.border = '1px solid var(--color-cyan)';
+                  e.currentTarget.style.background = 'rgba(6, 182, 212, 0.05)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.border = '1px solid rgba(6, 182, 212, 0.15)';
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.02)';
+                }}
+              >
+                <div style={{
+                  width: '40px',
+                  height: '40px',
+                  borderRadius: '50%',
+                  background: 'rgba(6, 182, 212, 0.1)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: 'var(--color-cyan)',
+                  flexShrink: 0
+                }}>
+                  <RefreshCw size={18} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <h4 style={{ fontSize: '0.85rem', fontWeight: 800, color: '#ffffff', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    Sincronización Incremental
+                    <span style={{ fontSize: '0.58rem', background: 'rgba(6, 182, 212, 0.15)', color: 'var(--color-cyan)', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>RECOMENDADO</span>
+                  </h4>
+                  <p style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', margin: '4px 0 0 0', lineHeight: 1.45 }}>
+                    Procesa únicamente los nuevos documentos y sesiones de chat terminadas desde la última sincronización. Rápido y eficiente.
+                  </p>
+                </div>
+              </div>
+
+              {/* Tarjeta Completa */}
+              <div 
+                onClick={() => startSyncProcess(true, 'all')}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.02)',
+                  border: '1px solid rgba(167, 139, 250, 0.15)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: '16px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '16px',
+                  transition: 'all 0.25s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.border = '1px solid #a78bfa';
+                  e.currentTarget.style.background = 'rgba(167, 139, 250, 0.05)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.border = '1px solid rgba(167, 139, 250, 0.15)';
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.02)';
+                }}
+              >
+                <div style={{
+                  width: '40px',
+                  height: '40px',
+                  borderRadius: '50%',
+                  background: 'rgba(167, 139, 250, 0.1)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#a78bfa',
+                  flexShrink: 0
+                }}>
+                  <Clock size={18} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <h4 style={{ fontSize: '0.85rem', fontWeight: 800, color: '#ffffff', margin: 0 }}>Sincronización Completa</h4>
+                  <p style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', margin: '4px 0 0 0', lineHeight: 1.45 }}>
+                    Reanaliza y reconstruye tu diagnóstico completo desde el principio. Procesa de nuevo todo tu historial de chats y documentos. Más lento.
+                  </p>
+                </div>
+              </div>
+
+              {/* Tarjeta Solo Documentos */}
+              <div 
+                onClick={() => startSyncProcess(false, 'sources')}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.02)',
+                  border: '1px solid rgba(16, 185, 129, 0.15)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: '16px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '16px',
+                  transition: 'all 0.25s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.border = '1px solid var(--color-emerald)';
+                  e.currentTarget.style.background = 'rgba(16, 185, 129, 0.05)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.border = '1px solid rgba(16, 185, 129, 0.15)';
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.02)';
+                }}
+              >
+                <div style={{
+                  width: '40px',
+                  height: '40px',
+                  borderRadius: '50%',
+                  background: 'rgba(16, 185, 129, 0.1)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: 'var(--color-emerald)',
+                  flexShrink: 0
+                }}>
+                  <FileText size={18} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <h4 style={{ fontSize: '0.85rem', fontWeight: 800, color: '#ffffff', margin: 0 }}>Solo Documentos (NotebookLM)</h4>
+                  <p style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', margin: '4px 0 0 0', lineHeight: 1.45 }}>
+                    Analiza y consolida únicamente las notas, PDF e imágenes cargadas, ignorando las conversaciones terapéuticas del chat.
+                  </p>
+                </div>
+              </div>
+
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', borderTop: '1px solid var(--border)', paddingTop: '16px' }}>
+              <button 
+                onClick={() => setShowSyncModal(false)}
+                className="btn btn-outline"
+                style={{ height: '36px', fontSize: '0.78rem', padding: '0 20px', fontWeight: 700 }}
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE PROGRESO DE SINCRONIZACIÓN */}
+      {syncStatus.active && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(8, 13, 28, 0.8)',
+          backdropFilter: 'blur(16px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1200
+        }}>
+          <div className="glass-panel" style={{
+            width: '100%',
+            maxWidth: '480px',
+            padding: '30px',
+            borderRadius: 'var(--radius-lg)',
+            border: '1px solid rgba(6, 182, 212, 0.4)',
+            background: 'linear-gradient(135deg, rgba(8, 13, 28, 0.96), rgba(15, 23, 42, 0.99))',
+            boxShadow: 'var(--shadow-cyan)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '20px'
+          }}>
+            <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
+              <div style={{ position: 'relative', width: '50px', height: '50px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <RefreshCw size={32} className="animate-spin" color="var(--color-cyan)" style={{ animationDuration: '3s' }} />
+                <Brain size={16} color="#ffffff" style={{ position: 'absolute', animation: 'pulse-soft 2s infinite alternate' }} />
+              </div>
+              <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#ffffff', margin: '4px 0 0 0' }}>
+                Consolidando Diagnóstico Clínico
+              </h3>
+              <p style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', margin: 0 }}>
+                Walter está analizando tus datos clínicos para actualizar tu evolución...
+              </p>
+            </div>
+
+            {/* Barra y porcentaje */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.7rem' }}>
+                <span style={{ color: 'var(--color-cyan)', fontWeight: 700 }}>Progreso del Análisis</span>
+                <span style={{ color: '#ffffff', fontWeight: 800 }}>{syncStatus.percentage}%</span>
+              </div>
+              <div style={{
+                width: '100%',
+                height: '6px',
+                background: 'rgba(255, 255, 255, 0.05)',
+                borderRadius: '3px',
+                overflow: 'hidden',
+                border: '1px solid rgba(255, 255, 255, 0.02)'
+              }}>
+                <div style={{
+                  width: `${syncStatus.percentage}%`,
+                  height: '100%',
+                  background: 'linear-gradient(90deg, var(--color-cyan), var(--color-emerald))',
+                  borderRadius: '3px',
+                  boxShadow: '0 0 10px var(--color-cyan)',
+                  transition: 'width 0.4s cubic-bezier(0.4, 0, 0.2, 1)'
+                }} />
+              </div>
+            </div>
+
+            {/* Actividad */}
+            <div style={{
+              background: 'rgba(0, 0, 0, 0.2)',
+              border: '1px solid rgba(255, 255, 255, 0.04)',
+              borderRadius: 'var(--radius-sm)',
+              padding: '8px 12px',
+              fontSize: '0.68rem',
+              color: 'var(--color-cyan)',
+              fontStyle: 'italic',
+              textAlign: 'center',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis'
+            }}>
+              {syncStatus.currentActivity}
+            </div>
+
+            {/* Historial de elementos */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <span style={{ fontSize: '0.6rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 800 }}>
+                Elementos Procesados ({syncStatus.totalProcessed})
+              </span>
+              <div style={{
+                maxHeight: '120px',
+                minHeight: '70px',
+                overflowY: 'auto',
+                background: 'rgba(255,255,255,0.01)',
+                border: '1px solid var(--border)',
+                borderRadius: 'var(--radius-sm)',
+                padding: '8px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '5px'
+              }}>
+                {syncStatus.processedItems.length === 0 ? (
+                  <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>
+                    Preparando lote...
+                  </div>
+                ) : (
+                  syncStatus.processedItems.map((item, idx) => (
+                    <div key={idx} style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      fontSize: '0.65rem',
+                      padding: '3px 6px',
+                      background: 'rgba(255,255,255,0.02)',
+                      borderRadius: '4px',
+                      border: '1px solid rgba(255,255,255,0.02)'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '5px', overflow: 'hidden' }}>
+                        <span style={{ flexShrink: 0 }}>
+                          {item.type === 'source' ? '📄' : '💬'}
+                        </span>
+                        <span style={{
+                          color: '#ffffff',
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis'
+                        }}>
+                          {item.name}
+                        </span>
+                      </div>
+                      <span style={{ color: 'var(--color-emerald)', fontWeight: 800, flexShrink: 0 }}>✓ OK</span>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
           </div>
         </div>

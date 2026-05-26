@@ -831,7 +831,7 @@ Deno.serve(async (req) => {
 
     // 2. Parse request body
     const body = await req.json();
-    const { action, messages, currentMood, conversationId, tradingviewContext, model, reset } = body;
+    const { action, messages, currentMood, conversationId, tradingviewContext, model, reset, only } = body;
 
     // ACTION: debug_env
     if (action === "debug_env") {
@@ -1372,30 +1372,34 @@ function extractJSONFieldsFallback(jsonStr: string): any {
       const unifiedItems: any[] = [];
 
       // Añadir fuentes no procesadas
-      sources.forEach((src: any) => {
-        if (!currentCtx.procesados.sources.includes(src.id)) {
-          unifiedItems.push({
-            type: 'source',
-            id: src.id,
-            timestamp: new Date(src.created_at).getTime(),
-            name: src.name || 'Nota de Emilio',
-            rawItem: src
-          });
-        }
-      });
+      if (only !== "conversations") {
+        sources.forEach((src: any) => {
+          if (!currentCtx.procesados.sources.includes(src.id)) {
+            unifiedItems.push({
+              type: 'source',
+              id: src.id,
+              timestamp: new Date(src.created_at).getTime(),
+              name: src.name || 'Nota de Emilio',
+              rawItem: src
+            });
+          }
+        });
+      }
 
       // Añadir conversaciones completadas no procesadas
-      resConvs.forEach((conv: any) => {
-        if (!currentCtx.procesados.conversations.includes(conv.id)) {
-          unifiedItems.push({
-            type: 'conversation',
-            id: conv.id,
-            timestamp: new Date(conv.closed_at || conv.updated_at || Date.now()).getTime(),
-            name: conv.title || 'Conversación de Emilio',
-            rawItem: conv
-          });
-        }
-      });
+      if (only !== "sources") {
+        resConvs.forEach((conv: any) => {
+          if (!currentCtx.procesados.conversations.includes(conv.id)) {
+            unifiedItems.push({
+              type: 'conversation',
+              id: conv.id,
+              timestamp: new Date(conv.closed_at || conv.updated_at || Date.now()).getTime(),
+              name: conv.title || 'Conversación de Emilio',
+              rawItem: conv
+            });
+          }
+        });
+      }
 
       // Ordenar cronológicamente de más antiguas a más recientes
       unifiedItems.sort((a, b) => a.timestamp - b.timestamp);
@@ -1652,7 +1656,8 @@ Devuelve ÚNICAMENTE el objeto JSON válido. No incluyas explicaciones previas n
         success: true, 
         data: finalCtx,
         processedCount: batchItems.length,
-        remainingCount: remainingCount
+        remainingCount: remainingCount,
+        processedItems: batchItems.map(item => ({ name: item.name, type: item.type }))
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" }
       });
@@ -2069,7 +2074,7 @@ Tu rol es DUAL:
 
     let replyText = "";
     const openrouterPayload = {
-      model: model === '5.5-high' ? "openai/gpt-5.5-pro" : (model === '3.5' ? "google/gemini-3.5-flash" : "google/gemini-2.5-flash"),
+      model: model === 'deepseek' ? "deepseek/deepseek-v4-pro" : (model === '5.5-high' ? "openai/gpt-5.5-pro" : (model === '3.5' ? "google/gemini-3.5-flash" : "google/gemini-2.5-flash")),
       messages: [
         { role: "system", content: `${systemInstruction}\n\n[DATOS DINÁMICOS DE EMILIO Y MERCADOS EN TIEMPO REAL]\n${auditPrompt}` },
         ...recentMessages.map(msg => {

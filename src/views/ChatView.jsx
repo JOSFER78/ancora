@@ -35,6 +35,16 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
   const [mobileShowSidebar, setMobileShowSidebar] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1150);
   const [selectedModel, setSelectedModel] = useState('2.5');
+  const [leftPanelOpen, setLeftPanelOpen] = useState(window.innerWidth >= 1150);
+  const [closurePrepared, setClosurePrepared] = useState(false);
+  const [showBaseHistory, setShowBaseHistory] = useState(false);
+
+  // Estados para edición manual del diagnóstico de la sesión activa
+  const [isEditingSessionDiag, setIsEditingSessionDiag] = useState(false);
+  const [editSessionFact, setEditSessionFact] = useState('');
+  const [editSessionConclusions, setEditSessionConclusions] = useState('');
+  const [editSessionExercises, setEditSessionExercises] = useState('');
+  const [editSessionStudies, setEditSessionStudies] = useState('');
 
   // States and refs for intelligent voice transcription
   const [isRecording, setIsRecording] = useState(false);
@@ -189,11 +199,60 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
     }
   };
 
-  // Close clinical session and extract conclusions
-  const handleCloseSession = async () => {
-    if (!activeConversationId) return;
-    if (!confirm("¿Deseas dar por finalizada esta sesión y pedir a Walter que extraiga las conclusiones y pautas clínicas? El chat quedará archivado.")) return;
+  // Step 1: Request clinical conclusions, books, studies, and update right panel context
+  const handlePrepareClosure = async () => {
+    if (!activeConversationId || loading || isSendingRef.current) return;
+    if (!confirm("¿Deseas iniciar la preparación del cierre clínico de esta sesión? Walter investigará lo ocurrido, propondrá soluciones, libros y estudios, y los inyectará en el panel de la derecha.")) return;
     
+    setLoading(true);
+    setError(null);
+    try {
+      const { data: { session: authSession } } = await supabase.auth.getSession();
+      if (!authSession) return;
+
+      const response = await fetch('https://ysnorelkaccaikvuqgnv.supabase.co/functions/v1/chat-terapeuta', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authSession.access_token}`
+        },
+        body: JSON.stringify({
+          action: 'prepare_close_conversation',
+          conversationId: activeConversationId
+        })
+      });
+
+      if (!response.ok) throw new Error("Error al preparar el informe de cierre");
+      const resData = await response.json();
+      if (resData && resData.success) {
+        setClosurePrepared(true);
+        // Reload conversations to sync activeConv
+        await loadConversations();
+        // Reload messages to display Walter's markdown report in the chat
+        await loadMessages(activeConversationId);
+        
+        if (resData.updatedContext && onProfileUpdated) {
+          onProfileUpdated({
+            ...profile,
+            contexto_terapeutico: resData.updatedContext
+          });
+        }
+      } else {
+        throw new Error(resData.error || "Fallo al preparar el cierre");
+      }
+    } catch (err) {
+      console.error("Error preparing closure:", err);
+      setError("No se pudo preparar el informe de cierre: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Step 2: Final confirm and archive
+  const handleConfirmCloseSession = async () => {
+    if (!activeConversationId || loading || isSendingRef.current) return;
+    if (!confirm("¿Confirmas que toda la información clínica ha quedado clara en el panel derecho y deseas archivar permanentemente esta sesión?")) return;
+
     setLoading(true);
     setError(null);
     try {
@@ -212,19 +271,103 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
         })
       });
 
-      if (!response.ok) throw new Error("Error en el servicio de cierre");
+      if (!response.ok) throw new Error("Error en el servicio de cierre definitivo");
       const resData = await response.json();
       if (resData && resData.success) {
-        alert("Sesión archivada y conclusiones extraídas con éxito.");
+        alert("Sesión archivada y cerrada con éxito.");
+        setClosurePrepared(false);
         await loadConversations();
       } else {
-        throw new Error(resData.error || "Fallo al archivar");
+        throw new Error(resData.error || "Fallo al archivar la sesión");
       }
     } catch (err) {
       console.error("Error closing session:", err);
-      setError("No se pudo cerrar la sesión: " + err.message);
+      setError("No se pudo archivar la sesión: " + err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Reabrir una sesión archivada/completada para seguir chateando o editando
+  const handleReopenConversation = async () => {
+    if (!activeConversationId || loading) return;
+    if (!confirm("¿Deseas reabrir esta conversación para poder seguir chateando con Walter y modificar su diagnóstico?")) return;
+    
+    setLoading(true);
+    try {
+      const { error } = await supabase
+        .from('conversations')
+        .update({ status: 'active', closed_at: null })
+        .eq('id', activeConversationId);
+        
+      if (error) throw error;
+      
+      setConversations(prev => prev.map(c => 
+        c.id === activeConversationId ? { ...c, status: 'active', closed_at: null } : c
+      ));
+      alert("Sesión reabierta y devuelta a estado activo con éxito.");
+    } catch (err) {
+      console.error("Error reopening conversation:", err.message);
+      setError("No se pudo reabrir la sesión: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Preparar e iniciar la edición del diagnóstico de la sesión actual
+  const startEditingSessionDiag = () => {
+    if (!activeConv) return;
+    setEditSessionFact(activeConv.captured_fact || '');
+    setEditSessionConclusions(
+      Array.isArray(parseJsonArray(activeConv.conclusions))
+        ? parseJsonArray(activeConv.conclusions).join('\n')
+        : String(activeConv.conclusions || '')
+    );
+    setEditSessionExercises(
+      Array.isArray(parseJsonArray(activeConv.solutions_exercises))
+        ? parseJsonArray(activeConv.solutions_exercises).join('\n')
+        : String(activeConv.solutions_exercises || '')
+    );
+    setEditSessionStudies(activeConv.clinical_studies || '');
+    setIsEditingSessionDiag(true);
+  };
+
+  // Guardar la edición manual del diagnóstico de la sesión actual en Supabase
+  const handleSaveSessionDiagnosis = async (e) => {
+    if (e) e.preventDefault();
+    if (!activeConversationId) return;
+
+    try {
+      const conclusionsArray = editSessionConclusions.split('\n').map(c => c.trim()).filter(Boolean);
+      const exercisesArray = editSessionExercises.split('\n').map(s => s.trim()).filter(Boolean);
+
+      const { error } = await supabase
+        .from('conversations')
+        .update({
+          captured_fact: editSessionFact.trim(),
+          conclusions: conclusionsArray,
+          solutions_exercises: exercisesArray,
+          clinical_studies: editSessionStudies.trim()
+        })
+        .eq('id', activeConversationId);
+
+      if (error) throw error;
+
+      // Actualizar el estado local
+      setConversations(prev => prev.map(c => 
+        c.id === activeConversationId ? {
+          ...c,
+          captured_fact: editSessionFact.trim(),
+          conclusions: conclusionsArray,
+          solutions_exercises: exercisesArray,
+          clinical_studies: editSessionStudies.trim()
+        } : c
+      ));
+      setIsEditingSessionDiag(false);
+      alert("Diagnóstico de la sesión guardado correctamente.");
+    } catch (err) {
+      console.error("Error saving session diagnosis:", err.message);
+      alert("Error al guardar el diagnóstico: " + err.message);
     }
   };
 
@@ -282,6 +425,7 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
   useEffect(() => {
     if (activeConversationId) {
       loadMessages(activeConversationId);
+      setClosurePrepared(false);
     }
   }, [activeConversationId]);
 
@@ -519,6 +663,12 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
     if (e) e.preventDefault();
     if ((!input.trim() && !imageBase64) || loading || isSendingRef.current || !activeConversationId) return;
 
+    // Focus Mode: auto-collapse sidebars
+    if (!isMobile) {
+      setLeftPanelOpen(false);
+      setPanelOpen(false);
+    }
+
     isSendingRef.current = true;
     setLoading(true); // Evitar el Double Submit de forma síncrona inmediata
 
@@ -583,6 +733,104 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
   const defaultCtx = { conclusiones: [], compromisos: [], pautas_accion: [] };
   const userCtx = profile?.contexto_terapeutico || defaultCtx;
 
+  const parseJsonArray = (val) => {
+    if (!val) return [];
+    if (Array.isArray(val)) return val;
+    try {
+      const parsed = JSON.parse(val);
+      return Array.isArray(parsed) ? parsed : [String(val)];
+    } catch {
+      return [String(val)];
+    }
+  };
+
+  const handleInputFocus = () => {
+    if (!isMobile) {
+      setLeftPanelOpen(false);
+      setPanelOpen(false);
+    }
+  };
+
+  const renderMessageContent = (content) => {
+    if (!content) return null;
+    
+    const modelRegex = /\[model:(2.5|3.5|5.5-high|deepseek)\]/i;
+    const match = content.match(modelRegex);
+    let cleanText = content.replace(modelRegex, '').trim();
+    let modelName = match ? match[1] : null;
+
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+        <p style={{ whiteSpace: 'pre-wrap', margin: 0, fontSize: '0.82rem', lineHeight: 1.5 }}>
+          {cleanText}
+        </p>
+        {modelName && (
+          <div style={{ 
+            alignSelf: 'flex-start',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px',
+            fontSize: '0.62rem',
+            padding: '2px 6px',
+            borderRadius: '4px',
+            background: 'rgba(255, 255, 255, 0.04)',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+            color: modelName === 'deepseek' ? '#a78bfa' : (modelName === '5.5-high' ? 'var(--color-emerald)' : (modelName === '3.5' ? 'var(--color-cyan)' : 'var(--text-secondary)')),
+            fontWeight: 700,
+            marginTop: '4px'
+          }}>
+            <span>{modelName === 'deepseek' ? '🐳 DeepSeek V4' : (modelName === '5.5-high' ? '💎 GPT 5.5 High' : (modelName === '3.5' ? '🧠 Gemini 3.5' : '⚡ Gemini 2.5'))}</span>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const handleTriggerSpecialAction = async (actionType) => {
+    if (loading || isSendingRef.current || !activeConversationId) return;
+
+    // Focus Mode: auto-collapse sidebars
+    if (!isMobile) {
+      setLeftPanelOpen(false);
+      setPanelOpen(false);
+    }
+    
+    let promptText = "";
+    if (actionType === 'investigar') {
+      promptText = "Walter, realiza una investigación clínica interna con todo lo que sabes sobre mi perfil y la situación de lo que estamos tratando en esta sesión. Etiqueta el resultado con la fecha de hoy y el tema o temas principales correspondientes para organizarlo.";
+    } else if (actionType === 'conclusiones') {
+      promptText = "Walter, extrae conclusiones detalladas de lo que estamos tratando ahora mismo, basándote en mi historial de memoria y deudas. Etiqueta el resultado con la fecha de hoy y el tema o temas principales correspondientes para organizarlo.";
+    } else if (actionType === 'soluciones') {
+      promptText = "Walter, propón posibles soluciones o pautas de reset conductual para este conflicto basándote en mi perfil y situación financiera. Etiqueta el resultado con la fecha de hoy y el tema o temas correspondientes para organizarlo.";
+    }
+
+    if (!promptText) return;
+
+    isSendingRef.current = true;
+    setLoading(true);
+
+    const userMessage = { 
+      role: 'user', 
+      content: promptText
+    };
+
+    const updatedMessages = [...messages, userMessage];
+    setMessages(updatedMessages);
+    setInput('');
+
+    try {
+      await supabase.from('messages').insert([{
+        conversation_id: activeConversationId,
+        role: 'user',
+        content: userMessage.content
+      }]);
+    } catch (err) {
+      console.error("Error saving user message:", err.message);
+    }
+
+    await sendMessageToWalter(updatedMessages);
+  };
+
   return (
     <div style={{ 
       height: '100%', 
@@ -615,12 +863,13 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
 
       {/* COLUMNA 1: SIDEBAR DE CONVERSACIONES HISTÓRICAS */}
       <div className="glass-panel" style={{ 
-        width: '260px', 
+        width: isMobile ? (mobileShowSidebar ? '260px' : '0px') : (leftPanelOpen ? '260px' : '0px'), 
+        opacity: isMobile ? (mobileShowSidebar ? 1 : 0) : (leftPanelOpen ? 1 : 0), 
         display: 'flex', 
         flexDirection: 'column', 
         height: '100%', 
-        borderRight: '1px solid var(--border)',
-        padding: '16px',
+        borderRight: (leftPanelOpen && !isMobile) ? '1px solid var(--border)' : 'none',
+        padding: isMobile ? '16px' : (leftPanelOpen ? '16px' : '0px'),
         background: isMobile ? 'rgba(8, 13, 28, 0.98)' : 'rgba(0,0,0,0.15)',
         backdropFilter: isMobile ? 'blur(10px)' : 'none',
         gap: '12px',
@@ -630,7 +879,8 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
         top: 0,
         zIndex: isMobile ? 1000 : 1,
         transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-        boxShadow: isMobile && mobileShowSidebar ? 'var(--shadow-lg)' : 'none'
+        boxShadow: isMobile && mobileShowSidebar ? 'var(--shadow-lg)' : 'none',
+        overflow: 'hidden'
       }}>
         <button
           onClick={() => {
@@ -801,7 +1051,7 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
         {/* Chat Header */}
         <div className="chat-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: isMobile ? '12px 14px' : '16px 20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            {isMobile && (
+            {isMobile ? (
               <button 
                 onClick={() => setMobileShowSidebar(!mobileShowSidebar)}
                 className="btn btn-outline flex-center"
@@ -809,6 +1059,15 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
                 title="Historial de sesiones"
               >
                 <Menu size={18} />
+              </button>
+            ) : (
+              <button 
+                onClick={() => setLeftPanelOpen(!leftPanelOpen)}
+                className="btn btn-outline flex-center"
+                style={{ padding: 0, height: '36px', width: '36px', minWidth: 0, borderColor: leftPanelOpen ? 'var(--color-cyan)' : 'var(--border)' }}
+                title="Historial de sesiones"
+              >
+                <Menu size={18} color={leftPanelOpen ? 'var(--color-cyan)' : 'var(--text-secondary)'} />
               </button>
             )}
             <div className="flex-center" style={{ 
@@ -887,45 +1146,103 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
           </div>
           
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <button 
-              type="button"
-              onClick={() => setSelectedModel(prev => prev === '2.5' ? '3.5' : '2.5')}
-              className="btn btn-outline flex-center"
-              title={selectedModel === '2.5' ? "Modo Indagación (Gemini 2.5 Flash - Ultra-económico y rápido). Clic para cambiar a Análisis." : "Modo Análisis (Gemini 3.5 Flash - Razonamiento clínico profundo). Clic para cambiar a Indagación."}
-              style={{ 
-                padding: '8px 12px', 
-                borderRadius: 'var(--radius-sm)', 
-                height: '36px', 
-                gap: '6px', 
-                fontSize: '0.72rem', 
-                borderColor: selectedModel === '3.5' ? 'var(--color-cyan)' : 'var(--border)', 
-                color: selectedModel === '3.5' ? 'var(--color-cyan)' : 'var(--text-secondary)',
-                fontWeight: 700,
-                background: selectedModel === '3.5' ? 'hsla(var(--cyan), 0.08)' : 'transparent',
-                transition: 'all 0.2s ease'
-              }}
-            >
-              {selectedModel === '3.5' ? '🧠' : '⚡'} <span>Gemini {selectedModel}</span>
-            </button>
+            <div style={{ display: 'flex', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '2px', height: '36px', alignItems: 'center', gap: '2px' }}>
+              <button 
+                type="button"
+                onClick={() => setSelectedModel('2.5')}
+                style={{
+                  padding: '4px 8px',
+                  fontSize: '0.68rem',
+                  fontWeight: 700,
+                  background: selectedModel === '2.5' ? 'hsla(var(--cyan), 0.08)' : 'transparent',
+                  border: 'none',
+                  borderRadius: '3px',
+                  color: selectedModel === '2.5' ? 'var(--color-cyan)' : 'var(--text-secondary)',
+                  cursor: 'pointer',
+                  height: '100%',
+                  transition: 'all 0.2s ease'
+                }}
+                title="Gemini 2.5 Flash - Rápido y ultra-económico"
+              >
+                ⚡ 2.5
+              </button>
+              <button 
+                type="button"
+                onClick={() => setSelectedModel('3.5')}
+                style={{
+                  padding: '4px 8px',
+                  fontSize: '0.68rem',
+                  fontWeight: 700,
+                  background: selectedModel === '3.5' ? 'hsla(var(--cyan), 0.08)' : 'transparent',
+                  border: 'none',
+                  borderRadius: '3px',
+                  color: selectedModel === '3.5' ? 'var(--color-cyan)' : 'var(--text-secondary)',
+                  cursor: 'pointer',
+                  height: '100%',
+                  transition: 'all 0.2s ease'
+                }}
+                title="Gemini 3.5 Flash - Conclusiones y Razonamiento clínico"
+              >
+                🧠 3.5
+              </button>
+              <button 
+                type="button"
+                onClick={() => setSelectedModel('5.5-high')}
+                style={{
+                  padding: '4px 8px',
+                  fontSize: '0.68rem',
+                  fontWeight: 700,
+                  background: selectedModel === '5.5-high' ? 'rgba(16,185,129,0.1)' : 'transparent',
+                  border: 'none',
+                  borderRadius: '3px',
+                  color: selectedModel === '5.5-high' ? 'var(--color-emerald)' : 'var(--text-secondary)',
+                  cursor: 'pointer',
+                  height: '100%',
+                  transition: 'all 0.2s ease'
+                }}
+                title="GPT 5.5 High - Modelo premium de alto nivel"
+              >
+                💎 5.5 High
+              </button>
+              <button 
+                type="button"
+                onClick={() => setSelectedModel('deepseek')}
+                style={{
+                  padding: '4px 8px',
+                  fontSize: '0.68rem',
+                  fontWeight: 700,
+                  background: selectedModel === 'deepseek' ? 'rgba(167,139,250,0.1)' : 'transparent',
+                  border: 'none',
+                  borderRadius: '3px',
+                  color: selectedModel === 'deepseek' ? '#a78bfa' : 'var(--text-secondary)',
+                  cursor: 'pointer',
+                  height: '100%',
+                  transition: 'all 0.2s ease'
+                }}
+                title="DeepSeek V4 Pro - Reflexiones clínicas profundas"
+              >
+                🐳 DeepSeek
+              </button>
+            </div>
 
             {!isClosed && (
               <button 
-                onClick={handleCloseSession}
-                className="btn btn-outline flex-center"
-                title="Dar por finalizada esta sesión y extraer conclusiones de Walter"
+                onClick={closurePrepared ? handleConfirmCloseSession : handlePrepareClosure}
+                className={`btn ${closurePrepared ? 'btn-cyan animate-glow-cyan' : 'btn-outline'} flex-center`}
+                title={closurePrepared ? "Confirmar y archivar esta conversación" : "Preparar cierre clínico de sesión"}
                 style={{ 
                   padding: isMobile ? '8px' : '8px 14px', 
                   borderRadius: 'var(--radius-sm)', 
                   height: '36px', 
                   gap: '6px', 
                   fontSize: '0.72rem', 
-                  borderColor: 'var(--color-cyan)', 
-                  color: 'var(--color-cyan)',
+                  borderColor: closurePrepared ? 'transparent' : 'var(--color-cyan)', 
+                  color: closurePrepared ? '#ffffff' : 'var(--color-cyan)',
                   fontWeight: 700
                 }}
                 disabled={loading}
               >
-                🔒 {!isMobile && <span>Finalizar Sesión</span>}
+                {closurePrepared ? '🔒 Confirmar y Archivar' : '🔒 Preparar Cierre'}
               </button>
             )}
             <button 
@@ -951,8 +1268,8 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
         {/* Messages list */}
         <div className="chat-messages" style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>
           {messages.map((msg, idx) => (
-            <div key={idx} className={`chat-bubble ${msg.role}`}>
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', marginBottom: '4px' }}>
+            <div key={idx} className={`chat-bubble ${msg.role}`} style={{ position: 'relative' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px', gap: '10px' }}>
                 <span style={{ fontSize: '0.68rem', fontWeight: 700, color: msg.role === 'user' ? '#ffffff' : 'var(--color-cyan)', textTransform: 'uppercase' }}>
                   {msg.role === 'user' ? 'Emilio' : 'Walter'}
                 </span>
@@ -965,7 +1282,7 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
                 </div>
               )}
 
-              <p style={{ whiteSpace: 'pre-wrap', margin: 0, fontSize: '0.82rem', lineHeight: 1.5 }}>{msg.content}</p>
+              {renderMessageContent(msg.content)}
             </div>
           ))}
 
@@ -1074,16 +1391,56 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
               <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
                 🔒 <strong>Sesión Archivada y Cerrada.</strong> Se han consolidado el hecho y las conclusiones clínicas en el área de Salud y Mente.
               </span>
-              <button 
-                onClick={() => handleCreateNewConversation()}
-                className="btn btn-cyan animate-glow-cyan" 
-                style={{ height: '32px', fontSize: '0.72rem', padding: '0 16px', fontWeight: 700 }}
-              >
-                + Nueva Conversación / Tema
-              </button>
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'center' }}>
+                <button 
+                  onClick={() => handleCreateNewConversation()}
+                  className="btn btn-cyan animate-glow-cyan" 
+                  style={{ height: '32px', fontSize: '0.72rem', padding: '0 16px', fontWeight: 700 }}
+                >
+                  + Nueva Conversación / Tema
+                </button>
+                <button 
+                  onClick={handleReopenConversation}
+                  className="btn btn-outline" 
+                  style={{ height: '32px', fontSize: '0.72rem', padding: '0 16px', fontWeight: 700, borderColor: 'rgba(6,182,212,0.3)', color: 'var(--color-cyan)' }}
+                >
+                  🔓 Reabrir Sesión
+                </button>
+              </div>
             </div>
           ) : (
             <>
+              {/* Botones de Acción Clínica Rápida */}
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}>
+                <button 
+                  type="button" 
+                  onClick={() => handleTriggerSpecialAction('investigar')}
+                  className="btn btn-outline flex-center"
+                  style={{ fontSize: '0.7rem', height: '28px', padding: '0 12px', borderRadius: 'var(--radius-sm)', borderColor: 'rgba(6,182,212,0.3)', color: 'var(--color-cyan)', fontWeight: 700, gap: '4px' }}
+                  disabled={loading}
+                >
+                  🔍 Investigar Contexto
+                </button>
+                <button 
+                  type="button" 
+                  onClick={() => handleTriggerSpecialAction('conclusiones')}
+                  className="btn btn-outline flex-center"
+                  style={{ fontSize: '0.7rem', height: '28px', padding: '0 12px', borderRadius: 'var(--radius-sm)', borderColor: 'rgba(16,185,129,0.3)', color: 'var(--color-emerald)', fontWeight: 700, gap: '4px' }}
+                  disabled={loading}
+                >
+                  📋 Extraer Conclusiones
+                </button>
+                <button 
+                  type="button" 
+                  onClick={() => handleTriggerSpecialAction('soluciones')}
+                  className="btn btn-outline flex-center"
+                  style={{ fontSize: '0.7rem', height: '28px', padding: '0 12px', borderRadius: 'var(--radius-sm)', borderColor: 'rgba(244,63,94,0.3)', color: 'var(--color-rose)', fontWeight: 700, gap: '4px' }}
+                  disabled={loading}
+                >
+                  💡 Posibles Soluciones
+                </button>
+              </div>
+
               {/* Miniatura de imagen seleccionada */}
               {imageBase64 && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'rgba(0,0,0,0.3)', padding: '8px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', marginBottom: '12px', width: 'fit-content' }}>
@@ -1159,6 +1516,7 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
                   value={transcribingAudio ? "" : input}
                   onChange={(e) => setInput(e.target.value)}
                   onPaste={handlePaste}
+                  onFocus={handleInputFocus}
                   disabled={loading || transcribingAudio}
                   style={{ 
                     flex: 1,
@@ -1196,85 +1554,389 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
           right: isMobile ? (panelOpen ? '0px' : '-320px') : '0px',
           top: 0,
           zIndex: isMobile ? 1000 : 1,
-          background: isMobile ? 'rgba(8, 13, 28, 0.98)' : 'rgba(0,0,0,0.15)',
-          backdropFilter: isMobile ? 'blur(10px)' : 'none',
-          boxShadow: isMobile && panelOpen ? 'var(--shadow-lg)' : 'none'
+          background: isMobile ? 'rgba(8, 13, 28, 0.98)' : 'rgba(8, 13, 28, 0.4)'
         }}
-      >        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid var(--border)', paddingBottom: '12px', marginBottom: '16px' }}>
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid var(--border)', paddingBottom: '12px', marginBottom: '16px' }}>
           <Brain size={18} color="var(--color-cyan)" />
           <h4 style={{ fontSize: '0.9rem', fontWeight: 800, color: '#ffffff', margin: 0, whiteSpace: 'nowrap' }}>
             Contexto Clínico & Memoria
           </h4>
         </div>
 
+        {/* COMPONENTE COMPACTO: ESTADO DEL PACIENTE */}
+        <div style={{
+          background: 'rgba(255, 255, 255, 0.03)',
+          border: '1px solid rgba(255, 255, 255, 0.06)',
+          borderRadius: 'var(--radius-md)',
+          padding: '12px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '8px',
+          marginBottom: '14px',
+          fontSize: '0.72rem'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontWeight: 800, color: '#ffffff' }}>Emilio José Naranjo</span>
+            <span style={{ fontSize: '0.62rem', color: 'var(--text-tertiary)' }}>47 años</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid rgba(255,255,255,0.04)', paddingTop: '6px' }}>
+            <span style={{ color: 'var(--text-secondary)' }}>Ánimo hoy:</span>
+            {dailyMoodToday ? (
+              <span style={{ 
+                fontWeight: 700, 
+                color: dailyMoodToday.score > 7 ? 'var(--color-emerald)' : (dailyMoodToday.score > 4 ? 'var(--color-cyan)' : 'var(--color-rose)') 
+              }}>
+                {dailyMoodToday.score}/10 {dailyMoodToday.score > 7 ? '🟢' : (dailyMoodToday.score > 4 ? '🟡' : '🔴')}
+              </span>
+            ) : (
+              <span style={{ color: 'var(--text-tertiary)', fontStyle: 'italic' }}>Sin registrar</span>
+            )}
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ color: 'var(--text-secondary)' }}>Modelo de Chat:</span>
+            <span style={{ fontWeight: 700, color: 'var(--color-cyan)' }}>
+              {selectedModel === 'deepseek' ? '🐳 DeepSeek V4' : (selectedModel === '5.5-high' ? '💎 GPT 5.5' : (selectedModel === '3.5' ? '🧠 Gemini 3.5' : '⚡ Gemini 2.5'))}
+            </span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ color: 'var(--text-secondary)' }}>Riesgo de Trading:</span>
+            <span style={{ fontWeight: 700, color: 'var(--color-emerald)' }}>
+              Controlado
+            </span>
+          </div>
+        </div>
+
         <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
           
-          {/* A. Conclusiones Clínicas */}
-          <div style={{ background: 'rgba(0,0,0,0.15)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', padding: '14px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px', color: 'var(--color-cyan)' }}>
-              <Bookmark size={15} />
-              <span style={{ fontSize: '0.72rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Conclusiones de Walter</span>
+          {/* SECCIÓN ÚNICA: DIAGNÓSTICO DE ESTA SESIÓN */}
+          <div style={{ 
+            background: 'linear-gradient(135deg, rgba(6,182,212,0.06), rgba(15,23,42,0.8))', 
+            border: '1px solid rgba(6,182,212,0.25)', 
+            borderRadius: 'var(--radius-md)', 
+            padding: '16px',
+            boxShadow: 'var(--shadow-md)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(6,182,212,0.15)', paddingBottom: '10px', color: 'var(--color-cyan)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Brain size={16} />
+                <span style={{ fontSize: '0.74rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Diagnóstico de esta Sesión</span>
+              </div>
+              {activeConv && !isEditingSessionDiag && (
+                <button 
+                  onClick={startEditingSessionDiag}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--color-cyan)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    padding: '4px',
+                    borderRadius: '4px'
+                  }}
+                  className="conv-item-hover"
+                  title="Editar diagnóstico manualmente"
+                >
+                  <Edit3 size={14} />
+                </button>
+              )}
             </div>
             
-            {(!userCtx.conclusiones || userCtx.conclusiones.length === 0) ? (
-              <p style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', margin: 0, fontStyle: 'italic' }}>
-                Ninguna conclusión guardada. Walter extraerá pautas de comportamiento de Emilio a medida que converséis.
-              </p>
+            {isEditingSessionDiag ? (
+              <form onSubmit={handleSaveSessionDiagnosis} style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '0.72rem' }}>
+                <div>
+                  <label style={{ display: 'block', color: 'var(--text-secondary)', fontWeight: 700, marginBottom: '2px', fontSize: '0.58rem', textTransform: 'uppercase' }}>Foco / Hecho Clínico</label>
+                  <input 
+                    type="text" 
+                    className="form-input" 
+                    value={editSessionFact} 
+                    onChange={(e) => setEditSessionFact(e.target.value)} 
+                    style={{ width: '100%', fontSize: '0.72rem', height: '28px', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border)', borderRadius: '4px', padding: '0 8px', color: '#fff' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', color: 'var(--text-secondary)', fontWeight: 700, marginBottom: '2px', fontSize: '0.58rem', textTransform: 'uppercase' }}>Conclusiones (una por línea)</label>
+                  <textarea 
+                    rows="3" 
+                    className="form-input" 
+                    value={editSessionConclusions} 
+                    onChange={(e) => setEditSessionConclusions(e.target.value)} 
+                    style={{ width: '100%', fontSize: '0.72rem', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border)', borderRadius: '4px', padding: '6px 8px', resize: 'none', color: '#fff' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', color: 'var(--text-secondary)', fontWeight: 700, marginBottom: '2px', fontSize: '0.58rem', textTransform: 'uppercase' }}>Ejercicios o Soluciones (uno por línea)</label>
+                  <textarea 
+                    rows="3" 
+                    className="form-input" 
+                    value={editSessionExercises} 
+                    onChange={(e) => setEditSessionExercises(e.target.value)} 
+                    style={{ width: '100%', fontSize: '0.72rem', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border)', borderRadius: '4px', padding: '6px 8px', resize: 'none', color: '#fff' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', color: 'var(--text-secondary)', fontWeight: 700, marginBottom: '2px', fontSize: '0.58rem', textTransform: 'uppercase' }}>Investigación Relacionada</label>
+                  <textarea 
+                    rows="3" 
+                    className="form-input" 
+                    value={editSessionStudies} 
+                    onChange={(e) => setEditSessionStudies(e.target.value)} 
+                    style={{ width: '100%', fontSize: '0.72rem', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border)', borderRadius: '4px', padding: '6px 8px', resize: 'none', color: '#fff' }}
+                  />
+                </div>
+                <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                  <button type="submit" className="btn btn-cyan" style={{ flex: 1, fontSize: '0.68rem', height: '26px' }}>Guardar</button>
+                  <button type="button" onClick={() => setIsEditingSessionDiag(false)} className="btn btn-outline" style={{ flex: 1, fontSize: '0.68rem', height: '26px' }}>Cancelar</button>
+                </div>
+              </form>
+            ) : activeConv && (activeConv.captured_fact || activeConv.conclusions || activeConv.solutions_exercises || activeConv.clinical_studies) ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', fontSize: '0.72rem' }}>
+                {activeConv.captured_fact && (
+                  <div style={{ 
+                    background: 'linear-gradient(135deg, rgba(6,182,212,0.1), rgba(6,182,212,0.02))', 
+                    padding: '12px', 
+                    borderRadius: '8px', 
+                    borderLeft: '4px solid var(--color-cyan)',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '4px' }}>
+                      <span style={{ fontSize: '0.58rem', color: 'var(--color-cyan)', display: 'block', textTransform: 'uppercase', fontWeight: 800, letterSpacing: '0.05em' }}>Foco / Hecho Clínico</span>
+                    </div>
+                    <strong style={{ color: '#ffffff', fontSize: '0.76rem', lineHeight: 1.4, display: 'block' }}>{activeConv.captured_fact}</strong>
+                  </div>
+                )}
+                
+                {activeConv.conclusions && parseJsonArray(activeConv.conclusions).length > 0 && (
+                  <div style={{
+                    background: 'rgba(255, 255, 255, 0.02)',
+                    border: '1px solid rgba(255,255,255,0.05)',
+                    borderRadius: '8px',
+                    padding: '12px',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+                  }}>
+                    <span style={{ fontSize: '0.58rem', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase', fontWeight: 800, marginBottom: '8px', letterSpacing: '0.05em' }}>Conclusiones</span>
+                    <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {parseJsonArray(activeConv.conclusions).map((c, i) => (
+                        <li key={i} style={{ 
+                          lineHeight: 1.4, 
+                          background: 'rgba(255,255,255,0.01)', 
+                          padding: '6px 8px', 
+                          borderRadius: '4px', 
+                          border: '1px solid rgba(255,255,255,0.02)',
+                          display: 'flex', 
+                          justifyContent: 'space-between', 
+                          alignItems: 'center',
+                          gap: '6px'
+                        }}>
+                          <span style={{ color: 'var(--text-primary)' }}>{c}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                
+                {activeConv.solutions_exercises && parseJsonArray(activeConv.solutions_exercises).length > 0 && (
+                  <div style={{ 
+                    background: 'linear-gradient(135deg, rgba(16,185,129,0.08), rgba(16,185,129,0.01))', 
+                    padding: '12px', 
+                    borderRadius: '8px', 
+                    border: '1px solid rgba(16,185,129,0.2)',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+                  }}>
+                    <span style={{ fontSize: '0.58rem', color: 'var(--color-emerald)', display: 'block', textTransform: 'uppercase', fontWeight: 800, marginBottom: '8px', letterSpacing: '0.05em' }}>Ejercicios o Soluciones</span>
+                    <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {parseJsonArray(activeConv.solutions_exercises).map((s, i) => (
+                        <li key={i} style={{ 
+                          lineHeight: 1.4, 
+                          background: 'rgba(16,185,129,0.02)', 
+                          padding: '6px 8px', 
+                          borderRadius: '4px', 
+                          border: '1px solid rgba(16,185,129,0.05)',
+                          display: 'flex', 
+                          justifyContent: 'space-between', 
+                          alignItems: 'center',
+                          gap: '6px',
+                          fontWeight: 600
+                        }}>
+                          <span style={{ color: 'var(--color-emerald)' }}>{s}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                
+                {activeConv.clinical_studies && (
+                  <div style={{ 
+                    background: 'rgba(255, 255, 255, 0.01)',
+                    border: '1px solid rgba(255, 255, 255, 0.04)',
+                    borderRadius: '8px',
+                    padding: '12px',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '4px' }}>
+                      <span style={{ fontSize: '0.58rem', color: 'var(--text-tertiary)', display: 'block', textTransform: 'uppercase', fontWeight: 800, letterSpacing: '0.05em' }}>Investigación Relacionada</span>
+                    </div>
+                    <p style={{ color: 'var(--text-secondary)', margin: 0, lineHeight: 1.45, fontStyle: 'italic' }}>
+                      {activeConv.clinical_studies}
+                    </p>
+                  </div>
+                )}
+              </div>
             ) : (
-              <ul style={{ margin: 0, paddingLeft: '14px', fontSize: '0.72rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                {userCtx.conclusiones.map((c, idx) => (
-                  <li key={idx} style={{ lineHeight: 1.4 }}>{c}</li>
-                ))}
-              </ul>
+              <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '24px 16px',
+                textAlign: 'center',
+                background: 'rgba(255, 255, 255, 0.01)',
+                borderRadius: '8px',
+                border: '1px dashed rgba(255, 255, 255, 0.1)',
+                gap: '12px',
+                marginTop: '8px'
+              }}>
+                <Brain size={32} style={{ color: 'rgba(6,182,212,0.4)', animation: 'pulse-soft 2s infinite alternate' }} />
+                <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                  Sesión en Curso
+                </div>
+                <p style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.45 }}>
+                  Walter está analizando activamente tu TDAH, impulsividad y operativa en esta conversación.
+                </p>
+                <p style={{ fontSize: '0.62rem', color: 'var(--text-tertiary)', margin: 0, lineHeight: 1.4, fontStyle: 'italic' }}>
+                  Pulsa los botones inferiores ("Investigar Contexto", "Extraer Conclusiones" o "🔒 Preparar Cierre") para consolidar el diagnóstico de esta sesión.
+                </p>
+              </div>
             )}
           </div>
 
-          {/* B. Compromisos de Operativa */}
-          <div style={{ background: 'rgba(0,0,0,0.15)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', padding: '14px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px', color: 'var(--color-emerald)' }}>
-              <Trophy size={15} />
-              <span style={{ fontSize: '0.72rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Compromisos de Operativa</span>
-            </div>
+          {/* ACCORDEÓN COLAPSIBLE: MEMORIA HISTÓRICA (MENTE) */}
+          <div style={{
+            background: 'rgba(255, 255, 255, 0.02)',
+            border: '1px solid rgba(255, 255, 255, 0.05)',
+            borderRadius: 'var(--radius-md)',
+            overflow: 'hidden',
+            marginTop: '8px'
+          }}>
+            <button
+              type="button"
+              onClick={() => setShowBaseHistory(!showBaseHistory)}
+              style={{
+                width: '100%',
+                background: 'rgba(255, 255, 255, 0.01)',
+                border: 'none',
+                padding: '12px 14px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                color: 'var(--color-cyan)',
+                fontWeight: 800,
+                fontSize: '0.74rem',
+                cursor: 'pointer',
+                textAlign: 'left'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <ClipboardList size={14} />
+                <span>Memoria General (Mente)</span>
+              </div>
+              <span style={{ fontSize: '0.62rem', color: 'var(--text-tertiary)' }}>
+                {showBaseHistory ? '▼ Ocultar' : '▲ Mostrar'}
+              </span>
+            </button>
             
-            {(!userCtx.compromisos || userCtx.compromisos.length === 0) ? (
-              <p style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', margin: 0, fontStyle: 'italic' }}>
-                No hay compromisos activos. Emilio debe acordar límites estrictos de gestión de riesgo con Walter.
-              </p>
-            ) : (
-              <ul style={{ margin: 0, paddingLeft: '14px', fontSize: '0.72rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                {userCtx.compromisos.map((c, idx) => (
-                  <li key={idx} style={{ lineHeight: 1.4, fontWeight: 600, color: 'var(--color-emerald)' }}>{c}</li>
-                ))}
-              </ul>
+            {showBaseHistory && (
+              <div style={{ padding: '14px', display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '0.7rem', borderTop: '1px solid rgba(255, 255, 255, 0.05)' }}>
+                <div>
+                  <span style={{ fontSize: '0.58rem', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase', fontWeight: 800, marginBottom: '4px' }}>Diagnóstico Base</span>
+                  <p style={{ color: 'var(--text-primary)', margin: 0, lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>
+                    {userCtx.contexto_base?.diagnostico_inicial || "Sin registrar"}
+                  </p>
+                </div>
+                {userCtx.contexto_base?.mecanismos_defensa && Array.isArray(userCtx.contexto_base.mecanismos_defensa) && userCtx.contexto_base.mecanismos_defensa.length > 0 && (
+                  <div>
+                    <span style={{ fontSize: '0.58rem', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase', fontWeight: 800, marginBottom: '4px' }}>Mecanismos de Defensa</span>
+                    <ul style={{ margin: 0, paddingLeft: '14px', color: 'var(--text-primary)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      {userCtx.contexto_base.mecanismos_defensa.map((d, idx) => (
+                        <li key={idx} style={{ lineHeight: 1.4 }}>{d}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
             )}
           </div>
-
-          {/* C. Pautas de Acción Prescritas */}
-          <div style={{ background: 'rgba(0,0,0,0.15)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', padding: '14px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px', color: 'var(--color-rose)' }}>
-              <ClipboardList size={15} />
-              <span style={{ fontSize: '0.72rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Pautas de Reset</span>
-            </div>
-            
-            {(!userCtx.pautas_accion || userCtx.pautas_accion.length === 0) ? (
-              <p style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', margin: 0, fontStyle: 'italic' }}>
-                Ninguna pauta configurada. Usa técnicas conductuales cuando sientas ansiedad extrema.
-              </p>
-            ) : (
-              <ul style={{ margin: 0, paddingLeft: '14px', fontSize: '0.72rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                {userCtx.pautas_accion.map((p, idx) => (
-                  <li key={idx} style={{ lineHeight: 1.4 }}>{p}</li>
-                ))}
-              </ul>
-            )}
-          </div>
-
         </div>
 
         <div style={{ borderTop: '1px solid var(--border)', paddingTop: '10px', marginTop: '14px', fontSize: '0.62rem', color: 'var(--text-tertiary)', lineHeight: 1.3 }}>
-          * Este contexto se almacena cifrado en Supabase y se alimenta dinámicamente de vuestras sesiones para dar continuidad y proactividad clínica.
+          * Este contexto se actualiza en tiempo real al consolidar o preparar el informe clínico para dar continuidad y proactividad.
         </div>
       </div>
+
+      {/* FLOATING HANDLES PARA DESPLEGAR DESDE MODO ENFOQUE */}
+      {!leftPanelOpen && !isMobile && (
+        <button 
+          onClick={() => setLeftPanelOpen(true)}
+          style={{
+            position: 'absolute',
+            left: '0px',
+            top: '50%',
+            transform: 'translateY(-50%)',
+            zIndex: 10,
+            background: 'rgba(6,182,212,0.08)',
+            border: '1px solid rgba(6,182,212,0.25)',
+            borderLeft: 'none',
+            borderRadius: '0 var(--radius-sm) var(--radius-sm) 0',
+            width: '24px',
+            height: '48px',
+            color: 'var(--color-cyan)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            boxShadow: 'var(--shadow-cyan)',
+            transition: 'all 0.2s ease',
+            padding: 0
+          }}
+          title="Mostrar historial de sesiones"
+        >
+          <ChevronRight size={14} />
+        </button>
+      )}
+
+      {!panelOpen && !isMobile && (
+        <button 
+          onClick={() => setPanelOpen(true)}
+          style={{
+            position: 'absolute',
+            right: '0px',
+            top: '50%',
+            transform: 'translateY(-50%)',
+            zIndex: 10,
+            background: 'rgba(6,182,212,0.08)',
+            border: '1px solid rgba(6,182,212,0.25)',
+            borderRight: 'none',
+            borderRadius: 'var(--radius-sm) 0 0 var(--radius-sm)',
+            width: '24px',
+            height: '48px',
+            color: 'var(--color-cyan)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            boxShadow: 'var(--shadow-cyan)',
+            transition: 'all 0.2s ease',
+            padding: 0
+          }}
+          title="Mostrar memoria y contexto clínico"
+        >
+          <ChevronLeft size={14} />
+        </button>
+      )}
 
     </div>
   );

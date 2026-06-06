@@ -65,6 +65,7 @@ export default function ViabilityPlan({ user, totalDebts, onDebtsUpdated, target
       const { data, error } = await supabase
         .from('expenses')
         .select('*')
+        .eq('user_id', user.id)
         .order('created_at', { ascending: true });
       if (error) throw error;
       setExpensesList(data || []);
@@ -78,6 +79,7 @@ export default function ViabilityPlan({ user, totalDebts, onDebtsUpdated, target
       const { data, error } = await supabase
         .from('journal_days')
         .select('*')
+        .eq('user_id', user.id)
         .order('date', { ascending: true });
       if (error) throw error;
       
@@ -98,6 +100,7 @@ export default function ViabilityPlan({ user, totalDebts, onDebtsUpdated, target
       const { data, error } = await supabase
         .from('debts')
         .select('*')
+        .eq('user_id', user.id)
         .order('priority', { ascending: true });
       if (error) throw error;
       
@@ -154,6 +157,7 @@ export default function ViabilityPlan({ user, totalDebts, onDebtsUpdated, target
       const { error } = await supabase
         .from('expenses')
         .delete()
+        .eq('user_id', user.id)
         .eq('id', id);
       if (error) throw error;
       fetchExpenses();
@@ -201,6 +205,7 @@ export default function ViabilityPlan({ user, totalDebts, onDebtsUpdated, target
       const { error } = await supabase
         .from('debts')
         .update({ paid_amount: newPaid })
+        .eq('user_id', user.id)
         .eq('id', debtId);
       
       if (error) throw error;
@@ -216,6 +221,7 @@ export default function ViabilityPlan({ user, totalDebts, onDebtsUpdated, target
       const { error } = await supabase
         .from('debts')
         .delete()
+        .eq('user_id', user.id)
         .eq('id', debtId);
       if (error) throw error;
       fetchDebts();

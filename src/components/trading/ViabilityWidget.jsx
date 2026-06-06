@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '../../supabaseClient';
 import { 
   Calendar, 
@@ -41,22 +41,26 @@ const getExpenseIcon = (name) => {
   return '💰';
 };
 
-export default function ViabilityWidget({ user, totalDebts, onDebtsUpdated, targetInput, setTargetInput, daysInput, setDaysInput }) {
+export default function ViabilityWidget({ 
+  user, 
+  totalDebts, 
+  onDebtsUpdated, 
+  targetInput, 
+  setTargetInput, 
+  daysInput, 
+  setDaysInput,
+  onlyTradingJournal = false 
+}) {
   // Estado de navegación temporal y vista
   const [currentMonth, setCurrentMonth] = useState(4); // Mayo (index 4) por defecto
   const [currentYear, setCurrentYear] = useState(2026);
   const [viewMode, setViewMode] = useState('month'); // 'month' | 'year'
+  const [tickDirection, setTickDirection] = useState('flat'); // 'up' | 'down' | 'flat'
   const [activeTab, setActiveTab] = useState('calendar'); // 'calendar' | 'forecast' | 'settings'
 
   // Datos financieros y de configuración
-  const [efeSalary, setEfeSalary] = useState(() => {
-    const saved = localStorage.getItem('efe_salary');
-    return saved ? parseFloat(saved) : 2800;
-  });
-  const [efeExtraAmount, setEfeExtraAmount] = useState(() => {
-    const saved = localStorage.getItem('efe_extra_amount');
-    return saved ? parseFloat(saved) : 2800;
-  });
+  const [efeSalary, setEfeSalary] = useState(2800);
+  const [efeExtraAmount, setEfeExtraAmount] = useState(2800);
   const efeExtraMonths = [2, 6, 12];
   
   const [monthlyExpenses, setMonthlyExpenses] = useState(1500);
@@ -65,11 +69,16 @@ export default function ViabilityWidget({ user, totalDebts, onDebtsUpdated, targ
   const [newExpenseAmount, setNewExpenseAmount] = useState('');
 
   // Capital de trading (BingX o manual)
-  const [startBalance, setStartBalance] = useState(() => {
-    const saved = localStorage.getItem('start_balance');
-    return saved ? parseFloat(saved) : 2400;
-  });
+  const [startBalance, setStartBalance] = useState(2400);
+  const [fundsBalance, setFundsBalance] = useState(2400);
+  const [liveUnrealizedProfit, setLiveUnrealizedProfit] = useState(0);
   const [liveBalanceLoading, setLiveBalanceLoading] = useState(false);
+  const [bingxApiKey, setBingxApiKey] = useState('');
+  const [bingxApiSecret, setBingxApiSecret] = useState('');
+
+  // Hito de Inicio de operaciones de trading (Por defecto 100$ iniciales del hito y hoy 28 de mayo de 2026)
+  const [operationStartCapital, setOperationStartCapital] = useState(100);
+  const [operationStartDate, setOperationStartDate] = useState("2026-05-28");
 
   // Deudas
   const [debtsList, setDebtsList] = useState([]);
@@ -84,6 +93,7 @@ export default function ViabilityWidget({ user, totalDebts, onDebtsUpdated, targ
   // Edición Inline de Prioridad
   const [editingDebtPriorityId, setEditingDebtPriorityId] = useState(null);
   const [tempPriorityValue, setTempPriorityValue] = useState(1);
+  const [expandedDebtId, setExpandedDebtId] = useState(null);
 
   // Formulario de Amortización Premium
   const [amortizingDebtId, setAmortizingDebtId] = useState(null);
@@ -92,7 +102,8 @@ export default function ViabilityWidget({ user, totalDebts, onDebtsUpdated, targ
 
   // Parámetros de simulación de previsión
   const [simDailyTarget, setSimDailyTarget] = useState(400);
-  const [simDaysPerWeek, setSimDaysPerWeek] = useState(3);
+  const [simDailyTargetPercent, setSimDailyTargetPercent] = useState(1.5);
+  const [simDaysPerWeek, setSimDaysPerWeek] = useState(5); // L a V por defecto
   const [simIncludeTrading, setSimIncludeTrading] = useState(true);
   const [simWinRate, setSimWinRate] = useState(70);
 
@@ -102,8 +113,90 @@ export default function ViabilityWidget({ user, totalDebts, onDebtsUpdated, targ
   const [journalDayPnl, setJournalDayPnl] = useState('');
   const [journalDayTrades, setJournalDayTrades] = useState('');
   const [journalDayRisk, setJournalDayRisk] = useState('');
+  const [isExpensesExpanded, setIsExpensesExpanded] = useState(false);
+  const [isDebtsExpanded, setIsDebtsExpanded] = useState(false);
+  const [isNonPriorityExpanded, setIsNonPriorityExpanded] = useState(false);
+
+  // Gastos No Prioritarios (Financiados/Deudas con is_expense === true)
+  const [newNPName, setNewNPName] = useState('');
+  const [newNPAmount, setNewNPAmount] = useState('');
+  const [newNPPriority, setNewNPPriority] = useState(1);
 
   const usdToEurRate = 0.92;
+
+  // Cargar configuración financiera desde el perfil de Supabase
+  const loadFinancialConfig = async () => {
+    if (!user) return;
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('app_config')
+        .eq('id', user.id)
+        .single();
+      
+      if (error) throw error;
+      
+      const config = data?.app_config?.financial_config;
+      if (config) {
+        if (config.efe_salary !== undefined) setEfeSalary(config.efe_salary);
+        if (config.efe_extra_amount !== undefined) setEfeExtraAmount(config.efe_extra_amount);
+        if (config.start_balance !== undefined) setStartBalance(config.start_balance);
+        if (config.funds_balance !== undefined) setFundsBalance(config.funds_balance);
+        if (config.operation_start_capital !== undefined) setOperationStartCapital(config.operation_start_capital);
+        if (config.operation_start_date !== undefined) setOperationStartDate(config.operation_start_date);
+        if (config.sim_daily_target_percent !== undefined) setSimDailyTargetPercent(config.sim_daily_target_percent);
+      }
+    } catch (err) {
+      console.error("Error loading financial config from Supabase:", err.message);
+    }
+  };
+
+  // Salvar configuración financiera en el perfil de Supabase
+  const saveFinancialConfig = async (salary, extra, balance, funds, startCapital, startDate, dailyTargetPercent, apiKeyVal, apiSecretVal) => {
+    if (!user) return;
+    try {
+      const { data, error: fetchError } = await supabase
+        .from('profiles')
+        .select('app_config')
+        .eq('id', user.id)
+        .single();
+      
+      if (fetchError && fetchError.code !== 'PGRST116') {
+        throw fetchError;
+      }
+
+      const currentConfig = data?.app_config || {};
+      const newConfig = {
+        ...currentConfig,
+        financial_config: {
+          efe_salary: salary,
+          efe_extra_amount: extra,
+          start_balance: balance,
+          funds_balance: funds,
+          operation_start_capital: startCapital !== undefined ? startCapital : operationStartCapital,
+          operation_start_date: startDate !== undefined ? startDate : operationStartDate,
+          sim_daily_target_percent: dailyTargetPercent !== undefined ? dailyTargetPercent : simDailyTargetPercent
+        }
+      };
+
+      const updates = {
+        app_config: newConfig
+      };
+
+      if (typeof apiKeyVal === 'string' && apiKeyVal.trim()) updates.bingx_api_key = apiKeyVal.trim();
+      if (typeof apiSecretVal === 'string' && apiSecretVal.trim()) updates.bingx_api_secret = apiSecretVal.trim();
+
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update(updates)
+        .eq('id', user.id);
+
+      if (updateError) throw updateError;
+    } catch (err) {
+      console.error("Error saving financial config in Supabase:", err.message);
+    }
+  };
+
 
   // Consulta de gastos desde Supabase
   const fetchExpenses = async () => {
@@ -196,10 +289,63 @@ export default function ViabilityWidget({ user, totalDebts, onDebtsUpdated, targ
 
       if (!response.ok) throw new Error("API error");
       const resData = await response.json();
-      if (resData && resData.balance) {
-        const liveVal = parseFloat(resData.balance.equity || resData.balance.balance || 0);
-        if (liveVal > 0) {
-          setStartBalance(liveVal);
+      
+      if (resData && resData.allBalances && Array.isArray(resData.allBalances)) {
+        // 1. Cuenta de Fondos (sopt)
+        const spotAccount = resData.allBalances.find(b => b.accountType === 'sopt');
+        if (spotAccount) {
+          const spotVal = parseFloat(spotAccount.usdtBalance || 0);
+          if (!isNaN(spotVal) && spotVal >= 0) {
+            setFundsBalance(spotVal);
+          }
+        }
+        
+        // 2. Cuenta de Futuros (USDTMPerp)
+        const futuresAccount = resData.allBalances.find(b => b.accountType === 'USDTMPerp');
+        if (futuresAccount) {
+          const futVal = parseFloat(futuresAccount.usdtBalance || 0);
+          if (!isNaN(futVal) && futVal >= 0) {
+            setStartBalance(prev => {
+              if (futVal > prev) {
+                setTickDirection('up');
+                setTimeout(() => setTickDirection('flat'), 1500);
+              } else if (futVal < prev) {
+                setTickDirection('down');
+                setTimeout(() => setTickDirection('flat'), 1500);
+              }
+              return futVal;
+            });
+          }
+        }
+      } else if (resData && resData.balance) {
+        let liveVal = 0;
+        let balanceObj = null;
+        if (Array.isArray(resData.balance)) {
+          balanceObj = resData.balance.find(b => b.asset === 'USDT') || resData.balance[0];
+        } else {
+          balanceObj = resData.balance;
+        }
+
+        if (balanceObj) {
+          liveVal = parseFloat(balanceObj.equity ?? balanceObj.balance ?? 0);
+          const livePnl = parseFloat(balanceObj.unrealizedProfit ?? 0);
+          
+          if (!isNaN(liveVal) && liveVal >= 0) {
+            setStartBalance(prev => {
+              if (liveVal > prev) {
+                setTickDirection('up');
+                setTimeout(() => setTickDirection('flat'), 1500);
+              } else if (liveVal < prev) {
+                setTickDirection('down');
+                setTimeout(() => setTickDirection('flat'), 1500);
+              }
+              return liveVal;
+            });
+          }
+
+          if (!isNaN(livePnl)) {
+            setLiveUnrealizedProfit(livePnl);
+          }
         }
       }
     } catch (err) {
@@ -210,25 +356,23 @@ export default function ViabilityWidget({ user, totalDebts, onDebtsUpdated, targ
   };
 
   useEffect(() => {
-    localStorage.setItem('efe_salary', efeSalary.toString());
-  }, [efeSalary]);
-
-  useEffect(() => {
-    localStorage.setItem('efe_extra_amount', efeExtraAmount.toString());
-  }, [efeExtraAmount]);
-
-  useEffect(() => {
-    localStorage.setItem('start_balance', startBalance.toString());
-  }, [startBalance]);
-
-  useEffect(() => {
     if (user) {
+      loadFinancialConfig();
       fetchDebts();
       fetchExpenses();
       fetchJournalDays();
       fetchLiveBalance();
       fetchDebtPayments();
     }
+  }, [user]);
+
+  // Resincronización automática de fondo cada 20s de forma silenciosa para corregir derivas
+  useEffect(() => {
+    if (!user) return;
+    const interval = setInterval(() => {
+      fetchLiveBalance();
+    }, 20000);
+    return () => clearInterval(interval);
   }, [user]);
 
   // Listener para sincronización externa (ej. desde BingX Widget)
@@ -301,6 +445,30 @@ export default function ViabilityWidget({ user, totalDebts, onDebtsUpdated, targ
       fetchDebts();
     } catch (err) {
       console.error("Error adding debt:", err.message);
+    }
+  };
+
+  const handleAddNonPriorityExpense = async (e) => {
+    e.preventDefault();
+    if (!newNPName || !newNPAmount || isNaN(newNPAmount)) return;
+    try {
+      const { error } = await supabase
+        .from('debts')
+        .insert([{
+          user_id: user.id,
+          creditor: newNPName,
+          amount: parseFloat(newNPAmount),
+          paid_amount: 0,
+          priority: parseInt(newNPPriority) || 1,
+          is_expense: true
+        }]);
+      if (error) throw error;
+      setNewNPName('');
+      setNewNPAmount('');
+      setNewNPPriority(1);
+      fetchDebts();
+    } catch (err) {
+      console.error("Error adding non-priority expense:", err.message);
     }
   };
 
@@ -423,12 +591,19 @@ export default function ViabilityWidget({ user, totalDebts, onDebtsUpdated, targ
   // Obtener la media de P&L de trading real de las sesiones operadas registradas (en USD)
   const getAveragePnl = () => {
     const realSessions = journalDays.filter(d => d.trades > 0);
-    if (realSessions.length === 0) return 0;
+    if (realSessions.length === 0) return 30; // Fallback de 30$ si no hay trades reales
     const totalPnl = realSessions.reduce((sum, d) => sum + d.pnl, 0);
-    return totalPnl / realSessions.length;
+    const avg = totalPnl / realSessions.length;
+    return avg > 0 ? avg : 30; // Si el promedio es menor o igual a 0, usar 30$ para las previsiones
   };
 
-  const averageTradingPnl = getAveragePnl(); // media en USD por sesión
+  // Obtener la tasa de retorno porcentual media de los días reales del mes y año seleccionados
+  const getAverageMonthlyReturnPercent = (month, year) => {
+    // Calcular la tasa en base a la media real de trading en USD (por defecto 30$) sobre la cuenta de futuros
+    const avgPnl = getAveragePnl();
+    const currentFuturesBase = startBalance > 0 ? startBalance : 100;
+    return (avgPnl / currentFuturesBase) * 100;
+  };
 
   // Navegar entre meses
   const handlePrevMonth = () => {
@@ -459,165 +634,150 @@ export default function ViabilityWidget({ user, totalDebts, onDebtsUpdated, targ
 
   const getEquityOnDate = (targetDateStr) => {
     const today = new Date();
-    const todayStr = `${today.getFullYear()}-${(today.getMonth() + 1).toString().padStart(2, '0')}-${today.getDate().toString().padStart(2, '0')}`;
-    if (targetDateStr === todayStr) return startBalance;
-
+    const todayStr = today.getFullYear() + '-' + (today.getMonth() + 1).toString().padStart(2, '0') + '-' + today.getDate().toString().padStart(2, '0');
+    
     const targetDate = new Date(targetDateStr);
     const todayDate = new Date(todayStr);
 
-    let totalDiff = 0; // in USD
-
     if (targetDate < todayDate) {
-      // Past: sum from targetDate (inclusive) to today (inclusive)
-      let tempDate = new Date(targetDate);
-
-      while (tempDate <= todayDate) {
-        const y = tempDate.getFullYear();
-        const m = tempDate.getMonth();
-        const d = tempDate.getDate();
-        const curDateStr = `${y}-${(m + 1).toString().padStart(2, '0')}-${d.toString().padStart(2, '0')}`;
-
-        const dayOfWeek = tempDate.getDay() === 0 ? 6 : tempDate.getDay() - 1;
-        const dailyEfeSalary = efeSalary / 30;
-        const dailyExpense = monthlyExpenses / 30;
-
-        let efeIncome = dailyEfeSalary;
-        if (efeExtraMonths.includes(m + 1)) {
-          efeIncome += efeExtraAmount / 30;
-        }
-        let fixedExpense = dailyExpense;
-        const dailyDeptsPaid = debtPaymentsList
-          .filter(p => p.payment_date === curDateStr)
-          .reduce((sum, p) => sum + parseFloat(p.amount), 0);
-
-        const realDay = journalDays.find(x => x.date === curDateStr);
-        let tPnl = realDay ? realDay.pnl : 0;
-        const tPnlEur = tPnl * usdToEurRate;
-        const dailySobrante = tPnlEur + efeIncome - fixedExpense - dailyDeptsPaid;
-        const dailySobranteUsd = dailySobrante / usdToEurRate;
-
-        totalDiff += tPnl + dailySobranteUsd;
-
-        tempDate.setDate(tempDate.getDate() + 1);
-      }
-      return startBalance - totalDiff;
-    } else {
-      // Future: sum from today + 1 (inclusive) to targetDate (inclusive)
-      let tempDate = new Date(todayDate);
-      tempDate.setDate(tempDate.getDate() + 1);
-
-      while (tempDate <= targetDate) {
-        const y = tempDate.getFullYear();
-        const m = tempDate.getMonth();
-        const d = tempDate.getDate();
-        const curDateStr = `${y}-${(m + 1).toString().padStart(2, '0')}-${d.toString().padStart(2, '0')}`;
-
-        const dayOfWeek = tempDate.getDay() === 0 ? 6 : tempDate.getDay() - 1;
-        const dailyEfeSalary = efeSalary / 30;
-        const dailyExpense = monthlyExpenses / 30;
-
-        let efeIncome = dailyEfeSalary;
-        if (efeExtraMonths.includes(m + 1)) {
-          efeIncome += efeExtraAmount / 30;
-        }
-        let fixedExpense = dailyExpense;
-        const dailyDeptsPaid = debtPaymentsList
-          .filter(p => p.payment_date === curDateStr)
-          .reduce((sum, p) => sum + parseFloat(p.amount), 0);
-
-        const realDay = journalDays.find(x => x.date === curDateStr);
-        let tPnl = 0;
-        if (realDay) {
-          tPnl = realDay.pnl;
-        } else if (isPlannedTradingDay(dayOfWeek)) {
-          tPnl = averageTradingPnl;
-        }
-
-        const tPnlEur = tPnl * usdToEurRate;
-        const dailySobrante = tPnlEur + efeIncome - fixedExpense - dailyDeptsPaid;
-        const dailySobranteUsd = dailySobrante / usdToEurRate;
-
-        totalDiff += tPnl + dailySobranteUsd;
-
-        tempDate.setDate(tempDate.getDate() + 1);
-      }
-      return startBalance + totalDiff;
+      return null; // El pasado anterior a hoy no tiene capital / no se muestra
     }
+    
+    if (targetDateStr === todayStr) return startBalance + fundsBalance;
+
+    let accumFutures = startBalance;
+    let accumFunds = fundsBalance;
+    let tempDate = new Date(todayDate);
+    tempDate.setDate(tempDate.getDate() + 1);
+
+    while (tempDate <= targetDate) {
+      const y = tempDate.getFullYear();
+      const m = tempDate.getMonth();
+      const d = tempDate.getDate();
+      const curDateStr = y + '-' + (m + 1).toString().padStart(2, '0') + '-' + d.toString().padStart(2, '0');
+      const dayOfWeek = tempDate.getDay() === 0 ? 6 : tempDate.getDay() - 1;
+      
+      let efeIncome = 0;
+      let fixedExpense = 0;
+      if (d === 4) {
+        efeIncome = efeSalary;
+        if (efeExtraMonths.includes(m + 1)) {
+          efeIncome += efeExtraAmount;
+        }
+        fixedExpense = monthlyExpenses;
+      }
+      
+      const dailyDeptsPaid = debtPaymentsList
+        .filter(p => p.payment_date === curDateStr)
+        .reduce((sum, p) => sum + parseFloat(p.amount), 0);
+
+      const realDay = journalDays.find(x => x.date === curDateStr);
+      let tPnl = 0;
+      if (realDay) {
+        tPnl = realDay.pnl;
+      } else if (isPlannedTradingDay(dayOfWeek)) {
+        const monthlyRate = getAverageMonthlyReturnPercent(m, y);
+        tPnl = accumFutures * (monthlyRate / 100);
+      }
+
+      const dailySobranteEur = efeIncome - fixedExpense - dailyDeptsPaid;
+      const dailySobranteUsd = dailySobranteEur / usdToEurRate;
+
+      accumFunds += dailySobranteUsd;
+      accumFutures += tPnl;
+
+      tempDate.setDate(tempDate.getDate() + 1);
+    }
+    return accumFutures + accumFunds;
   };
 
   // Generar datos diarios del mes seleccionado
   const generateMonthData = (month, year) => {
     const daysInMonth = new Date(year, month + 1, 0).getDate();
-    // Obtener offset del primer día (Lunes = 0, Domingo = 6)
     let firstDayIndex = new Date(year, month, 1).getDay();
     firstDayIndex = firstDayIndex === 0 ? 6 : firstDayIndex - 1;
 
-    // Prorrateo diario de nómina de EFE y gastos fijos
-    const dailyEfeSalary = efeSalary / 30; // en EUR
-    const dailyExpense = monthlyExpenses / 30; // en EUR
-
-    // Saldo acumulado
-    const firstDayDateStr = `${year}-${(month + 1).toString().padStart(2, '0')}-01`;
-    let runningEquity = getEquityOnDate(firstDayDateStr);
+    const firstDayDateStr = year + '-' + (month + 1).toString().padStart(2, '0') + '-01';
     const resultDays = [];
 
-    // Hoy en fecha real local de Emilio (CET/CEST)
     const today = new Date();
-    const todayStr = `${today.getFullYear()}-${(today.getMonth() + 1).toString().padStart(2, '0')}-${today.getDate().toString().padStart(2, '0')}`;
+    const todayStr = today.getFullYear() + '-' + (today.getMonth() + 1).toString().padStart(2, '0') + '-' + today.getDate().toString().padStart(2, '0');
+
+    // Obtener la tasa porcentual media de retorno real de este mes
+    const activeDailyReturnPercent = getAverageMonthlyReturnPercent(month, year);
+
+    let accumFutures = startBalance;
+    let accumFunds = fundsBalance;
 
     for (let day = 1; day <= daysInMonth; day++) {
-      const dateStr = `${year}-${(month + 1).toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+      const dateStr = year + '-' + (month + 1).toString().padStart(2, '0') + '-' + day.toString().padStart(2, '0');
       const cellDate = new Date(dateStr);
       const dayOfWeek = cellDate.getDay() === 0 ? 6 : cellDate.getDay() - 1; // Lunes = 0
 
       const isFuture = cellDate > today;
       const isToday = dateStr === todayStr;
 
-      // 1. Ingreso de nómina prorrateada (EFE) + paga extra
-      let efeIncome = dailyEfeSalary;
-      const isExtraMonth = efeExtraMonths.includes(month + 1);
-      if (isExtraMonth) {
-        efeIncome += efeExtraAmount / 30;
+      let efeIncome = 0;
+      let fixedExpense = 0;
+      
+      // Nómina y gastos solo a partir de hoy o el futuro en el día 4, limpiando el pasado
+      if (day === 4 && (isToday || isFuture)) {
+        efeIncome = efeSalary;
+        const isExtraMonth = efeExtraMonths.includes(month + 1);
+        if (isExtraMonth) {
+          efeIncome += efeExtraAmount;
+        }
+        fixedExpense = monthlyExpenses;
       }
 
-      // 2. Gastos fijos prorrateados del día
-      let fixedExpense = dailyExpense;
+      let dailyDeptsPaid = 0;
+      if (isToday || isFuture) {
+        dailyDeptsPaid = debtPaymentsList
+          .filter(p => p.payment_date === dateStr)
+          .reduce((sum, p) => sum + parseFloat(p.amount), 0);
+      }
 
-      // 3. Deudas amortizadas reales registradas en este día concreto (desde el historial de pagos)
-      const dailyDeptsPaid = debtPaymentsList
-        .filter(p => p.payment_date === dateStr)
-        .reduce((sum, p) => sum + parseFloat(p.amount), 0);
-
-      // 4. PnL de Trading (real o proyectado)
       const realDay = journalDays.find(x => x.date === dateStr);
-      let tPnl = 0; // en USD
+      let tPnl = 0;
       let tradesCount = 0;
       let isProjected = false;
       let isManualRisk = false;
       let manualRisk = null;
 
-      if (realDay) {
-        tPnl = realDay.pnl;
-        tradesCount = realDay.trades;
-        isManualRisk = realDay.risk !== null && realDay.risk !== undefined;
-        manualRisk = isManualRisk ? realDay.risk : null;
-      } else if (isFuture && isPlannedTradingDay(dayOfWeek)) {
-        isProjected = true;
-        tradesCount = 1;
-        tPnl = averageTradingPnl; // strictly project using the true average (which is 0 if no traded days exist)
+      if (isToday || isFuture) {
+        if (realDay) {
+          tPnl = realDay.pnl;
+          tradesCount = realDay.trades;
+          isManualRisk = realDay.risk !== null && realDay.risk !== undefined;
+          manualRisk = isManualRisk ? realDay.risk : null;
+        } else if (isFuture && isPlannedTradingDay(dayOfWeek)) {
+          isProjected = true;
+          tradesCount = 1;
+          // Interés compuesto basado en el porcentaje medio real del mes sobre los futuros actuales
+          tPnl = accumFutures * (activeDailyReturnPercent / 100);
+        }
+      } else {
+        // En el pasado conservamos los registros históricos informativos en el calendario
+        if (realDay) {
+          tPnl = realDay.pnl;
+          tradesCount = realDay.trades;
+          isManualRisk = realDay.risk !== null && realDay.risk !== undefined;
+          manualRisk = isManualRisk ? realDay.risk : null;
+        }
       }
 
       const tPnlEur = tPnl * usdToEurRate;
+      const dailySobranteEur = efeIncome - fixedExpense - dailyDeptsPaid;
+      const dailySobranteUsd = dailySobranteEur / usdToEurRate;
 
-      // 5. Calcular Sobrante Neto diario (Ingresos - Gastos)
-      const dailySobrante = tPnlEur + efeIncome - fixedExpense - dailyDeptsPaid;
+      if (isToday || isFuture) {
+        accumFunds += dailySobranteUsd;
+        accumFutures += tPnl;
+      }
 
-      // 6. Riesgo permitido por día (Límite de pérdida del 1.5% de la Equity, o manual)
-      const allowedDailyRisk = isManualRisk && manualRisk !== null ? manualRisk : Math.abs(runningEquity * 0.015);
-
-      // Actualizar la Equity acumulada diaria
-      const dailySobranteUsd = dailySobrante / usdToEurRate;
-      runningEquity += tPnl + dailySobranteUsd;
+      const allowedDailyRisk = isManualRisk && manualRisk !== null 
+        ? manualRisk 
+        : Math.abs(((isToday || isFuture) ? accumFutures : startBalance) * 0.015);
 
       resultDays.push({
         day,
@@ -632,8 +792,8 @@ export default function ViabilityWidget({ user, totalDebts, onDebtsUpdated, targ
         efeIncome,
         fixedExpense,
         debtsPaid: dailyDeptsPaid,
-        sobrante: dailySobrante,
-        equity: runningEquity,
+        sobrante: dailySobranteEur,
+        equity: (isToday || isFuture) ? (accumFutures + accumFunds) : null, // Pasado nulo
         risk: allowedDailyRisk,
         isManualRisk,
         riskValue: manualRisk
@@ -642,6 +802,7 @@ export default function ViabilityWidget({ user, totalDebts, onDebtsUpdated, targ
 
     return { days: resultDays, offset: firstDayIndex };
   };
+
 
   const { days: calendarDays, offset: firstDayOffset } = generateMonthData(currentMonth, currentYear);
 
@@ -703,8 +864,7 @@ export default function ViabilityWidget({ user, totalDebts, onDebtsUpdated, targ
     let simMonth = 4; // Mayo (index 4)
     let simYear = 2026;
 
-    const simMonthlyTradingPnl = simIncludeTrading ? (parseFloat(simDailyTarget) * parseFloat(simDaysPerWeek) * 4.33 * usdToEurRate) : 0;
-    const simMonthlyIncome = efeSalary + simMonthlyTradingPnl;
+    let simTradingCapital = startBalance;
     const simMonthlyExpenses = monthlyExpenses;
 
     let monthsCount = 0;
@@ -712,7 +872,19 @@ export default function ViabilityWidget({ user, totalDebts, onDebtsUpdated, targ
     let debtZeroYear = null;
 
     while (currentTotalDebt > 0 && monthsCount < 36) {
-      // 1. Calcular excedente de este mes
+      // 1. Calcular excedente de este mes (con interés compuesto en el trading basado en la media real de 30$)
+      let simMonthlyTradingPnl = 0;
+      if (simIncludeTrading) {
+        const sessions = parseFloat(simDaysPerWeek) * 4.33;
+        // Calcular la tasa de retorno en base a la media real del mes simulado
+        const monthlyRate = getAverageMonthlyReturnPercent(simMonth, simYear);
+        const finalCapital = simTradingCapital * Math.pow(1 + monthlyRate / 100, sessions);
+        const simMonthlyTradingPnlUsd = finalCapital - simTradingCapital;
+        simMonthlyTradingPnl = simMonthlyTradingPnlUsd * usdToEurRate;
+        simTradingCapital = finalCapital; // Actualizar capital para el siguiente mes
+      }
+
+      const simMonthlyIncome = efeSalary + simMonthlyTradingPnl;
       let monthlyCaja = simMonthlyIncome - simMonthlyExpenses;
       
       // Paga extra en index 5 (Junio) y 11 (Diciembre)
@@ -726,6 +898,7 @@ export default function ViabilityWidget({ user, totalDebts, onDebtsUpdated, targ
       // 2. Distribuir excedente a las deudas por prioridad
       let tempCaja = monthlyCaja;
       if (tempCaja > 0) {
+
         for (let i = 0; i < tempDebts.length; i++) {
           const d = tempDebts[i];
           if (d.remaining <= 0) continue;
@@ -797,7 +970,10 @@ export default function ViabilityWidget({ user, totalDebts, onDebtsUpdated, targ
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <Calendar size={20} color="var(--color-cyan)" />
           <h3 style={{ fontSize: '1.05rem', fontWeight: 800, margin: 0, textShadow: '0 0 10px rgba(6,182,212,0.15)' }}>
-            {viewMode === 'month' ? `${MONTH_NAMES[currentMonth]} ${currentYear}` : `Consolidado Anual ${currentYear}`}
+            {onlyTradingJournal 
+              ? `Diario del Reto de Consistencia — ${MONTH_NAMES[currentMonth]} ${currentYear}`
+              : (viewMode === 'month' ? `${MONTH_NAMES[currentMonth]} ${currentYear}` : `Consolidado Anual ${currentYear}`)
+            }
           </h3>
         </div>
 
@@ -814,40 +990,168 @@ export default function ViabilityWidget({ user, totalDebts, onDebtsUpdated, targ
             </div>
           )}
 
-          <div style={{ display: 'flex', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: '6px', padding: '2px', flexWrap: 'wrap', gap: '2px' }}>
-            <button 
-              onClick={() => { setViewMode('month'); setActiveTab('calendar'); }}
-              className={`sub-tab-btn ${viewMode === 'month' && activeTab === 'calendar' ? 'active' : ''}`}
-              style={{ fontSize: '0.68rem', padding: '4px 10px', borderRadius: '4px' }}
-            >
-              Mensual
-            </button>
-            <button 
-              onClick={() => setViewMode('year')}
-              className={`sub-tab-btn ${viewMode === 'year' ? 'active' : ''}`}
-              style={{ fontSize: '0.68rem', padding: '4px 10px', borderRadius: '4px' }}
-            >
-              Vista Anual
-            </button>
-            <button 
-              onClick={() => { setViewMode('month'); setActiveTab('forecast'); }}
-              className={`sub-tab-btn ${viewMode === 'month' && activeTab === 'forecast' ? 'active' : ''}`}
-              style={{ fontSize: '0.68rem', padding: '4px 10px', borderRadius: '4px' }}
-            >
-              🔮 Previsión de Deudas
-            </button>
-            <button 
-              onClick={() => { setViewMode('month'); setActiveTab('settings'); }}
-              className={`sub-tab-btn ${viewMode === 'month' && activeTab === 'settings' ? 'active' : ''}`}
-              style={{ fontSize: '0.68rem', padding: '4px 10px', borderRadius: '4px' }}
-            >
-              🔧 Ajustes Fijos
-            </button>
-          </div>
+          {!onlyTradingJournal && (
+            <div style={{ display: 'flex', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: '6px', padding: '2px', flexWrap: 'wrap', gap: '2px' }}>
+              <button 
+                onClick={() => { setViewMode('month'); setActiveTab('calendar'); }}
+                className={`sub-tab-btn ${viewMode === 'month' && activeTab === 'calendar' ? 'active' : ''}`}
+                style={{ fontSize: '0.68rem', padding: '4px 10px', borderRadius: '4px' }}
+              >
+                Mensual
+              </button>
+              <button 
+                onClick={() => setViewMode('year')}
+                className={`sub-tab-btn ${viewMode === 'year' ? 'active' : ''}`}
+                style={{ fontSize: '0.68rem', padding: '4px 10px', borderRadius: '4px' }}
+              >
+                Vista Anual
+              </button>
+              <button 
+                onClick={() => { setViewMode('month'); setActiveTab('forecast'); }}
+                className={`sub-tab-btn ${viewMode === 'month' && activeTab === 'forecast' ? 'active' : ''}`}
+                style={{ fontSize: '0.68rem', padding: '4px 10px', borderRadius: '4px' }}
+              >
+                🔮 Previsión de Deudas
+              </button>
+              <button 
+                onClick={() => { setViewMode('month'); setActiveTab('settings'); }}
+                className={`sub-tab-btn ${viewMode === 'month' && activeTab === 'settings' ? 'active' : ''}`}
+                style={{ fontSize: '0.68rem', padding: '4px 10px', borderRadius: '4px' }}
+              >
+                🔧 Ajustes Fijos
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
+
       {/* METRICAS CLAVE SUPERIOR */}
+      {/* BINGX LIVE TICKER BAR */}
+      {viewMode === 'month' && activeTab === 'calendar' && (
+        <div className="glass-panel" style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          padding: '12px 20px',
+          background: 'linear-gradient(90deg, rgba(8, 13, 28, 0.9) 0%, rgba(15, 23, 42, 0.95) 100%)',
+          border: '1px solid rgba(16, 185, 129, 0.12)',
+          borderRadius: '10px',
+          marginBottom: '15px',
+          flexWrap: 'wrap',
+          gap: '12px',
+          boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.25)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span style={{ fontSize: '1.1rem' }}>📈</span>
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <strong style={{ fontSize: '0.8rem', color: '#ffffff', letterSpacing: '0.02em' }}>BINGX BROKER FEED</strong>
+              <span style={{ fontSize: '0.6rem', color: 'var(--text-tertiary)', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '1px' }}>
+                <span style={{ 
+                  display: 'inline-block', 
+                  width: '6px', 
+                  height: '6px', 
+                  borderRadius: '50%', 
+                  background: '#10b981',
+                  animation: 'pulse 2s infinite'
+                }}></span>
+                Sincronización real con BingX activa
+              </span>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: '24px', alignItems: 'center', flexWrap: 'wrap' }}>
+            {/* Patrimonio Total Consolidado */}
+            <div style={{ 
+              display: 'flex', 
+              flexDirection: 'column', 
+              alignItems: 'flex-end',
+              background: 'rgba(255, 255, 255, 0.02)',
+              padding: '4px 10px',
+              borderRadius: '6px',
+              border: '1px solid rgba(255,255,255,0.05)'
+            }}>
+              <span style={{ fontSize: '0.52rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Patrimonio Total (USD)</span>
+              <strong style={{ fontSize: '1.15rem', fontFamily: 'monospace', color: '#ffffff' }}>
+                ${(fundsBalance + startBalance).toFixed(2)}
+              </strong>
+            </div>
+
+            {/* Cuenta de Fondos */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', padding: '4px 8px' }}>
+              <span style={{ fontSize: '0.52rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Cuenta Fondos</span>
+              <strong style={{ fontSize: '0.98rem', fontFamily: 'monospace', color: '#e2e8f0' }}>
+                ${fundsBalance.toFixed(2)}
+              </strong>
+            </div>
+
+            {/* Cuenta de Futuros */}
+            <div style={{ 
+              display: 'flex', 
+              flexDirection: 'column', 
+              alignItems: 'flex-end', 
+              background: tickDirection === 'up' ? 'rgba(16, 185, 129, 0.08)' : tickDirection === 'down' ? 'rgba(244, 63, 94, 0.08)' : 'transparent',
+              padding: '4px 8px',
+              borderRadius: '6px',
+              transition: 'background 0.15s ease'
+            }}>
+              <span style={{ fontSize: '0.52rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Cuenta Futuros</span>
+              <strong style={{ 
+                fontSize: '0.98rem', 
+                fontFamily: 'monospace', 
+                color: tickDirection === 'up' ? '#10b981' : tickDirection === 'down' ? '#f43f5e' : '#e2e8f0',
+                transition: 'color 0.1s ease'
+              }}>
+                ${startBalance.toFixed(2)}
+              </strong>
+            </div>
+
+            {/* Live Session PnL */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', padding: '4px 8px' }}>
+              <span style={{ fontSize: '0.52rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>P&L Abierto</span>
+              <strong style={{ 
+                fontSize: '0.98rem', 
+                fontFamily: 'monospace',
+                color: liveUnrealizedProfit >= 0 ? '#10b981' : '#f43f5e'
+              }}>
+                {liveUnrealizedProfit >= 0 ? '+$' + liveUnrealizedProfit.toFixed(2) : '-$' + Math.abs(liveUnrealizedProfit).toFixed(2)}
+              </strong>
+            </div>
+
+            {/* Rendimiento desde Inicio (Hito) */}
+            {(() => {
+              const rendimientoNeto = startBalance - operationStartCapital;
+              const rendimientoPorcentaje = operationStartCapital > 0 ? (rendimientoNeto / operationStartCapital) * 100 : 0;
+              const color = rendimientoNeto >= 0 ? '#10b981' : '#f43f5e';
+              return (
+                <div style={{ 
+                  display: 'flex', 
+                  flexDirection: 'column', 
+                  alignItems: 'flex-end',
+                  background: 'rgba(255, 255, 255, 0.01)',
+                  padding: '4px 10px',
+                  borderRadius: '6px',
+                  border: `1px dashed ${rendimientoNeto >= 0 ? 'rgba(16, 185, 129, 0.25)' : 'rgba(244, 63, 94, 0.25)'}`
+                }}>
+                  <span style={{ fontSize: '0.52rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>Rendimiento Hito</span>
+                  <strong style={{ 
+                    fontSize: '0.98rem', 
+                    fontFamily: 'monospace',
+                    color: color
+                  }}>
+                    {rendimientoNeto >= 0 ? '+' : ''}${rendimientoNeto.toFixed(2)} ({rendimientoNeto >= 0 ? '+' : ''}{rendimientoPorcentaje.toFixed(2)}%)
+                  </strong>
+                  <span style={{ fontSize: '0.45rem', color: 'var(--text-tertiary)' }}>
+                    Desde {operationStartDate ? new Date(operationStartDate + 'T12:00:00').toLocaleDateString('es-ES', {day: 'numeric', month: 'short'}) : '—'}
+                  </span>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+
+      )}
+
       {viewMode === 'month' && activeTab === 'calendar' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px' }}>
           {(() => {
@@ -869,19 +1173,19 @@ export default function ViabilityWidget({ user, totalDebts, onDebtsUpdated, targ
                 <div style={{ padding: '12px 10px', background: 'rgba(255,255,255,0.01)', border: '1px solid var(--border)', borderRadius: '8px', textAlign: 'center' }}>
                   <span style={{ fontSize: '0.55rem', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase' }}>P&L Trading (Real)</span>
                   <strong style={{ fontSize: '1.05rem', color: netRealPnl >= 0 ? 'var(--color-emerald)' : 'var(--color-rose)' }}>
-                    {netRealPnl >= 0 ? `+$${netRealPnl.toLocaleString(undefined, {maximumFractionDigits:0})}` : `-$${Math.abs(netRealPnl).toLocaleString(undefined, {maximumFractionDigits:0})}`}
+                    {netRealPnl >= 0 ? `+$${netRealPnl.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : `-$${Math.abs(netRealPnl).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`}
                   </strong>
                 </div>
                 <div style={{ padding: '12px 10px', background: 'rgba(255,255,255,0.01)', border: '1px solid var(--border)', borderRadius: '8px', textAlign: 'center' }}>
                   <span style={{ fontSize: '0.55rem', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase' }}>Proyección Fin de Mes</span>
                   <strong style={{ fontSize: '1.05rem', color: 'var(--color-cyan)' }}>
-                    +${(netRealPnl + netProjPnl).toLocaleString(undefined, {maximumFractionDigits:0})}
+                    +${(netRealPnl + netProjPnl).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                   </strong>
                 </div>
                 <div style={{ padding: '12px 10px', background: totalSobrante >= 0 ? 'rgba(16,185,129,0.03)' : 'rgba(244,63,94,0.03)', border: `1px solid ${totalSobrante >= 0 ? 'rgba(16,185,129,0.12)' : 'rgba(244,63,94,0.12)'}`, borderRadius: '8px', textAlign: 'center' }}>
                   <span style={{ fontSize: '0.55rem', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase' }}>Caja Neta Sobrante</span>
                   <strong style={{ fontSize: '1.05rem', color: totalSobrante >= 0 ? 'var(--color-emerald)' : 'var(--color-rose)' }}>
-                    {totalSobrante >= 0 ? `+${totalSobrante.toLocaleString(undefined, {maximumFractionDigits:0})} €` : `-${Math.abs(totalSobrante).toLocaleString(undefined, {maximumFractionDigits:0})} €`}
+                    {totalSobrante >= 0 ? `+${totalSobrante.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} €` : `-${Math.abs(totalSobrante).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} €`}
                   </strong>
                 </div>
               </>
@@ -902,23 +1206,23 @@ export default function ViabilityWidget({ user, totalDebts, onDebtsUpdated, targ
               <>
                 <div style={{ padding: '12px 10px', background: 'rgba(255,255,255,0.01)', border: '1px solid var(--border)', borderRadius: '8px', textAlign: 'center' }}>
                   <span style={{ fontSize: '0.55rem', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase' }}>Trading Real Acumulado</span>
-                  <strong style={{ fontSize: '1.05rem', color: 'var(--color-emerald)' }}>+${annualRealTrading.toLocaleString(undefined, {maximumFractionDigits:0})}</strong>
+                  <strong style={{ fontSize: '1.05rem', color: 'var(--color-emerald)' }}>+${annualRealTrading.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</strong>
                 </div>
                 <div style={{ padding: '12px 10px', background: 'rgba(255,255,255,0.01)', border: '1px solid var(--border)', borderRadius: '8px', textAlign: 'center' }}>
                   <span style={{ fontSize: '0.55rem', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase' }}>Trading Proyectado Restante</span>
-                  <strong style={{ fontSize: '1.05rem', color: 'var(--color-cyan)' }}>+${annualProjectedTrading.toLocaleString(undefined, {maximumFractionDigits:0})}</strong>
+                  <strong style={{ fontSize: '1.05rem', color: 'var(--color-cyan)' }}>+${annualProjectedTrading.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</strong>
                 </div>
                 <div style={{ padding: '12px 10px', background: 'rgba(255,255,255,0.01)', border: '1px solid var(--border)', borderRadius: '8px', textAlign: 'center' }}>
                   <span style={{ fontSize: '0.55rem', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase' }}>
                     {annualSobrante >= 0 ? 'Sobrante Total de Caja' : 'Déficit Total de Caja'}
                   </span>
                   <strong style={{ fontSize: '1.05rem', color: annualSobrante >= 0 ? 'var(--color-emerald)' : 'var(--color-rose)' }}>
-                    {annualSobrante >= 0 ? `+${annualSobrante.toFixed(0)} €` : `-${Math.abs(annualSobrante).toFixed(0)} €`}
+                    {annualSobrante >= 0 ? `+${annualSobrante.toFixed(2)} €` : `-${Math.abs(annualSobrante).toFixed(2)} €`}
                   </strong>
                 </div>
                 <div style={{ padding: '12px 10px', background: 'rgba(255,255,255,0.01)', border: '1px solid var(--border)', borderRadius: '8px', textAlign: 'center' }}>
                   <span style={{ fontSize: '0.55rem', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase' }}>Deudas Amortizadas este Año</span>
-                  <strong style={{ fontSize: '1.05rem', color: 'var(--color-emerald)' }}>{annualDebtsPaid.toFixed(0)} €</strong>
+                  <strong style={{ fontSize: '1.05rem', color: 'var(--color-emerald)' }}>{annualDebtsPaid.toFixed(2)} €</strong>
                 </div>
               </>
             );
@@ -931,127 +1235,171 @@ export default function ViabilityWidget({ user, totalDebts, onDebtsUpdated, targ
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           
           {/* Cabecera del día de la semana */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '6px', textAlign: 'center', fontWeight: 'bold', fontSize: '0.62rem', color: 'var(--text-secondary)', borderBottom: '1px solid rgba(255,255,255,0.02)', paddingBottom: '4px' }}>
-            <div>LUNES</div><div>MARTES</div><div>MIÉRCOLES</div><div>JUEVES</div><div>VIERNES</div><div>SÁBADO</div><div>DOMINGO</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: '6px', textAlign: 'center', fontWeight: 'bold', fontSize: '0.62rem', color: 'var(--text-secondary)', borderBottom: '1px solid rgba(255,255,255,0.02)', paddingBottom: '4px' }}>
+            <div>LUNES</div><div>MARTES</div><div>MIÉRCOLES</div><div>JUEVES</div><div>VIERNES</div><div>SÁBADO</div><div>DOMINGO</div><div style={{ color: 'var(--color-cyan)', fontWeight: 800 }}>TOTAL SEMANAL</div>
           </div>
 
           {/* Celdas del Calendario */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '6px' }}>
-            {/* Rellenar offset de inicio de mes */}
-            {Array.from({ length: firstDayOffset }).map((_, idx) => (
-              <div key={`offset-${idx}`} style={{ background: 'rgba(0,0,0,0.15)', borderRadius: '6px', minHeight: '105px', border: '1px solid rgba(255,255,255,0.01)' }} />
-            ))}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: '6px' }}>
+            {(() => {
+              const weeks = [];
+              let currentWeek = [];
 
-            {/* Días reales del mes */}
-            {calendarDays.map((dayObj) => {
-              const { day, isToday, isFuture, pnl, trades, isProjected, debtsPaid, sobrante, equity, risk } = dayObj;
-              
-              let pnlColor = 'var(--text-secondary)';
-              let pnlText = '—';
-              let cellBg = 'rgba(255,255,255,0.005)';
-              let border = '1px solid rgba(255,255,255,0.04)';
-
-              if (pnl > 0) {
-                pnlColor = isProjected ? 'rgba(16,185,129,0.55)' : 'var(--color-emerald)';
-                pnlText = `+$${pnl.toFixed(0)}`;
-                cellBg = isProjected ? 'rgba(16,185,129,0.01)' : 'rgba(16,185,129,0.03)';
-                border = `1px solid ${isProjected ? 'rgba(16,185,129,0.07)' : 'rgba(16,185,129,0.12)'}`;
-              } else if (pnl < 0) {
-                pnlColor = 'var(--color-rose)';
-                pnlText = `-$${Math.abs(pnl).toFixed(0)}`;
-                cellBg = 'rgba(244,63,94,0.03)';
-                border = '1px solid rgba(244,63,94,0.12)';
+              // Rellenar offset de inicio de mes
+              for (let i = 0; i < firstDayOffset; i++) {
+                currentWeek.push({ isOffset: true });
               }
 
-              if (isToday) {
-                border = '2px solid var(--color-cyan)';
-                cellBg = 'rgba(6,182,212,0.05)';
+              // Añadir los días reales del mes
+              for (const dayObj of calendarDays) {
+                currentWeek.push(dayObj);
+                if (currentWeek.length === 7) {
+                  weeks.push(currentWeek);
+                  currentWeek = [];
+                }
               }
 
-              return (
-                <div
-                  key={`day-${day}`}
-                  onClick={() => handleDayClick(dayObj)}
-                  style={{
-                    background: cellBg,
-                    border,
-                    borderRadius: '8px',
-                    padding: '6px',
-                    minHeight: '105px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    justifyContent: 'space-between',
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease',
-                    position: 'relative',
-                    overflow: 'hidden'
-                  }}
-                  className="calendar-day-cell"
-                >
-                  {/* Número de día y Tag de Hoy */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '0.68rem', fontWeight: isToday ? 900 : 600, color: isToday ? '#ffffff' : 'rgba(255,255,255,0.35)' }}>
-                      {day}
-                    </span>
-                    {isToday && (
-                      <span style={{ fontSize: '0.5rem', background: 'var(--color-cyan)', color: '#000000', padding: '0px 4px', borderRadius: '3px', fontWeight: 800 }}>
-                        HOY
-                      </span>
-                    )}
-                  </div>
+              // Rellenar offset al final de la última semana si no está completa
+              if (currentWeek.length > 0) {
+                while (currentWeek.length < 7) {
+                  currentWeek.push({ isOffset: true });
+                }
+                weeks.push(currentWeek);
+              }
 
-                  {/* PnL de Trading */}
-                  <div style={{ textAlign: 'center', margin: '4px 0' }}>
-                    <div style={{ fontSize: '0.78rem', fontWeight: 800, color: pnlColor }}>
-                      {pnlText}
-                    </div>
-                    {trades > 0 && (
-                      <div style={{ fontSize: '0.52rem', color: 'rgba(255,255,255,0.2)' }}>
-                        {trades} trade{trades > 1 ? 's' : ''} {isProjected && '(prev)'}
-                      </div>
-                    )}
-                  </div>
+              // Procesar cada semana
+              return weeks.map((week, wIdx) => {
+                // Calcular total semanal de P&L de trading (tanto real como proyectado)
+                const weeklyPnl = week.reduce((sum, d) => {
+                  if (d.isOffset) return sum;
+                  return sum + (d.pnl || 0);
+                }, 0);
 
-                  {/* Desglose de Caja Diaria */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', borderTop: '1px solid rgba(255,255,255,0.02)', paddingTop: '3px' }}>
-                    {(() => {
-                      const dailyIng = efeIncome + (pnlEur > 0 ? pnlEur : 0);
-                      const dailyGas = fixedExpense + debtsPaid + (pnlEur < 0 ? Math.abs(pnlEur) : 0);
+                const hasRealTrades = week.some(d => !d.isOffset && !d.isProjected && d.trades > 0);
+                const hasProjected = week.some(d => !d.isOffset && d.isProjected);
+
+                return (
+                  <React.Fragment key={`week-row-${wIdx}`}>
+                    {/* Renderizar los 7 días de la semana */}
+                    {week.map((dayObj, dIdx) => {
+                      if (dayObj.isOffset) {
+                        return (
+                          <div key={`offset-${wIdx}-${dIdx}`} style={{ background: 'rgba(0,0,0,0.12)', borderRadius: '8px', minHeight: '75px', border: '1px solid rgba(255,255,255,0.01)' }} />
+                        );
+                      }
+
+                      const { day, isToday, isFuture, pnl, trades, isProjected } = dayObj;
+                      
+                      let pnlColor = 'var(--text-secondary)';
+                      let pnlText = '—';
+                      let cellBg = 'rgba(255,255,255,0.005)';
+                      let border = '1px solid rgba(255,255,255,0.04)';
+
+                      if (pnl > 0) {
+                        pnlColor = isProjected ? 'rgba(16,185,129,0.55)' : 'var(--color-emerald)';
+                        pnlText = `+$${pnl.toFixed(2)}`;
+                        cellBg = isProjected ? 'rgba(16,185,129,0.01)' : 'rgba(16,185,129,0.03)';
+                        border = `1px solid ${isProjected ? 'rgba(16,185,129,0.07)' : 'rgba(16,185,129,0.12)'}`;
+                      } else if (pnl < 0) {
+                        pnlColor = 'var(--color-rose)';
+                        pnlText = `-$${Math.abs(pnl).toFixed(2)}`;
+                        cellBg = 'rgba(244,63,94,0.03)';
+                        border = '1px solid rgba(244,63,94,0.12)';
+                      } else if (!isToday && !isFuture) {
+                        pnlColor = 'rgba(255, 255, 255, 0.2)';
+                        pnlText = '$0.00';
+                      }
+
+                      if (isToday) {
+                        border = '2px solid var(--color-cyan)';
+                        cellBg = 'rgba(6,182,212,0.05)';
+                      }
+
                       return (
-                        <>
-                          <div style={{ fontSize: '0.50rem', display: 'flex', justifyContent: 'space-between', color: 'rgba(16, 185, 129, 0.7)' }}>
-                            <span>Ingreso:</span>
-                            <span style={{ fontWeight: 600 }}>+{dailyIng.toFixed(0)}€</span>
-                          </div>
-                          <div style={{ fontSize: '0.50rem', display: 'flex', justifyContent: 'space-between', color: 'rgba(244, 63, 94, 0.7)' }}>
-                            <span>Gasto:</span>
-                            <span style={{ fontWeight: 600 }}>-{dailyGas.toFixed(0)}€</span>
-                          </div>
-                          <div style={{ fontSize: '0.54rem', display: 'flex', justifyContent: 'space-between', color: sobrante >= 0 ? 'var(--color-emerald)' : 'var(--color-rose)', marginTop: '1px', borderTop: '1px dashed rgba(255,255,255,0.03)', paddingTop: '1px' }}>
-                            <span>{sobrante >= 0 ? 'Sobrante:' : 'Déficit:'}</span>
-                            <span style={{ fontWeight: 700 }}>
-                              {sobrante >= 0 ? `+${sobrante.toFixed(0)}` : `-${Math.abs(sobrante).toFixed(0)}`}€
+                        <div
+                          key={`day-${day}`}
+                          onClick={() => handleDayClick(dayObj)}
+                          style={{
+                            background: cellBg,
+                            border,
+                            borderRadius: '8px',
+                            padding: '8px',
+                            minHeight: '75px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            justifyContent: 'space-between',
+                            cursor: 'pointer',
+                            transition: 'all 0.15s ease',
+                            position: 'relative',
+                            overflow: 'hidden'
+                          }}
+                          className="calendar-day-cell"
+                        >
+                          {/* Número de día y Tag de Hoy */}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontSize: '0.68rem', fontWeight: isToday ? 900 : 600, color: isToday ? '#ffffff' : 'rgba(255,255,255,0.35)' }}>
+                              {day}
                             </span>
+                            {isToday && (
+                              <span style={{ fontSize: '0.5rem', background: 'var(--color-cyan)', color: '#000000', padding: '0px 4px', borderRadius: '3px', fontWeight: 800 }}>
+                                HOY
+                              </span>
+                            )}
                           </div>
-                        </>
-                      );
-                    })()}
-                    
-                    {/* Equity Acumulada */}
-                    <div style={{ fontSize: '0.54rem', display: 'flex', justifyContent: 'space-between', color: 'rgba(255,255,255,0.4)', marginTop: '2px' }}>
-                      <span>Equity:</span>
-                      <span style={{ fontWeight: 700, color: '#ffffff' }}>${equity.toFixed(0)}</span>
-                    </div>
 
-                    {/* Riesgo permitido (Riesgo Día) */}
-                    <div style={{ fontSize: '0.48rem', display: 'flex', justifyContent: 'space-between', color: dayObj.isManualRisk ? 'var(--color-cyan)' : 'rgba(244,63,94,0.45)' }}>
-                      <span>Riesgo día{dayObj.isManualRisk ? ' (M)' : ''}:</span>
-                      <span style={{ fontWeight: 700 }}>-${risk.toFixed(0)}</span>
+                          {/* PnL de Trading */}
+                          <div style={{ textAlign: 'center', margin: '8px 0 4px 0' }}>
+                            <div style={{ fontSize: '0.85rem', fontWeight: 800, color: pnlColor }}>
+                              {pnlText}
+                            </div>
+                            {trades > 0 && (
+                              <div style={{ fontSize: '0.52rem', color: 'rgba(255,255,255,0.3)' }}>
+                                {trades} trade{trades > 1 ? 's' : ''} {isProjected && '(prev)'}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {/* Columna 8: Celda del TOTAL SEMANAL */}
+                    <div
+                      style={{
+                        background: 'linear-gradient(135deg, rgba(6, 182, 212, 0.04) 0%, rgba(15, 23, 42, 0.4) 100%)',
+                        border: '1px solid rgba(6, 182, 212, 0.18)',
+                        borderRadius: '8px',
+                        padding: '8px',
+                        minHeight: '75px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        position: 'relative',
+                        overflow: 'hidden'
+                      }}
+                    >
+                      <div style={{ fontSize: '0.50rem', fontWeight: 800, color: 'var(--color-cyan)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        Total Semana
+                      </div>
+                      
+                      <div style={{ textAlign: 'center', margin: '4px 0' }}>
+                        <div style={{ 
+                          fontSize: '0.88rem', 
+                          fontWeight: 900, 
+                          color: weeklyPnl >= 0 ? 'var(--color-emerald)' : 'var(--color-rose)',
+                          textShadow: weeklyPnl !== 0 ? `0 0 8px ${weeklyPnl > 0 ? 'rgba(16,185,129,0.15)' : 'rgba(244,63,94,0.15)'}` : 'none'
+                        }}>
+                          {weeklyPnl >= 0 ? `+$${weeklyPnl.toFixed(2)}` : `-$${Math.abs(weeklyPnl).toFixed(2)}`}
+                        </div>
+                        <span style={{ fontSize: '0.48rem', color: 'var(--text-tertiary)' }}>
+                          {hasRealTrades && hasProjected ? 'Real + Prev' : hasRealTrades ? 'Solo Real' : hasProjected ? 'Solo Prev' : '0 trades'}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                </div>
-              );
-            })}
+                  </React.Fragment>
+                );
+              });
+            })()}
           </div>
         </div>
       )}
@@ -1431,478 +1779,1068 @@ export default function ViabilityWidget({ user, totalDebts, onDebtsUpdated, targ
                 </div>
               );
             })()}
-          </div>
         </div>
-      )}
+      </div>
+    )}
 
       {/* --- VISTA AJUSTES FIJOS UNIFICADOS (VERDE, ROJO, AZUL) --- */}
-      {viewMode === 'month' && activeTab === 'settings' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          
-          {/* PANEL SUPERIOR DE MÉTRICAS Y GRÁFICOS */}
-          <div className="glass-panel" style={{ padding: '20px', display: 'flex', flexWrap: 'wrap', gap: '20px', alignItems: 'center', justifyContent: 'space-around' }}>
-            {/* 1. Indicador Circular de Carga de Gastos */}
-            {(() => {
-              const pct = efeSalary > 0 ? Math.min((monthlyExpenses / efeSalary) * 100, 150) : 0;
-              const radius = 40;
-              const strokeWidth = 6;
-              const circumference = 2 * Math.PI * radius;
-              const strokeDashoffset = circumference - (Math.min(pct, 100) / 100) * circumference;
-              const gaugeColor = pct > 80 ? 'var(--color-rose)' : pct > 50 ? 'var(--color-amber)' : 'var(--color-emerald)';
-              
-              return (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                  <div style={{ position: 'relative', width: '90px', height: '90px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <svg width="90" height="90" viewBox="0 0 90 90" style={{ transform: 'rotate(-90deg)' }}>
-                      <circle cx="45" cy="45" r={radius} fill="transparent" stroke="rgba(255, 255, 255, 0.03)" strokeWidth={strokeWidth} />
-                      <circle cx="45" cy="45" r={radius} fill="transparent" stroke={gaugeColor} strokeWidth={strokeWidth} strokeDasharray={circumference} strokeDashoffset={strokeDashoffset} strokeLinecap="round" />
-                    </svg>
-                    <div style={{ position: 'absolute', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                      <span style={{ fontSize: '1.1rem', fontWeight: 900, color: '#ffffff' }}>{pct.toFixed(0)}%</span>
-                    </div>
-                  </div>
-                  <div>
-                    <span style={{ fontSize: '0.55rem', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase', fontWeight: 700 }}>Carga de Gastos</span>
-                    <strong style={{ fontSize: '0.9rem', color: gaugeColor }}>{monthlyExpenses.toLocaleString()} € consumidos</strong>
-                    <span style={{ fontSize: '0.55rem', color: 'var(--text-tertiary)', display: 'block' }}>de {efeSalary.toLocaleString()} € de nómina</span>
-                  </div>
-                </div>
-              );
-            })()}
-
-            {/* 2. Indicador Circular del Progreso de Deuda */}
-            {(() => {
-              const totalAmount = debtsList.reduce((sum, d) => sum + parseFloat(d.amount), 0);
-              const totalPaid = debtsList.reduce((sum, d) => sum + parseFloat(d.paid_amount), 0);
-              const remaining = totalAmount - totalPaid;
-              const pctPaid = totalAmount > 0 ? (totalPaid / totalAmount) * 100 : 0;
-              
-              const radius = 40;
-              const strokeWidth = 6;
-              const circumference = 2 * Math.PI * radius;
-              const strokeDashoffset = circumference - (Math.min(pctPaid, 100) / 100) * circumference;
-              
-              return (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                  <div style={{ position: 'relative', width: '90px', height: '90px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <svg width="90" height="90" viewBox="0 0 90 90" style={{ transform: 'rotate(-90deg)' }}>
-                      <circle cx="45" cy="45" r={radius} fill="transparent" stroke="rgba(255, 255, 255, 0.03)" strokeWidth={strokeWidth} />
-                      <circle cx="45" cy="45" r={radius} fill="transparent" stroke="var(--color-cyan)" strokeWidth={strokeWidth} strokeDasharray={circumference} strokeDashoffset={strokeDashoffset} strokeLinecap="round" />
-                    </svg>
-                    <div style={{ position: 'absolute', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                      <span style={{ fontSize: '1.1rem', fontWeight: 900, color: '#ffffff' }}>{pctPaid.toFixed(0)}%</span>
-                    </div>
-                  </div>
-                  <div>
-                    <span style={{ fontSize: '0.55rem', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase', fontWeight: 700 }}>Amortización Global</span>
-                    <strong style={{ fontSize: '0.9rem', color: 'var(--color-cyan)' }}>{totalPaid.toLocaleString()} € pagados</strong>
-                    <span style={{ fontSize: '0.55rem', color: 'var(--text-secondary)', display: 'block' }}>Pendiente: <strong style={{ color: 'var(--color-rose)' }}>{remaining.toLocaleString()} €</strong></span>
-                  </div>
-                </div>
-              );
-            })()}
-          </div>
-
-          {/* CUADRÍCULA DE AJUSTES FIJOS UNIFICADOS */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
+      {viewMode === 'month' && activeTab === 'settings' && (() => {
+        const totalRemainingDebt = debtsList.filter(d => d.is_expense !== true).reduce((sum, d) => sum + (parseFloat(d.amount) - parseFloat(d.paid_amount)), 0);
+        const totalRemainingNonPriority = debtsList.filter(d => d.is_expense === true).reduce((sum, d) => sum + (parseFloat(d.amount) - parseFloat(d.paid_amount)), 0);
+        const filteredDebts = debtsList.filter(d => d.is_expense !== true);
+        const filteredNonPriority = debtsList.filter(d => d.is_expense === true);
+        
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
             
-            {/* COLUMNA VERDE — INGRESOS Y CAPITAL */}
-            <div className="glass-panel" style={{ padding: '18px', borderTop: '4px solid var(--color-emerald)', background: 'rgba(16, 185, 129, 0.015)' }}>
-              <h5 style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--color-emerald)', marginBottom: '14px', borderBottom: '1px solid rgba(16,185,129,0.1)', paddingBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                🟢 Ingresos & Capital
-              </h5>
+            {/* PANEL SUPERIOR DE MÉTRICAS Y GRÁFICOS */}
+            <div className="glass-panel" style={{ padding: '20px', display: 'flex', flexWrap: 'wrap', gap: '20px', alignItems: 'center', justifyContent: 'space-around' }}>
+              {/* 1. Indicador Circular de Carga de Gastos / Win Rate de Trading */}
+              {(() => {
+                let pct, title, valueText, descText, gaugeColor;
+                const radius = 40;
+                const strokeWidth = 6;
+                const circumference = 2 * Math.PI * radius;
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                {/* Capital de Trading BingX */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', background: 'rgba(0,0,0,0.15)', border: '1px solid rgba(255,255,255,0.03)', borderRadius: '8px', padding: '10px' }}>
-                  <label style={{ fontSize: '0.58rem', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase' }}>
-                    Capital Trading (USD)
-                  </label>
-                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <input 
-                      type="number" 
-                      className="form-input" 
-                      value={startBalance} 
-                      onChange={(e) => setStartBalance(parseFloat(e.target.value) || 0)} 
-                      style={{ height: '32px', fontSize: '0.78rem', flex: 1 }} 
-                    />
-                    <button
-                      type="button"
-                      onClick={fetchLiveBalance}
-                      disabled={liveBalanceLoading}
-                      className="btn btn-outline flex-center"
-                      style={{ width: '32px', height: '32px', padding: 0, minWidth: 0, borderRadius: 'var(--radius-sm)' }}
-                      title="Sincronizar Balance real de BingX"
-                    >
-                      <RefreshCw size={12} className={liveBalanceLoading ? "animate-spin" : ""} />
-                    </button>
+                if (onlyTradingJournal) {
+                  const wins = calendarDays.filter(d => !d.isProjected && d.pnl > 0);
+                  const losses = calendarDays.filter(d => !d.isProjected && d.pnl < 0);
+                  const totalPlayed = wins.length + losses.length;
+                  pct = totalPlayed > 0 ? (wins.length / totalPlayed) * 100 : 0;
+                  title = "Win Rate del Mes";
+                  valueText = `${pct.toFixed(0)}%`;
+                  descText = `${wins.length} ganados de ${totalPlayed} operados`;
+                  gaugeColor = pct >= 50 ? 'var(--color-emerald)' : 'var(--color-rose)';
+                } else {
+                  pct = efeSalary > 0 ? Math.min((monthlyExpenses / efeSalary) * 100, 150) : 0;
+                  title = "Carga de Gastos";
+                  valueText = `${pct.toFixed(0)}%`;
+                  descText = `${monthlyExpenses.toLocaleString()} € consumidos`;
+                  gaugeColor = pct > 80 ? 'var(--color-rose)' : pct > 50 ? 'var(--color-amber)' : 'var(--color-emerald)';
+                }
+                
+                const strokeDashoffset = circumference - (Math.min(pct, 100) / 100) * circumference;
+
+                return (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                    <div style={{ position: 'relative', width: '90px', height: '90px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <svg width="90" height="90" viewBox="0 0 90 90" style={{ transform: 'rotate(-90deg)' }}>
+                        <circle cx="45" cy="45" r={radius} fill="transparent" stroke="rgba(255, 255, 255, 0.03)" strokeWidth={strokeWidth} />
+                        <circle cx="45" cy="45" r={radius} fill="transparent" stroke={gaugeColor} strokeWidth={strokeWidth} strokeDasharray={circumference} strokeDashoffset={strokeDashoffset} strokeLinecap="round" />
+                      </svg>
+                      <div style={{ position: 'absolute', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                        <span style={{ fontSize: '1.1rem', fontWeight: 900, color: '#ffffff' }}>{valueText}</span>
+                      </div>
+                    </div>
+                    <div>
+                      <span style={{ fontSize: '0.55rem', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase', fontWeight: 700 }}>{title}</span>
+                      <strong style={{ fontSize: '0.9rem', color: gaugeColor }}>{descText}</strong>
+                      <span style={{ fontSize: '0.55rem', color: 'var(--text-tertiary)', display: 'block' }}>
+                        {onlyTradingJournal ? "Basado en sesiones cerradas" : `de ${efeSalary.toLocaleString()} € de nómina`}
+                      </span>
+                    </div>
                   </div>
-                  <span style={{ fontSize: '0.5rem', color: 'var(--text-tertiary)' }}>
-                    Sincronizado con la equity en tiempo real de tu cuenta BingX.
-                  </span>
-                </div>
+                );
+              })()}
 
-                {/* Nómina EFE mensual */}
-                <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                  <label style={{ fontSize: '0.58rem', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase' }}>
-                    Nómina Mensual EFE (€)
-                  </label>
-                  <input 
-                    type="number" 
-                    className="form-input" 
-                    value={efeSalary} 
-                    onChange={(e) => setEfeSalary(parseFloat(e.target.value) || 0)} 
-                    style={{ height: '32px', fontSize: '0.78rem' }} 
-                  />
-                </div>
+              {/* 2. Indicador Circular de Progreso de Deuda / Rendimiento Hito de Trading */}
+              {(() => {
+                let pct, title, valueText, descText, secondaryText, gaugeColor;
+                const radius = 40;
+                const strokeWidth = 6;
+                const circumference = 2 * Math.PI * radius;
 
-                {/* Paga Extra */}
-                <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                  <label style={{ fontSize: '0.58rem', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase' }}>
-                    Paga Extra (€)
-                  </label>
-                  <input 
-                    type="number" 
-                    className="form-input" 
-                    value={efeExtraAmount} 
-                    onChange={(e) => setEfeExtraAmount(parseFloat(e.target.value) || 0)} 
-                    style={{ height: '32px', fontSize: '0.78rem' }} 
-                  />
-                </div>
+                if (onlyTradingJournal) {
+                  const totalCurrentBalance = startBalance;
+                  const rendimientoNeto = totalCurrentBalance - operationStartCapital;
+                  const rendimientoPorcentaje = operationStartCapital > 0 ? (rendimientoNeto / operationStartCapital) * 100 : 0;
+                  
+                  pct = Math.max(0, Math.min(rendimientoPorcentaje, 100)); // Capado a 100% para el stroke
+                  title = "Rendimiento Hito";
+                  valueText = `${rendimientoPorcentaje >= 0 ? '+' : ''}${rendimientoPorcentaje.toFixed(0)}%`;
+                  descText = `${rendimientoNeto >= 0 ? '+' : ''}$${rendimientoNeto.toFixed(2)}`;
+                  secondaryText = `Capital Inicial: $${operationStartCapital}`;
+                  gaugeColor = rendimientoNeto >= 0 ? 'var(--color-emerald)' : 'var(--color-rose)';
+                } else {
+                  const totalAmount = debtsList.reduce((sum, d) => sum + parseFloat(d.amount), 0);
+                  const totalPaid = debtsList.reduce((sum, d) => sum + parseFloat(d.paid_amount), 0);
+                  const remaining = totalAmount - totalPaid;
+                  pct = totalAmount > 0 ? (totalPaid / totalAmount) * 100 : 0;
+                  title = "Amortización Global";
+                  valueText = `${pct.toFixed(0)}%`;
+                  descText = `${totalPaid.toLocaleString()} € pagados`;
+                  secondaryText = `Pendiente: ${remaining.toLocaleString()} €`;
+                  gaugeColor = "var(--color-cyan)";
+                }
+                
+                const strokeDashoffset = circumference - (Math.min(pct, 100) / 100) * circumference;
 
-                {/* Caja Libre Calculada */}
-                <div style={{ 
-                  marginTop: '10px',
-                  background: 'rgba(16, 185, 129, 0.05)', 
-                  border: '1px solid rgba(16, 185, 129, 0.15)',
-                  borderRadius: '8px', 
-                  padding: '12px',
-                  fontSize: '0.72rem',
-                  lineHeight: 1.4
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
-                    <span>Caja Libre de Nómina:</span>
-                    <strong style={{ color: 'var(--color-emerald)' }}>{(efeSalary - monthlyExpenses).toLocaleString()} €/mes</strong>
+                return (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                    <div style={{ position: 'relative', width: '90px', height: '90px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <svg width="90" height="90" viewBox="0 0 90 90" style={{ transform: 'rotate(-90deg)' }}>
+                        <circle cx="45" cy="45" r={radius} fill="transparent" stroke="rgba(255, 255, 255, 0.03)" strokeWidth={strokeWidth} />
+                        <circle cx="45" cy="45" r={radius} fill="transparent" stroke={gaugeColor} strokeWidth={strokeWidth} strokeDasharray={circumference} strokeDashoffset={strokeDashoffset} strokeLinecap="round" />
+                      </svg>
+                      <div style={{ position: 'absolute', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                        <span style={{ fontSize: '1.1rem', fontWeight: 900, color: '#ffffff' }}>{valueText}</span>
+                      </div>
+                    </div>
+                    <div>
+                      <span style={{ fontSize: '0.55rem', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase', fontWeight: 700 }}>{title}</span>
+                      <strong style={{ fontSize: '0.9rem', color: gaugeColor }}>{descText}</strong>
+                      <span style={{ fontSize: '0.55rem', color: 'var(--text-secondary)', display: 'block' }}>
+                        {onlyTradingJournal ? secondaryText : <>Pendiente: <strong style={{ color: 'var(--color-rose)' }}>{secondaryText.split(': ')[1]}</strong></>}
+                      </span>
+                    </div>
                   </div>
-                  <span style={{ fontSize: '0.52rem', color: 'var(--text-tertiary)', display: 'block' }}>
-                    Dinero garantizado disponible mensualmente tras deducir tus gastos fijos (sin contar trading).
-                  </span>
-                </div>
-              </div>
+                );
+              })()}
             </div>
 
-            {/* COLUMNA ROJA — GASTOS FIJOS */}
-            <div className="glass-panel" style={{ padding: '18px', borderTop: '4px solid var(--color-rose)', background: 'rgba(244, 63, 94, 0.015)' }}>
-              <h5 style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--color-rose)', marginBottom: '14px', borderBottom: '1px solid rgba(244,63,94,0.1)', paddingBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                🔴 Gastos Fijos ({monthlyExpenses.toLocaleString()} €)
-              </h5>
+            {/* CUADRÍCULA DE AJUSTES FIJOS UNIFICADOS */}
+            <div style={{ 
+              display: 'grid', 
+              gridTemplateColumns: onlyTradingJournal ? '1fr' : 'repeat(auto-fit, minmax(300px, 1fr))', 
+              gap: '20px',
+              maxWidth: onlyTradingJournal ? '500px' : 'none',
+              margin: onlyTradingJournal ? '0 auto' : '0'
+            }}>
+              
+              {/* COLUMNA VERDE — INGRESOS Y CAPITAL */}
+              <div className="glass-panel" style={{ padding: '18px', borderTop: '4px solid var(--color-emerald)', background: 'rgba(16, 185, 129, 0.015)' }}>
+                <h5 style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--color-emerald)', marginBottom: '14px', borderBottom: '1px solid rgba(16,185,129,0.1)', paddingBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  {onlyTradingJournal ? "🟢 Parámetros del Reto de Consistencia" : "🟢 Ingresos & Capital"}
+                </h5>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                {/* Formulario rápido para añadir gasto */}
-                <form onSubmit={handleAddExpense} style={{ display: 'flex', flexDirection: 'column', gap: '6px', background: 'rgba(0,0,0,0.12)', border: '1px solid rgba(255,255,255,0.03)', borderRadius: '8px', padding: '10px' }}>
-                  <span style={{ fontSize: '0.55rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>
-                    Añadir Gasto Mensual
-                  </span>
-                  <div style={{ display: 'flex', gap: '6px' }}>
-                    <input 
-                      type="text" 
-                      className="form-input" 
-                      placeholder="Concepto..." 
-                      value={newExpenseName} 
-                      onChange={(e) => setNewExpenseName(e.target.value)} 
-                      required 
-                      style={{ height: '30px', fontSize: '0.75rem', flex: 1 }} 
-                    />
-                    <input 
-                      type="number" 
-                      className="form-input" 
-                      placeholder="€..." 
-                      value={newExpenseAmount} 
-                      onChange={(e) => setNewExpenseAmount(e.target.value)} 
-                      required 
-                      style={{ height: '30px', fontSize: '0.75rem', width: '70px' }} 
-                    />
-                    <button type="submit" className="btn btn-emerald" style={{ padding: '0 10px', height: '30px', fontSize: '0.7rem', fontWeight: 700, background: 'var(--color-rose)', border: 'none' }}>
-                      +
-                    </button>
-                  </div>
-                </form>
-
-                {/* Lista de Gastos */}
-                <div style={{ maxHeight: '280px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  {expensesList.length === 0 ? (
-                    <div style={{ textAlign: 'center', fontSize: '0.7rem', color: 'var(--text-tertiary)', padding: '20px' }}>
-                      Sin gastos fijos mensuales.
-                    </div>
-                  ) : (
-                    expensesList.map(item => (
-                      <div 
-                        key={item.id} 
-                        style={{ 
-                          display: 'flex', 
-                          justifyContent: 'space-between', 
-                          alignItems: 'center', 
-                          padding: '8px 10px', 
-                          background: 'rgba(255,255,255,0.01)', 
-                          border: '1px solid var(--border)', 
-                          borderRadius: '6px', 
-                          fontSize: '0.72rem'
-                        }}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                  {/* Desglose de Capitales BingX */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: 'rgba(0,0,0,0.15)', border: '1px solid rgba(255,255,255,0.03)', borderRadius: '8px', padding: '10px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <label style={{ fontSize: '0.58rem', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase' }}>
+                        Capitales BingX
+                      </label>
+                      <button
+                        type="button"
+                        onClick={fetchLiveBalance}
+                        disabled={liveBalanceLoading}
+                        className="btn btn-outline flex-center"
+                        style={{ width: '22px', height: '22px', padding: 0, minWidth: 0, borderRadius: '4px' }}
+                        title="Sincronizar Balances reales de BingX"
                       >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <span style={{ fontSize: '0.9rem' }}>{getExpenseIcon(item.name)}</span>
-                          <span style={{ color: '#ffffff', fontWeight: 600 }}>{item.name}</span>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span style={{ fontWeight: 800, color: 'var(--color-rose)' }}>
-                            {parseFloat(item.amount).toLocaleString(undefined, {maximumFractionDigits: 0})} €
-                          </span>
-                          <button 
-                            onClick={() => handleDeleteExpense(item.id)} 
-                            className="btn-icon" 
-                            style={{ color: 'var(--color-rose)', opacity: 0.6, cursor: 'pointer', background: 'none', border: 'none', padding: 0 }}
-                          >
-                            <Trash2 size={12} />
-                          </button>
-                        </div>
+                        <RefreshCw size={10} className={liveBalanceLoading ? "animate-spin" : ""} />
+                      </button>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                      {/* Capital Fondos */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                        <span style={{ fontSize: '0.5rem', color: 'var(--text-secondary)' }}>Cuenta Fondos (USD)</span>
+                        <input 
+                          type="number" 
+                          step="0.01"
+                          className="form-input" 
+                          value={fundsBalance} 
+                          onChange={(e) => setFundsBalance(parseFloat(e.target.value) || 0)} 
+                          onBlur={() => saveFinancialConfig(efeSalary, efeExtraAmount, startBalance, fundsBalance)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') saveFinancialConfig(efeSalary, efeExtraAmount, startBalance, fundsBalance);
+                          }}
+                          style={{ height: '28px', fontSize: '0.74rem', padding: '4px 6px' }} 
+                        />
                       </div>
-                    ))
+
+                      {/* Capital Futuros */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                        <span style={{ fontSize: '0.5rem', color: 'var(--text-secondary)' }}>Cuenta Futuros (USD)</span>
+                        <input 
+                          type="number" 
+                          step="0.01"
+                          className="form-input" 
+                          value={startBalance} 
+                          onChange={(e) => setStartBalance(parseFloat(e.target.value) || 0)} 
+                          onBlur={() => saveFinancialConfig(efeSalary, efeExtraAmount, startBalance, fundsBalance)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') saveFinancialConfig(efeSalary, efeExtraAmount, startBalance, fundsBalance);
+                          }}
+                          style={{ height: '28px', fontSize: '0.74rem', padding: '4px 6px' }} 
+                        />
+                      </div>
+                    </div>
+                    <span style={{ fontSize: '0.48rem', color: 'var(--text-tertiary)' }}>
+                      Sincronizado en tiempo real.
+                    </span>
+                  </div>
+
+                  {/* Inputs de Credenciales API BingX */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: 'rgba(0,0,0,0.15)', border: '1px solid rgba(255,255,255,0.03)', borderRadius: '8px', padding: '10px' }}>
+                    <label style={{ fontSize: '0.58rem', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase' }}>
+                      Credenciales API (BingX)
+                    </label>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                        <span style={{ fontSize: '0.5rem', color: 'var(--text-secondary)' }}>API KEY</span>
+                        <input 
+                          type="password"
+                          className="form-input" 
+                          value={bingxApiKey} 
+                          onChange={(e) => setBingxApiKey(e.target.value)} 
+                          onBlur={() => saveFinancialConfig(efeSalary, efeExtraAmount, startBalance, fundsBalance, operationStartCapital, operationStartDate, simDailyTargetPercent, bingxApiKey, bingxApiSecret)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') saveFinancialConfig(efeSalary, efeExtraAmount, startBalance, fundsBalance, operationStartCapital, operationStartDate, simDailyTargetPercent, bingxApiKey, bingxApiSecret);
+                          }}
+                          placeholder="Pegar nueva clave API..."
+                          style={{ height: '28px', fontSize: '0.7rem', padding: '4px 6px' }} 
+                        />
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                        <span style={{ fontSize: '0.5rem', color: 'var(--text-secondary)' }}>API SECRET</span>
+                        <input 
+                          type="password"
+                          className="form-input" 
+                          value={bingxApiSecret} 
+                          onChange={(e) => setBingxApiSecret(e.target.value)} 
+                          onBlur={() => saveFinancialConfig(efeSalary, efeExtraAmount, startBalance, fundsBalance, operationStartCapital, operationStartDate, simDailyTargetPercent, bingxApiKey, bingxApiSecret)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') saveFinancialConfig(efeSalary, efeExtraAmount, startBalance, fundsBalance, operationStartCapital, operationStartDate, simDailyTargetPercent, bingxApiKey, bingxApiSecret);
+                          }}
+                          placeholder="Pegar nuevo secreto API..."
+                          style={{ height: '28px', fontSize: '0.7rem', padding: '4px 6px' }} 
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Inputs del Hito de Trading */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '10px', background: 'rgba(0,0,0,0.15)', border: '1px solid rgba(255,255,255,0.03)', borderRadius: '8px' }}>
+                    <span style={{ fontSize: '0.55rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>
+                      Configuración del Hito
+                    </span>
+                    
+                    {/* Capital Inicial de Partida */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                      <label style={{ fontSize: '0.50rem', color: 'var(--text-secondary)' }}>CAPITAL INICIAL DE PARTIDA (USD)</label>
+                      <input 
+                        type="number"
+                        className="form-input"
+                        value={operationStartCapital}
+                        onChange={(e) => setOperationStartCapital(parseFloat(e.target.value) || 0)}
+                        onBlur={() => saveFinancialConfig(efeSalary, efeExtraAmount, startBalance, fundsBalance, operationStartCapital, operationStartDate, simDailyTargetPercent)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') saveFinancialConfig(efeSalary, efeExtraAmount, startBalance, fundsBalance, operationStartCapital, operationStartDate, simDailyTargetPercent);
+                        }}
+                        style={{ height: '28px', fontSize: '0.74rem', padding: '4px 6px' }}
+                      />
+                    </div>
+
+                    {/* Fecha de Inicio del Reto */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                      <label style={{ fontSize: '0.50rem', color: 'var(--text-secondary)' }}>FECHA DE INICIO DE OPERACIONES</label>
+                      <input 
+                        type="date"
+                        className="form-input"
+                        value={operationStartDate}
+                        onChange={(e) => setOperationStartDate(e.target.value)}
+                        onBlur={() => saveFinancialConfig(efeSalary, efeExtraAmount, startBalance, fundsBalance, operationStartCapital, operationStartDate, simDailyTargetPercent)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') saveFinancialConfig(efeSalary, efeExtraAmount, startBalance, fundsBalance, operationStartCapital, operationStartDate, simDailyTargetPercent);
+                        }}
+                        style={{ height: '28px', fontSize: '0.74rem', padding: '4px 6px', colorScheme: 'dark' }}
+                      />
+                    </div>
+
+                    {/* Rendimiento Objetivo Diario (%) */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                      <label style={{ fontSize: '0.50rem', color: 'var(--text-secondary)' }}>RENDIMIENTO DIARIO OBJETIVO (%)</label>
+                      <input 
+                        type="number"
+                        step="0.1"
+                        className="form-input"
+                        value={simDailyTargetPercent}
+                        onChange={(e) => setSimDailyTargetPercent(parseFloat(e.target.value) || 0)}
+                        onBlur={() => saveFinancialConfig(efeSalary, efeExtraAmount, startBalance, fundsBalance, operationStartCapital, operationStartDate, simDailyTargetPercent)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') saveFinancialConfig(efeSalary, efeExtraAmount, startBalance, fundsBalance, operationStartCapital, operationStartDate, simDailyTargetPercent);
+                        }}
+                        style={{ height: '28px', fontSize: '0.74rem', padding: '4px 6px' }}
+                      />
+                    </div>
+                  </div>
+
+                  {!onlyTradingJournal && (
+                    <>
+                      {/* Nómina EFE mensual */}
+                      <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                        <label style={{ fontSize: '0.58rem', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase' }}>
+                          Nómina Mensual EFE (€)
+                        </label>
+                        <input 
+                          type="number" 
+                          className="form-input" 
+                          value={efeSalary} 
+                          onChange={(e) => setEfeSalary(parseFloat(e.target.value) || 0)} 
+                          onBlur={() => saveFinancialConfig(efeSalary, efeExtraAmount, startBalance, fundsBalance)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') saveFinancialConfig(efeSalary, efeExtraAmount, startBalance, fundsBalance);
+                          }}
+                          style={{ height: '32px', fontSize: '0.78rem' }} 
+                        />
+                      </div>
+
+                      {/* Paga Extra */}
+                      <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                        <label style={{ fontSize: '0.58rem', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase' }}>
+                          Paga Extra (€)
+                        </label>
+                        <input 
+                          type="number" 
+                          className="form-input" 
+                          value={efeExtraAmount} 
+                          onChange={(e) => setEfeExtraAmount(parseFloat(e.target.value) || 0)} 
+                          onBlur={() => saveFinancialConfig(efeSalary, efeExtraAmount, startBalance, fundsBalance)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') saveFinancialConfig(efeSalary, efeExtraAmount, startBalance, fundsBalance);
+                          }}
+                          style={{ height: '32px', fontSize: '0.78rem' }} 
+                        />
+                      </div>
+
+                      {/* Caja Libre Calculada */}
+                      <div style={{ 
+                        marginTop: '10px',
+                        background: 'rgba(16, 185, 129, 0.05)', 
+                        border: '1px solid rgba(16, 185, 129, 0.15)',
+                        borderRadius: '8px', 
+                        padding: '12px',
+                        fontSize: '0.72rem',
+                        lineHeight: 1.4
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
+                          <span>Caja Libre de Nómina:</span>
+                          <strong style={{ color: 'var(--color-emerald)' }}>{(efeSalary - monthlyExpenses).toLocaleString()} €/mes</strong>
+                        </div>
+                        <span style={{ fontSize: '0.52rem', color: 'var(--text-tertiary)', display: 'block' }}>
+                          Dinero garantizado disponible mensualmente tras deducir tus gastos fijos (sin contar trading).
+                        </span>
+                      </div>
+                    </>
                   )}
                 </div>
               </div>
-            </div>
 
-            {/* COLUMNA AZUL — DEUDAS */}
-            <div className="glass-panel" style={{ padding: '18px', borderTop: '4px solid var(--color-cyan)', background: 'rgba(6, 182, 212, 0.015)' }}>
-              <h5 style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--color-cyan)', marginBottom: '14px', borderBottom: '1px solid rgba(6,182,212,0.1)', paddingBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                🔵 Deudas & Acreedores
-              </h5>
+              {!onlyTradingJournal && (
+                <>
+                  {/* COLUMNA ROJA — GASTOS FIJOS */}
+                  <div className="glass-panel" style={{ padding: '18px', borderTop: '4px solid var(--color-rose)', background: 'rgba(244, 63, 94, 0.015)' }}>
+                <h5 style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--color-rose)', marginBottom: '14px', borderBottom: '1px solid rgba(244,63,94,0.1)', paddingBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  🔴 Gastos Fijos ({monthlyExpenses.toLocaleString()} €)
+                </h5>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                {/* Formulario rápido para añadir deuda */}
-                <form onSubmit={handleAddDebt} style={{ display: 'flex', flexDirection: 'column', gap: '6px', background: 'rgba(0,0,0,0.12)', border: '1px solid rgba(255,255,255,0.03)', borderRadius: '8px', padding: '10px' }}>
-                  <span style={{ fontSize: '0.55rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>
-                    Registrar Deuda
-                  </span>
-                  <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                    <input 
-                      type="text" 
-                      className="form-input" 
-                      placeholder="Acreedor..." 
-                      value={newCreditor} 
-                      onChange={(e) => setNewCreditor(e.target.value)} 
-                      required 
-                      style={{ height: '30px', fontSize: '0.72rem', flex: 1, minWidth: '90px' }} 
-                    />
-                    <input 
-                      type="number" 
-                      className="form-input" 
-                      placeholder="Total €..." 
-                      value={newAmount} 
-                      onChange={(e) => setNewAmount(e.target.value)} 
-                      required 
-                      style={{ height: '30px', fontSize: '0.72rem', width: '70px' }} 
-                    />
-                    <input 
-                      type="number" 
-                      className="form-input" 
-                      placeholder="Prio (1-9)..." 
-                      min="1"
-                      value={newPriority} 
-                      onChange={(e) => setNewPriority(parseInt(e.target.value) || 1)} 
-                      required 
-                      style={{ height: '30px', fontSize: '0.72rem', width: '50px' }} 
-                    />
-                    <button type="submit" className="btn btn-cyan animate-glow-cyan" style={{ padding: '0 10px', height: '30px', fontSize: '0.7rem', fontWeight: 700 }}>
-                      +
-                    </button>
-                  </div>
-                </form>
-
-                {/* Lista de Deudas */}
-                <div style={{ maxHeight: '350px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  {debtsList.length === 0 ? (
-                    <div style={{ textAlign: 'center', fontSize: '0.7rem', color: 'var(--text-tertiary)', padding: '20px' }}>
-                      Sin deudas registradas.
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                  {/* Formulario rápido para añadir gasto */}
+                  <form onSubmit={handleAddExpense} style={{ display: 'flex', flexDirection: 'column', gap: '6px', background: 'rgba(0,0,0,0.12)', border: '1px solid rgba(255,255,255,0.03)', borderRadius: '8px', padding: '10px' }}>
+                    <span style={{ fontSize: '0.55rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>
+                      Añadir Gasto Mensual
+                    </span>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <input 
+                        type="text" 
+                        className="form-input" 
+                        placeholder="Concepto..." 
+                        value={newExpenseName} 
+                        onChange={(e) => setNewExpenseName(e.target.value)} 
+                        required 
+                        style={{ height: '30px', fontSize: '0.75rem', flex: 1 }} 
+                      />
+                      <input 
+                        type="number" 
+                        className="form-input" 
+                        placeholder="€..." 
+                        value={newExpenseAmount} 
+                        onChange={(e) => setNewExpenseAmount(e.target.value)} 
+                        required 
+                        style={{ height: '30px', fontSize: '0.75rem', width: '70px' }} 
+                      />
+                      <button type="submit" className="btn btn-emerald" style={{ padding: '0 10px', height: '30px', fontSize: '0.7rem', fontWeight: 700, background: 'var(--color-rose)', border: 'none' }}>
+                        +
+                      </button>
                     </div>
-                  ) : (
-                    debtsList.map(d => {
-                      const paidPercent = d.amount > 0 ? (d.paid_amount / d.amount) * 100 : 0;
-                      const remaining = d.amount - d.paid_amount;
-                      const myPayments = debtPaymentsList.filter(p => p.debt_id === d.id);
+                  </form>
 
-                      let badgeClass = 'badge-rose';
-                      let prioLabel = 'Prioridad Alta';
-                      if (d.priority > 3 && d.priority <= 7) {
-                        badgeClass = 'badge-amber';
-                        prioLabel = 'Prioridad Media';
-                      } else if (d.priority > 7) {
-                        badgeClass = 'badge-emerald';
-                        prioLabel = 'Prioridad Baja';
-                      }
-
-                      return (
+                  {/* Lista de Gastos */}
+                  <div style={{ maxHeight: 'none', overflow: 'visible', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {expensesList.length === 0 ? (
+                      <div style={{ textAlign: 'center', fontSize: '0.7rem', color: 'var(--text-tertiary)', padding: '20px' }}>
+                        Sin gastos fijos mensuales.
+                      </div>
+                    ) : (
+                      (isExpensesExpanded ? expensesList : expensesList.slice(0, 5)).map(item => (
                         <div 
-                          key={d.id} 
+                          key={item.id} 
                           style={{ 
                             display: 'flex', 
-                            flexDirection: 'column', 
-                            gap: '8px', 
-                            padding: '10px', 
+                            justifyContent: 'space-between', 
+                            alignItems: 'center', 
+                            padding: '8px 10px', 
                             background: 'rgba(255,255,255,0.01)', 
                             border: '1px solid var(--border)', 
-                            borderRadius: '8px', 
-                            fontSize: '0.72rem',
-                            position: 'relative'
+                            borderRadius: '6px', 
+                            fontSize: '0.72rem'
                           }}
                         >
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <strong style={{ color: '#ffffff', fontSize: '0.78rem' }}>{d.creditor}</strong>
-                            
-                            {/* Edición inline de prioridad por doble clic */}
-                            {editingDebtPriorityId === d.id ? (
-                              <input 
-                                type="number"
-                                value={tempPriorityValue}
-                                onChange={(e) => setTempPriorityValue(parseInt(e.target.value) || 1)}
-                                onBlur={() => savePriority(d.id)}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') savePriority(d.id);
-                                  if (e.key === 'Escape') setEditingDebtPriorityId(null);
-                                }}
-                                autoFocus
-                                style={{ width: '45px', height: '18px', fontSize: '0.62rem', padding: '0 4px', background: 'var(--background-tertiary)', border: '1px solid var(--color-cyan)', borderRadius: '3px', color: '#ffffff' }}
-                              />
-                            ) : (
-                              <span 
-                                onDoubleClick={() => {
-                                  setEditingDebtPriorityId(d.id);
-                                  setTempPriorityValue(d.priority);
-                                }}
-                                className={`badge ${badgeClass}`} 
-                                style={{ fontSize: '0.5rem', padding: '1px 5px', fontWeight: 700, cursor: 'pointer' }}
-                                title="Doble clic para cambiar prioridad"
-                              >
-                                Prio {d.priority} ({prioLabel.substring(10)})
-                              </span>
-                            )}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ fontSize: '0.9rem' }}>{getExpenseIcon(item.name)}</span>
+                            <span style={{ color: '#ffffff', fontWeight: 600 }}>{item.name}</span>
                           </div>
-
-                          {/* Barra de progreso */}
-                          <div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.58rem', color: 'var(--text-secondary)', marginBottom: '2px' }}>
-                              <span>Amortizado: <strong>{d.paid_amount.toLocaleString()} € ({paidPercent.toFixed(0)}%)</strong></span>
-                            </div>
-                            <div style={{ width: '100%', height: '4px', background: 'rgba(255,255,255,0.03)', borderRadius: '2px', overflow: 'hidden' }}>
-                              <div style={{ width: `${paidPercent}%`, height: '100%', background: 'linear-gradient(90deg, var(--color-cyan), var(--color-emerald))', transition: 'width 0.3s ease' }} />
-                            </div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.58rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                              <span>Pendiente: <strong style={{ color: 'var(--color-rose)' }}>{remaining.toLocaleString()} €</strong></span>
-                              <span>Total: <strong>{d.amount.toLocaleString()} €</strong></span>
-                            </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ fontWeight: 800, color: 'var(--color-rose)' }}>
+                              {parseFloat(item.amount).toLocaleString(undefined, {maximumFractionDigits: 0})} €
+                            </span>
+                            <button 
+                              onClick={() => handleDeleteExpense(item.id)} 
+                              className="btn-icon" 
+                              style={{ color: 'var(--color-rose)', opacity: 0.6, cursor: 'pointer', background: 'none', border: 'none', padding: 0 }}
+                            >
+                              <Trash2 size={12} />
+                            </button>
                           </div>
-
-                          {/* Formulario inline de Amortización Premium */}
-                          {amortizingDebtId === d.id ? (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', background: 'rgba(0,0,0,0.2)', padding: '8px', borderRadius: '4px', marginTop: '4px' }}>
-                              <div style={{ display: 'flex', gap: '4px' }}>
-                                <div style={{ flex: 1 }}>
-                                  <label style={{ fontSize: '0.5rem', color: 'var(--text-secondary)' }}>IMPORTE (€)</label>
-                                  <input 
-                                    type="number"
-                                    value={payAmount}
-                                    onChange={(e) => setPayAmount(e.target.value)}
-                                    placeholder="0"
-                                    style={{ width: '100%', height: '24px', fontSize: '0.68rem', padding: '2px 4px', background: 'var(--background-tertiary)', border: '1px solid var(--border)', borderRadius: '3px', color: '#ffffff' }}
-                                  />
-                                </div>
-                                <div style={{ flex: 1 }}>
-                                  <label style={{ fontSize: '0.5rem', color: 'var(--text-secondary)' }}>FECHA</label>
-                                  <input 
-                                    type="date"
-                                    value={payDate}
-                                    onChange={(e) => setPayDate(e.target.value)}
-                                    style={{ width: '100%', height: '24px', fontSize: '0.68rem', padding: '2px 4px', background: 'var(--background-tertiary)', border: '1px solid var(--border)', borderRadius: '3px', color: '#ffffff' }}
-                                  />
-                                </div>
-                              </div>
-                              <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end' }}>
-                                <button 
-                                  type="button"
-                                  onClick={() => setAmortizingDebtId(null)}
-                                  className="btn btn-outline"
-                                  style={{ padding: '0 6px', fontSize: '0.58rem', height: '20px', textTransform: 'none' }}
-                                >
-                                  Cancelar
-                                </button>
-                                <button 
-                                  type="button"
-                                  onClick={() => submitAmortization(d.id, d.paid_amount, d.amount)}
-                                  className="btn btn-emerald"
-                                  style={{ padding: '0 6px', fontSize: '0.58rem', height: '20px', textTransform: 'none', background: 'var(--color-cyan)', color: '#000' }}
-                                >
-                                  Guardar
-                                </button>
-                              </div>
-                            </div>
-                          ) : (
-                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px', borderTop: '1px solid rgba(255,255,255,0.03)', paddingTop: '6px', marginTop: '2px' }}>
-                              <button 
-                                onClick={() => {
-                                  setAmortizingDebtId(d.id);
-                                  setPayAmount('');
-                                  setPayDate(new Date().toISOString().split('T')[0]);
-                                }}
-                                className="btn btn-outline"
-                                style={{ padding: '1px 6px', fontSize: '0.58rem', height: '20px', textTransform: 'none' }}
-                              >
-                                Amortizar...
-                              </button>
-                              <button 
-                                onClick={() => handleDeleteDebt(d.id)}
-                                className="btn-icon"
-                                style={{ color: 'var(--color-rose)', display: 'flex', alignItems: 'center', padding: '2px' }}
-                              >
-                                <Trash2 size={11} />
-                              </button>
-                            </div>
-                          )}
-
-                          {/* Historial colapsable */}
-                          {myPayments.length > 0 && (
-                            <div style={{ borderTop: '1px dashed rgba(255,255,255,0.04)', paddingTop: '4px', marginTop: '2px' }}>
-                              <button 
-                                type="button"
-                                onClick={() => toggleHistory(d.id)}
-                                style={{ background: 'none', border: 'none', color: 'var(--color-cyan)', fontSize: '0.55rem', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: '2px' }}
-                              >
-                                {expandedHistories[d.id] ? '▼ Ocultar Pagos' : `▶ Ver Pagos (${myPayments.length})`}
-                              </button>
-                              
-                              {expandedHistories[d.id] && (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', marginTop: '4px', paddingLeft: '6px', borderLeft: '1px solid rgba(6,182,212,0.3)', maxHeight: '70px', overflowY: 'auto' }}>
-                                  {myPayments.map(p => (
-                                    <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.54rem', color: 'var(--text-secondary)' }}>
-                                      <span>📅 {new Date(p.payment_date).toLocaleDateString('es-ES')}</span>
-                                      <strong style={{ color: 'var(--color-emerald)' }}>+{parseFloat(p.amount).toLocaleString()} €</strong>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          )}
-
                         </div>
-                      );
-                    })
+                      ))
+                    )}
+                  </div>
+
+                  {expensesList.length > 5 && (
+                    <button
+                      type="button"
+                      onClick={() => setIsExpensesExpanded(!isExpensesExpanded)}
+                      style={{
+                        background: 'rgba(244, 63, 94, 0.08)',
+                        border: '1px solid rgba(244, 63, 94, 0.2)',
+                        borderRadius: '6px',
+                        color: 'var(--color-rose)',
+                        fontSize: '0.68rem',
+                        fontWeight: 600,
+                        padding: '6px 12px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '4px',
+                        marginTop: '4px',
+                        transition: 'all 0.2s ease',
+                        width: '100%'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = 'rgba(244, 63, 94, 0.15)';
+                        e.currentTarget.style.transform = 'translateY(-1px)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'rgba(244, 63, 94, 0.08)';
+                        e.currentTarget.style.transform = 'none';
+                      }}
+                    >
+                      {isExpensesExpanded ? 'Mostrar menos ▲' : `Ver todos (${expensesList.length}) ▼`}
+                    </button>
                   )}
                 </div>
               </div>
-            </div>
 
+              {/* COLUMNA AZUL — DEUDAS */}
+              <div className="glass-panel" style={{ padding: '18px', borderTop: '4px solid var(--color-cyan)', background: 'rgba(6, 182, 212, 0.015)' }}>
+                <h5 style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--color-cyan)', marginBottom: '14px', borderBottom: '1px solid rgba(6,182,212,0.1)', paddingBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  🔵 Deudas & Acreedores ({totalRemainingDebt.toLocaleString()} €)
+                </h5>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                  {/* Formulario rápido para añadir deuda */}
+                  <form onSubmit={handleAddDebt} style={{ display: 'flex', flexDirection: 'column', gap: '6px', background: 'rgba(0,0,0,0.12)', border: '1px solid rgba(255,255,255,0.03)', borderRadius: '8px', padding: '10px' }}>
+                    <span style={{ fontSize: '0.55rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>
+                      Registrar Deuda
+                    </span>
+                    <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                      <input 
+                        type="text" 
+                        className="form-input" 
+                        placeholder="Acreedor..." 
+                        value={newCreditor} 
+                        onChange={(e) => setNewCreditor(e.target.value)} 
+                        required 
+                        style={{ height: '30px', fontSize: '0.72rem', flex: 1, minWidth: '90px' }} 
+                      />
+                      <input 
+                        type="number" 
+                        className="form-input" 
+                        placeholder="Total €..." 
+                        value={newAmount} 
+                        onChange={(e) => setNewAmount(e.target.value)} 
+                        required 
+                        style={{ height: '30px', fontSize: '0.72rem', width: '70px' }} 
+                      />
+                      <input 
+                        type="number" 
+                        className="form-input" 
+                        placeholder="Prio (1-9)..." 
+                        min="1"
+                        value={newPriority} 
+                        onChange={(e) => setNewPriority(parseInt(e.target.value) || 1)} 
+                        required 
+                        style={{ height: '30px', fontSize: '0.72rem', width: '50px' }} 
+                      />
+                      <button type="submit" className="btn btn-cyan animate-glow-cyan" style={{ padding: '0 10px', height: '30px', fontSize: '0.7rem', fontWeight: 700 }}>
+                        +
+                      </button>
+                    </div>
+                  </form>
+
+                  {/* Lista de Deudas */}
+                  <div style={{ maxHeight: 'none', overflow: 'visible', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {filteredDebts.length === 0 ? (
+                      <div style={{ textAlign: 'center', fontSize: '0.7rem', color: 'var(--text-tertiary)', padding: '20px' }}>
+                        Sin deudas registradas.
+                      </div>
+                    ) : (
+                      (isDebtsExpanded ? filteredDebts : filteredDebts.slice(0, 3)).map(d => {
+                        const paidPercent = d.amount > 0 ? (d.paid_amount / d.amount) * 100 : 0;
+                        const remaining = d.amount - d.paid_amount;
+                        const myPayments = debtPaymentsList.filter(p => p.debt_id === d.id);
+
+                        let badgeClass = 'badge-rose';
+                        let prioLabel = 'Prioridad Alta';
+                        if (d.priority > 3 && d.priority <= 7) {
+                          badgeClass = 'badge-amber';
+                          prioLabel = 'Prioridad Media';
+                        } else if (d.priority > 7) {
+                          badgeClass = 'badge-emerald';
+                          prioLabel = 'Prioridad Baja';
+                        }
+
+                        const isExpanded = expandedDebtId === d.id;
+                        return (
+                          <div 
+                            key={d.id} 
+                            onClick={(e) => {
+                              if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON' || e.target.closest('button') || e.target.closest('input')) return;
+                              setExpandedDebtId(isExpanded ? null : d.id);
+                            }}
+                            style={{ 
+                              display: 'flex', 
+                              flexDirection: 'column', 
+                              gap: isExpanded ? '8px' : '0px', 
+                              padding: '6px 10px', 
+                              background: isExpanded ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.005)', 
+                              border: isExpanded ? '1px solid var(--color-cyan)' : '1px solid var(--border)', 
+                              borderRadius: '8px', 
+                              fontSize: '0.72rem',
+                              cursor: 'pointer',
+                              transition: 'all 0.15s ease',
+                              position: 'relative',
+                              boxShadow: isExpanded ? '0 0 10px rgba(6, 182, 212, 0.05)' : 'none'
+                            }}
+                          >
+                            {/* Fila Principal Compacta */}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', height: '24px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                {/* Led indicador de prioridad */}
+                                <span 
+                                  style={{ 
+                                    width: '6px', 
+                                    height: '6px', 
+                                    borderRadius: '50%', 
+                                    background: d.priority <= 3 ? 'var(--color-rose)' : d.priority <= 7 ? 'var(--color-amber)' : 'var(--color-emerald)',
+                                    display: 'inline-block',
+                                    boxShadow: d.priority <= 3 ? '0 0 6px var(--color-rose)' : d.priority <= 7 ? '0 0 6px var(--color-amber)' : '0 0 6px var(--color-emerald)'
+                                  }} 
+                                  title={`Prioridad ${d.priority} (${prioLabel.substring(10)})`}
+                                />
+                                <strong style={{ color: '#ffffff', fontSize: '0.75rem' }}>{d.creditor}</strong>
+                                <span style={{ fontSize: '0.55rem', color: 'var(--text-tertiary)' }}>P{d.priority}</span>
+                              </div>
+
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <strong style={{ color: remaining > 0 ? 'var(--color-rose)' : 'var(--color-emerald)', fontSize: '0.75rem' }}>
+                                  {remaining.toLocaleString()} €
+                                </strong>
+                                <span style={{ fontSize: '0.58rem', color: 'var(--text-tertiary)' }}>
+                                  / {d.amount.toLocaleString()} €
+                                </span>
+                                {paidPercent > 0 && (
+                                  <span style={{ fontSize: '0.58rem', color: 'var(--color-emerald)', fontWeight: 600 }}>
+                                    ({paidPercent.toFixed(0)}%)
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Barra de progreso fina (2px) */}
+                            <div style={{ width: '100%', height: '2px', background: 'rgba(255,255,255,0.02)', borderRadius: '1px', overflow: 'hidden', marginTop: '2px', opacity: 0.8 }}>
+                              <div style={{ width: `${paidPercent}%`, height: '100%', background: 'linear-gradient(90deg, var(--color-cyan), var(--color-emerald))', transition: 'width 0.3s ease' }} />
+                            </div>
+
+                            {/* Detalle Expandido */}
+                            {isExpanded && (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px', borderTop: '1px solid rgba(255,255,255,0.03)', paddingTop: '6px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <span style={{ fontSize: '0.6rem', color: 'var(--text-secondary)' }}>Doble clic en P{d.priority} para editar:</span>
+                                  {editingDebtPriorityId === d.id ? (
+                                    <input 
+                                      type="number"
+                                      value={tempPriorityValue}
+                                      onChange={(e) => setTempPriorityValue(parseInt(e.target.value) || 1)}
+                                      onBlur={() => savePriority(d.id)}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') savePriority(d.id);
+                                        if (e.key === 'Escape') setEditingDebtPriorityId(null);
+                                      }}
+                                      autoFocus
+                                      style={{ width: '45px', height: '18px', fontSize: '0.62rem', padding: '0 4px', background: 'var(--background-tertiary)', border: '1px solid var(--color-cyan)', borderRadius: '3px', color: '#ffffff' }}
+                                    />
+                                  ) : (
+                                    <span 
+                                      onDoubleClick={() => {
+                                        setEditingDebtPriorityId(d.id);
+                                        setTempPriorityValue(d.priority);
+                                      }}
+                                      style={{ fontSize: '0.6rem', padding: '1px 5px', color: 'var(--color-cyan)', cursor: 'pointer', border: '1px dashed rgba(6,182,212,0.3)', borderRadius: '3px' }}
+                                    >
+                                      Editar Prioridad
+                                    </span>
+                                  )}
+                                </div>
+
+                                {/* Formulario inline de Amortización */}
+                                {amortizingDebtId === d.id ? (
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', background: 'rgba(0,0,0,0.2)', padding: '8px', borderRadius: '4px' }}>
+                                    <div style={{ display: 'flex', gap: '4px' }}>
+                                      <div style={{ flex: 1 }}>
+                                        <label style={{ fontSize: '0.5rem', color: 'var(--text-secondary)' }}>IMPORTE (€)</label>
+                                        <input 
+                                          type="number"
+                                          value={payAmount}
+                                          onChange={(e) => setPayAmount(e.target.value)}
+                                          placeholder="0"
+                                          style={{ width: '100%', height: '24px', fontSize: '0.68rem', padding: '2px 4px', background: 'var(--background-tertiary)', border: '1px solid var(--border)', borderRadius: '3px', color: '#ffffff' }}
+                                        />
+                                      </div>
+                                      <div style={{ flex: 1 }}>
+                                        <label style={{ fontSize: '0.5rem', color: 'var(--text-secondary)' }}>FECHA</label>
+                                        <input 
+                                          type="date"
+                                          value={payDate}
+                                          onChange={(e) => setPayDate(e.target.value)}
+                                          style={{ width: '100%', height: '24px', fontSize: '0.68rem', padding: '2px 4px', background: 'var(--background-tertiary)', border: '1px solid var(--border)', borderRadius: '3px', color: '#ffffff' }}
+                                        />
+                                      </div>
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end' }}>
+                                      <button 
+                                        type="button"
+                                        onClick={() => setAmortizingDebtId(null)}
+                                        className="btn btn-outline"
+                                        style={{ padding: '0 6px', fontSize: '0.58rem', height: '20px', textTransform: 'none' }}
+                                      >
+                                        Cancelar
+                                      </button>
+                                      <button 
+                                        type="button"
+                                        onClick={() => submitAmortization(d.id, d.paid_amount, d.amount)}
+                                        className="btn btn-emerald"
+                                        style={{ padding: '0 6px', fontSize: '0.58rem', height: '20px', textTransform: 'none', background: 'var(--color-cyan)', color: '#000' }}
+                                      >
+                                        Guardar
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px' }}>
+                                    <button 
+                                      onClick={() => {
+                                        setAmortizingDebtId(d.id);
+                                        setPayAmount('');
+                                        setPayDate(new Date().toISOString().split('T')[0]);
+                                      }}
+                                      className="btn btn-outline"
+                                      style={{ padding: '1px 6px', fontSize: '0.58rem', height: '20px', textTransform: 'none' }}
+                                    >
+                                      Amortizar...
+                                    </button>
+                                    <button 
+                                      onClick={() => handleDeleteDebt(d.id)}
+                                      className="btn-icon"
+                                      style={{ color: 'var(--color-rose)', display: 'flex', alignItems: 'center', padding: '2px', background: 'none', border: 'none', cursor: 'pointer' }}
+                                    >
+                                      <Trash2 size={11} />
+                                    </button>
+                                  </div>
+                                )}
+
+                                {/* Historial de Pagos */}
+                                {myPayments.length > 0 && (
+                                  <div style={{ borderTop: '1px dashed rgba(255,255,255,0.04)', paddingTop: '4px' }}>
+                                    <button 
+                                      type="button"
+                                      onClick={() => toggleHistory(d.id)}
+                                      style={{ background: 'none', border: 'none', color: 'var(--color-cyan)', fontSize: '0.55rem', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: '2px' }}
+                                    >
+                                      {expandedHistories[d.id] ? '▼ Ocultar Pagos' : `▶ Ver Pagos (${myPayments.length})`}
+                                    </button>
+                                    
+                                    {expandedHistories[d.id] && (
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', marginTop: '4px', paddingLeft: '6px', borderLeft: '1px solid rgba(6, 182, 212, 0.3)', maxHeight: '70px', overflowY: 'auto' }}>
+                                        {myPayments.map(p => (
+                                          <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.54rem', color: 'var(--text-secondary)' }}>
+                                            <span>📅 {new Date(p.payment_date).toLocaleDateString('es-ES')}</span>
+                                            <strong style={{ color: 'var(--color-emerald)' }}>+{parseFloat(p.amount).toLocaleString()} €</strong>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  {filteredDebts.length > 3 && (
+                    <button
+                      type="button"
+                      onClick={() => setIsDebtsExpanded(!isDebtsExpanded)}
+                      style={{
+                        background: 'rgba(6, 182, 212, 0.08)',
+                        border: '1px solid rgba(6, 182, 212, 0.2)',
+                        borderRadius: '6px',
+                        color: 'var(--color-cyan)',
+                        fontSize: '0.68rem',
+                        fontWeight: 600,
+                        padding: '6px 12px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '4px',
+                        marginTop: '4px',
+                        transition: 'all 0.2s ease',
+                        width: '100%'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = 'rgba(6, 182, 212, 0.15)';
+                        e.currentTarget.style.transform = 'translateY(-1px)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'rgba(6, 182, 212, 0.08)';
+                        e.currentTarget.style.transform = 'none';
+                      }}
+                    >
+                      {isDebtsExpanded ? 'Mostrar menos ▲' : `Ver todos (${filteredDebts.length}) ▼`}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* COLUMNA NARANJA — GASTOS NO PRIORITARIOS */}
+              <div className="glass-panel" style={{ padding: '18px', borderTop: '4px solid var(--color-amber)', background: 'rgba(245, 158, 11, 0.015)' }}>
+                <h5 style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--color-amber)', marginBottom: '14px', borderBottom: '1px solid rgba(245,158,11,0.1)', paddingBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  🟠 Gastos No Prioritarios ({totalRemainingNonPriority.toLocaleString()} €)
+                </h5>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                  {/* Formulario rápido para añadir gasto no prioritario */}
+                  <form onSubmit={handleAddNonPriorityExpense} style={{ display: 'flex', flexDirection: 'column', gap: '6px', background: 'rgba(0,0,0,0.12)', border: '1px solid rgba(255,255,255,0.03)', borderRadius: '8px', padding: '10px' }}>
+                    <span style={{ fontSize: '0.55rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>
+                      Registrar Gasto Diferido
+                    </span>
+                    <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                      <input 
+                        type="text" 
+                        className="form-input" 
+                        placeholder="Concepto..." 
+                        value={newNPName} 
+                        onChange={(e) => setNewNPName(e.target.value)} 
+                        required 
+                        style={{ height: '30px', fontSize: '0.72rem', flex: 1, minWidth: '90px' }} 
+                      />
+                      <input 
+                        type="number" 
+                        className="form-input" 
+                        placeholder="Total €..." 
+                        value={newNPAmount} 
+                        onChange={(e) => setNewNPAmount(e.target.value)} 
+                        required 
+                        style={{ height: '30px', fontSize: '0.72rem', width: '70px' }} 
+                      />
+                      <input 
+                        type="number" 
+                        className="form-input" 
+                        placeholder="Prio (1-9)..." 
+                        min="1"
+                        value={newNPPriority} 
+                        onChange={(e) => setNewNPPriority(parseInt(e.target.value) || 1)} 
+                        required 
+                        style={{ height: '30px', fontSize: '0.72rem', width: '50px' }} 
+                      />
+                      <button type="submit" className="btn btn-cyan animate-glow-cyan" style={{ padding: '0 10px', height: '30px', fontSize: '0.7rem', fontWeight: 700, background: 'var(--color-amber)', border: 'none', color: '#000' }}>
+                        +
+                      </button>
+                    </div>
+                  </form>
+
+                  {/* Lista de Gastos No Prioritarios */}
+                  <div style={{ maxHeight: 'none', overflow: 'visible', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {filteredNonPriority.length === 0 ? (
+                      <div style={{ textAlign: 'center', fontSize: '0.7rem', color: 'var(--text-tertiary)', padding: '20px' }}>
+                        Sin deudas de gastos no prioritarios.
+                      </div>
+                    ) : (
+                      (isNonPriorityExpanded ? filteredNonPriority : filteredNonPriority.slice(0, 3)).map(d => {
+                        const paidPercent = d.amount > 0 ? (d.paid_amount / d.amount) * 100 : 0;
+                        const remaining = d.amount - d.paid_amount;
+                        const myPayments = debtPaymentsList.filter(p => p.debt_id === d.id);
+
+                        let badgeClass = 'badge-rose';
+                        let prioLabel = 'Prioridad Alta';
+                        if (d.priority > 3 && d.priority <= 7) {
+                          badgeClass = 'badge-amber';
+                          prioLabel = 'Prioridad Media';
+                        } else if (d.priority > 7) {
+                          badgeClass = 'badge-emerald';
+                          prioLabel = 'Prioridad Baja';
+                        }
+
+                        const isExpanded = expandedDebtId === d.id;
+                        return (
+                          <div 
+                            key={d.id} 
+                            onClick={(e) => {
+                              if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON' || e.target.closest('button') || e.target.closest('input')) return;
+                              setExpandedDebtId(isExpanded ? null : d.id);
+                            }}
+                            style={{ 
+                              display: 'flex', 
+                              flexDirection: 'column', 
+                              gap: isExpanded ? '8px' : '0px', 
+                              padding: '6px 10px', 
+                              background: isExpanded ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.005)', 
+                              border: isExpanded ? '1px solid var(--color-amber)' : '1px solid var(--border)', 
+                              borderRadius: '8px', 
+                              fontSize: '0.72rem',
+                              cursor: 'pointer',
+                              transition: 'all 0.15s ease',
+                              position: 'relative',
+                              boxShadow: isExpanded ? '0 0 10px rgba(245, 158, 11, 0.05)' : 'none'
+                            }}
+                          >
+                            {/* Fila Principal Compacta */}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', height: '24px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                {/* Led indicador de prioridad */}
+                                <span 
+                                  style={{ 
+                                    width: '6px', 
+                                    height: '6px', 
+                                    borderRadius: '50%', 
+                                    background: d.priority <= 3 ? 'var(--color-rose)' : d.priority <= 7 ? 'var(--color-amber)' : 'var(--color-emerald)',
+                                    display: 'inline-block',
+                                    boxShadow: d.priority <= 3 ? '0 0 6px var(--color-rose)' : d.priority <= 7 ? '0 0 6px var(--color-amber)' : '0 0 6px var(--color-emerald)'
+                                  }} 
+                                  title={`Prioridad ${d.priority} (${prioLabel.substring(10)})`}
+                                />
+                                <strong style={{ color: '#ffffff', fontSize: '0.75rem' }}>{d.creditor}</strong>
+                                <span style={{ fontSize: '0.55rem', color: 'var(--text-tertiary)' }}>P{d.priority}</span>
+                              </div>
+
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <strong style={{ color: remaining > 0 ? 'var(--color-rose)' : 'var(--color-emerald)', fontSize: '0.75rem' }}>
+                                  {remaining.toLocaleString()} €
+                                </strong>
+                                <span style={{ fontSize: '0.58rem', color: 'var(--text-tertiary)' }}>
+                                  / {d.amount.toLocaleString()} €
+                                </span>
+                                {paidPercent > 0 && (
+                                  <span style={{ fontSize: '0.58rem', color: 'var(--color-emerald)', fontWeight: 600 }}>
+                                    ({paidPercent.toFixed(0)}%)
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Barra de progreso fina (2px) */}
+                            <div style={{ width: '100%', height: '2px', background: 'rgba(255,255,255,0.02)', borderRadius: '1px', overflow: 'hidden', marginTop: '2px', opacity: 0.8 }}>
+                              <div style={{ width: `${paidPercent}%`, height: '100%', background: 'linear-gradient(90deg, var(--color-amber), var(--color-emerald))', transition: 'width 0.3s ease' }} />
+                            </div>
+
+                            {/* Detalle Expandido */}
+                            {isExpanded && (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px', borderTop: '1px solid rgba(255,255,255,0.03)', paddingTop: '6px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <span style={{ fontSize: '0.6rem', color: 'var(--text-secondary)' }}>Doble clic en P{d.priority} para editar:</span>
+                                  {editingDebtPriorityId === d.id ? (
+                                    <input 
+                                      type="number"
+                                      value={tempPriorityValue}
+                                      onChange={(e) => setTempPriorityValue(parseInt(e.target.value) || 1)}
+                                      onBlur={() => savePriority(d.id)}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') savePriority(d.id);
+                                        if (e.key === 'Escape') setEditingDebtPriorityId(null);
+                                      }}
+                                      autoFocus
+                                      style={{ width: '45px', height: '18px', fontSize: '0.62rem', padding: '0 4px', background: 'var(--background-tertiary)', border: '1px solid var(--color-amber)', borderRadius: '3px', color: '#ffffff' }}
+                                    />
+                                  ) : (
+                                    <span 
+                                      onDoubleClick={() => {
+                                        setEditingDebtPriorityId(d.id);
+                                        setTempPriorityValue(d.priority);
+                                      }}
+                                      style={{ fontSize: '0.6rem', padding: '1px 5px', color: 'var(--color-amber)', cursor: 'pointer', border: '1px dashed rgba(245,158,11,0.3)', borderRadius: '3px' }}
+                                    >
+                                      Editar Prioridad
+                                    </span>
+                                  )}
+                                </div>
+
+                                {/* Formulario inline de Amortización */}
+                                {amortizingDebtId === d.id ? (
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', background: 'rgba(0,0,0,0.2)', padding: '8px', borderRadius: '4px' }}>
+                                    <div style={{ display: 'flex', gap: '4px' }}>
+                                      <div style={{ flex: 1 }}>
+                                        <label style={{ fontSize: '0.5rem', color: 'var(--text-secondary)' }}>IMPORTE (€)</label>
+                                        <input 
+                                          type="number"
+                                          value={payAmount}
+                                          onChange={(e) => setPayAmount(e.target.value)}
+                                          placeholder="0"
+                                          style={{ width: '100%', height: '24px', fontSize: '0.68rem', padding: '2px 4px', background: 'var(--background-tertiary)', border: '1px solid var(--border)', borderRadius: '3px', color: '#ffffff' }}
+                                        />
+                                      </div>
+                                      <div style={{ flex: 1 }}>
+                                        <label style={{ fontSize: '0.5rem', color: 'var(--text-secondary)' }}>FECHA</label>
+                                        <input 
+                                          type="date"
+                                          value={payDate}
+                                          onChange={(e) => setPayDate(e.target.value)}
+                                          style={{ width: '100%', height: '24px', fontSize: '0.68rem', padding: '2px 4px', background: 'var(--background-tertiary)', border: '1px solid var(--border)', borderRadius: '3px', color: '#ffffff' }}
+                                        />
+                                      </div>
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end' }}>
+                                      <button 
+                                        type="button"
+                                        onClick={() => setAmortizingDebtId(null)}
+                                        className="btn btn-outline"
+                                        style={{ padding: '0 6px', fontSize: '0.58rem', height: '20px', textTransform: 'none' }}
+                                      >
+                                        Cancelar
+                                      </button>
+                                      <button 
+                                        type="button"
+                                        onClick={() => submitAmortization(d.id, d.paid_amount, d.amount)}
+                                        className="btn btn-emerald"
+                                        style={{ padding: '0 6px', fontSize: '0.58rem', height: '20px', textTransform: 'none', background: 'var(--color-amber)', color: '#000' }}
+                                      >
+                                        Guardar
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px' }}>
+                                    <button 
+                                      onClick={() => {
+                                        setAmortizingDebtId(d.id);
+                                        setPayAmount('');
+                                        setPayDate(new Date().toISOString().split('T')[0]);
+                                      }}
+                                      className="btn btn-outline"
+                                      style={{ padding: '1px 6px', fontSize: '0.58rem', height: '20px', textTransform: 'none' }}
+                                    >
+                                      Amortizar...
+                                    </button>
+                                    <button 
+                                      onClick={() => handleDeleteDebt(d.id)}
+                                      className="btn-icon"
+                                      style={{ color: 'var(--color-rose)', display: 'flex', alignItems: 'center', padding: '2px', background: 'none', border: 'none', cursor: 'pointer' }}
+                                    >
+                                      <Trash2 size={11} />
+                                    </button>
+                                  </div>
+                                )}
+
+                                {/* Historial de Pagos */}
+                                {myPayments.length > 0 && (
+                                  <div style={{ borderTop: '1px dashed rgba(255,255,255,0.04)', paddingTop: '4px' }}>
+                                    <button 
+                                      type="button"
+                                      onClick={() => toggleHistory(d.id)}
+                                      style={{ background: 'none', border: 'none', color: 'var(--color-amber)', fontSize: '0.55rem', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: '2px' }}
+                                    >
+                                      {expandedHistories[d.id] ? '▼ Ocultar Pagos' : `▶ Ver Pagos (${myPayments.length})`}
+                                    </button>
+                                    
+                                    {expandedHistories[d.id] && (
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', marginTop: '4px', paddingLeft: '6px', borderLeft: '1px solid rgba(245, 158, 11, 0.3)', maxHeight: '70px', overflowY: 'auto' }}>
+                                        {myPayments.map(p => (
+                                          <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.54rem', color: 'var(--text-secondary)' }}>
+                                            <span>📅 {new Date(p.payment_date).toLocaleDateString('es-ES')}</span>
+                                            <strong style={{ color: 'var(--color-emerald)' }}>+{parseFloat(p.amount).toLocaleString()} €</strong>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  {filteredNonPriority.length > 3 && (
+                    <button
+                      type="button"
+                      onClick={() => setIsNonPriorityExpanded(!isNonPriorityExpanded)}
+                      style={{
+                        background: 'rgba(245, 158, 11, 0.08)',
+                        border: '1px solid rgba(245, 158, 11, 0.2)',
+                        borderRadius: '6px',
+                        color: 'var(--color-amber)',
+                        fontSize: '0.68rem',
+                        fontWeight: 600,
+                        padding: '6px 12px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '4px',
+                        marginTop: '4px',
+                        transition: 'all 0.2s ease',
+                        width: '100%'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = 'rgba(245, 158, 11, 0.15)';
+                        e.currentTarget.style.transform = 'translateY(-1px)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'rgba(245, 158, 11, 0.08)';
+                        e.currentTarget.style.transform = 'none';
+                      }}
+                    >
+                      {isNonPriorityExpanded ? 'Mostrar menos ▲' : `Ver todos (${filteredNonPriority.length}) ▼`}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* MODAL EDICIÓN DIARIO DE TRADES */}
       {selectedJournalDay && (
@@ -1913,7 +2851,7 @@ export default function ViabilityWidget({ user, totalDebts, onDebtsUpdated, targ
             </h5>
             
             {/* Contexto Rápido de Caja */}
-            {(() => {
+            {!onlyTradingJournal ? (() => {
               const dailyPnlEur = (parseFloat(journalDayPnl) || 0) * usdToEurRate;
               const totalIng = selectedJournalDay.efeIncome + (dailyPnlEur > 0 ? dailyPnlEur : 0);
               const totalGas = selectedJournalDay.fixedExpense + selectedJournalDay.debtsPaid + (dailyPnlEur < 0 ? Math.abs(dailyPnlEur) : 0);
@@ -1932,6 +2870,27 @@ export default function ViabilityWidget({ user, totalDebts, onDebtsUpdated, targ
                     <span style={{ color: '#ffffff', fontWeight: 700 }}>{netSobrante >= 0 ? 'Excedente Neto:' : 'Déficit Neto:'}</span>
                     <strong style={{ color: netSobrante >= 0 ? 'var(--color-emerald)' : 'var(--color-rose)' }}>
                       {netSobrante >= 0 ? `+${netSobrante.toFixed(1)}` : `-${Math.abs(netSobrante).toFixed(1)}`} €
+                    </strong>
+                  </div>
+                </div>
+              );
+            })() : (() => {
+              const dailyPnlUsd = parseFloat(journalDayPnl) || 0;
+              const dailyPnlEur = dailyPnlUsd * usdToEurRate;
+              const dayEquity = selectedJournalDay.equity || (startBalance + fundsBalance);
+              const pct = dayEquity > 0 ? (dailyPnlUsd / dayEquity) * 100 : 0;
+              return (
+                <div style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border)', borderRadius: '6px', padding: '10px', marginTop: '10px', fontSize: '0.68rem', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>PnL Estimado (EUR):</span>
+                    <strong style={{ color: dailyPnlEur >= 0 ? 'var(--color-emerald)' : 'var(--color-rose)' }}>
+                      {dailyPnlEur >= 0 ? `+${dailyPnlEur.toFixed(2)}` : `-${Math.abs(dailyPnlEur).toFixed(2)}`} €
+                    </strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Variación de Equity:</span>
+                    <strong style={{ color: dailyPnlUsd >= 0 ? 'var(--color-emerald)' : 'var(--color-rose)' }}>
+                      {dailyPnlUsd >= 0 ? `+${pct.toFixed(2)}%` : `-${Math.abs(pct).toFixed(2)}%`}
                     </strong>
                   </div>
                 </div>

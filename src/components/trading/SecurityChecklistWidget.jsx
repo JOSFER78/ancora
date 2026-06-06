@@ -6,7 +6,7 @@ export default function SecurityChecklistWidget({ dailyMoodToday }) {
   const [checklist, setChecklist] = useState({
     slConfigured: false,
     balanceHidden: false,
-    atomoxetinaTaken: dailyMoodToday?.atomoxetina_taken || false,
+    diaryCompleted: dailyMoodToday ? true : false,
     blockEnabled: false,
   });
 
@@ -17,7 +17,12 @@ export default function SecurityChecklistWidget({ dailyMoodToday }) {
     if (dailyMoodToday) {
       setChecklist(prev => ({
         ...prev,
-        atomoxetinaTaken: dailyMoodToday.atomoxetina_taken
+        diaryCompleted: true
+      }));
+    } else {
+      setChecklist(prev => ({
+        ...prev,
+        diaryCompleted: false
       }));
     }
   }, [dailyMoodToday]);
@@ -111,13 +116,13 @@ ipconfig /flushdns | Out-Null`;
         </div>
 
         <div 
-          onClick={() => handleCheckChange('atomoxetinaTaken')}
-          style={{ padding: '10px', border: '1px solid var(--border)', borderRadius: '6px', background: checklist.atomoxetinaTaken ? 'rgba(16,185,129,0.02)' : 'rgba(255,255,255,0.01)', display: 'flex', gap: '10px', alignItems: 'center', cursor: 'pointer' }}
+          onClick={() => handleCheckChange('diaryCompleted')}
+          style={{ padding: '10px', border: '1px solid var(--border)', borderRadius: '6px', background: checklist.diaryCompleted ? 'rgba(16,185,129,0.02)' : 'rgba(255,255,255,0.01)', display: 'flex', gap: '10px', alignItems: 'center', cursor: 'pointer' }}
         >
-          <input type="checkbox" checked={checklist.atomoxetinaTaken} readOnly style={{ accentColor: 'var(--color-emerald)' }} />
+          <input type="checkbox" checked={checklist.diaryCompleted} readOnly style={{ accentColor: 'var(--color-emerald)' }} />
           <div>
-            <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#ffffff', display: 'block' }}>Atomoxetina Ingerida</span>
-            <span style={{ fontSize: '0.62rem', color: 'var(--text-secondary)' }}>Has tomado tu dosis diaria para restaurar el autocontrol prefrontal (TDAH).</span>
+            <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#ffffff', display: 'block' }}>Diario de Sensaciones Registrado</span>
+            <span style={{ fontSize: '0.62rem', color: 'var(--text-secondary)' }}>Has registrado tus niveles de cortisol, ansiedad e impulsividad hoy antes de operar.</span>
           </div>
         </div>
 

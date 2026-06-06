@@ -1,28 +1,38 @@
 import { useState, useRef, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
-import { 
-  Send, 
-  Brain, 
-  AlertCircle, 
-  Trash2, 
-  Paperclip, 
-  X, 
-  ChevronLeft, 
-  ChevronRight, 
-  Trophy, 
-  ClipboardList, 
-  Bookmark, 
+import { invokeChatTerapeuta } from '../lib/chatTerapeuta';
+import {
+  Send,
+  Brain,
+  AlertCircle,
+  Trash2,
+  Paperclip,
+  X,
+  ChevronLeft,
+  ChevronRight,
+  Trophy,
+  ClipboardList,
+  Bookmark,
   Eye,
   Plus,
   Edit3,
   Check,
   Menu,
   Mic,
-  MicOff
+  MicOff,
+  Search
 } from 'lucide-react';
 
-export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdated }) {
+export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdated, genericMode = false }) {
   const [conversations, setConversations] = useState([]);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const filteredConversations = conversations.filter(c => {
+    const titleMatch = (c.title || '').toLowerCase().includes(searchQuery.toLowerCase());
+    const factMatch = (c.captured_fact || '').toLowerCase().includes(searchQuery.toLowerCase());
+    const studyMatch = (c.clinical_studies || '').toLowerCase().includes(searchQuery.toLowerCase());
+    return titleMatch || factMatch || studyMatch;
+  });
   const [activeConversationId, setActiveConversationId] = useState(null);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
@@ -34,7 +44,7 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
   const [editingTitle, setEditingTitle] = useState('');
   const [mobileShowSidebar, setMobileShowSidebar] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1150);
-  const [selectedModel, setSelectedModel] = useState('2.5');
+  const [selectedModel, setSelectedModel] = useState('free');
   const [leftPanelOpen, setLeftPanelOpen] = useState(window.innerWidth >= 1150);
   const [closurePrepared, setClosurePrepared] = useState(false);
   const [showBaseHistory, setShowBaseHistory] = useState(false);
@@ -119,24 +129,10 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
         throw new Error("Sesión de usuario no disponible.");
       }
 
-      const response = await fetch('https://ysnorelkaccaikvuqgnv.supabase.co/functions/v1/chat-terapeuta', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${authSession.access_token}`
-        },
-        body: JSON.stringify({
-          action: 'transcribe_audio',
-          audio: base64Audio
-        })
+      const resData = await invokeChatTerapeuta({
+        action: 'transcribe_audio',
+        audio: base64Audio
       });
-
-      if (!response.ok) {
-        const errData = await response.json();
-        throw new Error(errData.error || "Fallo en la transcripción de audio.");
-      }
-
-      const resData = await response.json();
       if (resData && resData.transcription) {
         setInput(prev => {
           const trimmed = prev.trim();
@@ -166,9 +162,18 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
-  
+
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
+  const textareaRef = useRef(null);
+
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = '46px';
+      const scrollHeight = textareaRef.current.scrollHeight;
+      textareaRef.current.style.height = `${Math.min(Math.max(scrollHeight, 46), 160)}px`;
+    }
+  }, [input]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -184,10 +189,11 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
       const { data, error } = await supabase
         .from('conversations')
         .select('*')
+        .eq('user_id', user.id)
         .order('updated_at', { ascending: false });
       if (error) throw error;
       setConversations(data || []);
-      
+
       if (data && data.length > 0) {
         setActiveConversationId(data[0].id);
         setMobileShowSidebar(false);
@@ -202,35 +208,25 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
   // Step 1: Request clinical conclusions, books, studies, and update right panel context
   const handlePrepareClosure = async () => {
     if (!activeConversationId || loading || isSendingRef.current) return;
-    if (!confirm("¿Deseas iniciar la preparación del cierre clínico de esta sesión? Walter investigará lo ocurrido, propondrá soluciones, libros y estudios, y los inyectará en el panel de la derecha.")) return;
-    
+    if (!confirm("¿Deseas iniciar la preparación del cierre clínico de esta sesión? Asistente de apoyo investigará lo ocurrido, propondrá soluciones, libros y estudios, y los inyectará en el panel de la derecha.")) return;
+
     setLoading(true);
     setError(null);
     try {
       const { data: { session: authSession } } = await supabase.auth.getSession();
       if (!authSession) return;
 
-      const response = await fetch('https://ysnorelkaccaikvuqgnv.supabase.co/functions/v1/chat-terapeuta', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${authSession.access_token}`
-        },
-        body: JSON.stringify({
-          action: 'prepare_close_conversation',
-          conversationId: activeConversationId
-        })
+      const resData = await invokeChatTerapeuta({
+        action: 'prepare_close_conversation',
+        conversationId: activeConversationId
       });
-
-      if (!response.ok) throw new Error("Error al preparar el informe de cierre");
-      const resData = await response.json();
       if (resData && resData.success) {
         setClosurePrepared(true);
         // Reload conversations to sync activeConv
         await loadConversations();
-        // Reload messages to display Walter's markdown report in the chat
+        // Reload messages to display Asistente de apoyo's markdown report in the chat
         await loadMessages(activeConversationId);
-        
+
         if (resData.updatedContext && onProfileUpdated) {
           onProfileUpdated({
             ...profile,
@@ -259,20 +255,10 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
       const { data: { session: authSession } } = await supabase.auth.getSession();
       if (!authSession) return;
 
-      const response = await fetch('https://ysnorelkaccaikvuqgnv.supabase.co/functions/v1/chat-terapeuta', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${authSession.access_token}`
-        },
-        body: JSON.stringify({
-          action: 'close_conversation',
-          conversationId: activeConversationId
-        })
+      const resData = await invokeChatTerapeuta({
+        action: 'close_conversation',
+        conversationId: activeConversationId
       });
-
-      if (!response.ok) throw new Error("Error en el servicio de cierre definitivo");
-      const resData = await response.json();
       if (resData && resData.success) {
         alert("Sesión archivada y cerrada con éxito.");
         setClosurePrepared(false);
@@ -291,18 +277,19 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
   // Reabrir una sesión archivada/completada para seguir chateando o editando
   const handleReopenConversation = async () => {
     if (!activeConversationId || loading) return;
-    if (!confirm("¿Deseas reabrir esta conversación para poder seguir chateando con Walter y modificar su diagnóstico?")) return;
-    
+    if (!confirm("¿Deseas reabrir esta conversación para poder seguir chateando con Asistente de apoyo y modificar su diagnóstico?")) return;
+
     setLoading(true);
     try {
       const { error } = await supabase
         .from('conversations')
         .update({ status: 'active', closed_at: null })
+        .eq('user_id', user.id)
         .eq('id', activeConversationId);
-        
+
       if (error) throw error;
-      
-      setConversations(prev => prev.map(c => 
+
+      setConversations(prev => prev.map(c =>
         c.id === activeConversationId ? { ...c, status: 'active', closed_at: null } : c
       ));
       alert("Sesión reabierta y devuelta a estado activo con éxito.");
@@ -347,20 +334,25 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
           captured_fact: editSessionFact.trim(),
           conclusions: conclusionsArray,
           solutions_exercises: exercisesArray,
-          clinical_studies: editSessionStudies.trim()
+          clinical_studies: editSessionStudies.trim(),
+          context_sync_status: 'pending',
+          context_synced_at: null
         })
+        .eq('user_id', user.id)
         .eq('id', activeConversationId);
 
       if (error) throw error;
 
       // Actualizar el estado local
-      setConversations(prev => prev.map(c => 
+      setConversations(prev => prev.map(c =>
         c.id === activeConversationId ? {
           ...c,
           captured_fact: editSessionFact.trim(),
           conclusions: conclusionsArray,
           solutions_exercises: exercisesArray,
-          clinical_studies: editSessionStudies.trim()
+          clinical_studies: editSessionStudies.trim(),
+          context_sync_status: 'pending',
+          context_synced_at: null
         } : c
       ));
       setIsEditingSessionDiag(false);
@@ -374,16 +366,19 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
   // Create new conversation
   const handleCreateNewConversation = async (isInitial = false) => {
     try {
+      const baseTitle = genericMode ? 'Nueva Sesión' : 'Nueva Sesión con Asistente de apoyo';
       const { data, error } = await supabase
         .from('conversations')
-        .insert([{ user_id: user.id, title: 'Nueva Sesión con Walter' }])
+        .insert([{ user_id: user.id, title: baseTitle }])
         .select();
       if (error) throw error;
-      
+
       const newConv = data[0];
-      
+
       // Save initial greeting to database
-      const greeting = 'Hola Emilio. Soy Walter. Estoy aquí contigo tanto para ayudarte a reprocesar tu ansiedad y tus bloqueos emocionales, como para vigilar de cerca tu gestión de riesgos en el mercado. Recuerda: Lola te necesita sano, estable y en casa, no millonario. ¿Cómo te encuentras hoy en tu habitación? ¿Has tomado tu Atomoxetina?';
+      const greeting = genericMode
+        ? 'Hola. Soy tu asistente de apoyo. Este espacio se irá adaptando a lo que compartas en el chat y a los documentos que subas. ¿Qué te gustaría trabajar hoy?'
+        : 'Hola Emilio. Soy tu asistente de apoyo. Estoy aquí contigo tanto para ayudarte a reprocesar tu ansiedad y tus bloqueos emocionales, como para vigilar de cerca tu gestión de riesgos en el mercado. Recuerda: Lola te necesita sano, estable y en casa, no millonario. ¿Cómo te encuentras hoy en tu habitación? ¿Has rellenado tu Diario de Sensaciones?';
       await supabase.from('messages').insert([{
         conversation_id: newConv.id,
         role: 'assistant',
@@ -467,27 +462,28 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
         const { error } = await supabase
           .from('conversations')
           .delete()
+          .eq('user_id', user.id)
           .eq('id', convId);
         if (error) throw error;
-        
+
         const updated = conversations.filter(c => c.id !== convId);
         setConversations(updated);
-        
+
         if (updated.length === 0) {
           setActiveConversationId(null);
-          const emptyCtx = { 
-            conclusiones: [], 
-            compromisos: [], 
-            pautas_accion: [], 
-            contexto_base: { diagnostico_inicial: '', mecanismos_defensa: '' }, 
-            evoluciones: [], 
-            temas: [] 
+          const emptyCtx = {
+            conclusiones: [],
+            compromisos: [],
+            pautas_accion: [],
+            contexto_base: { diagnostico_inicial: '', mecanismos_defensa: '' },
+            evoluciones: [],
+            temas: []
           };
           const { error: profileError } = await supabase
             .from('profiles')
             .update({ contexto_terapeutico: emptyCtx })
             .eq('id', user.id);
-            
+
           if (!profileError && onProfileUpdated) {
             onProfileUpdated({
               ...profile,
@@ -504,7 +500,7 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
     }
   };
 
-  const sendMessageToWalter = async (updatedMessages) => {
+  const sendMessageToAssistantSupport = async (updatedMessages) => {
     setLoading(true);
     setError(null);
 
@@ -517,86 +513,18 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
 
     // Intentar obtener contexto técnico en tiempo real desde el TradingView Desktop local
     let tradingviewContext = null;
-    try {
-      // Timeout rápido para no bloquear la experiencia de chat
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 1500);
-
-      const stateRes = await fetch('http://localhost:9223/api/mcp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tool: 'chart_get_state' }),
-        signal: controller.signal
-      });
-      clearTimeout(timeoutId);
-
-      if (stateRes.ok) {
-        const stateData = await stateRes.json();
-
-        // Obtener valores de los estudios/indicadores en paralelo
-        const valuesController = new AbortController();
-        const valTimeoutId = setTimeout(() => valuesController.abort(), 1200);
-        
-        const [valRes, quoteRes, linesRes, tablesRes] = await Promise.allSettled([
-          fetch('http://localhost:9223/api/mcp', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ tool: 'data_get_study_values' }),
-            signal: valuesController.signal
-          }),
-          fetch('http://localhost:9223/api/mcp', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ tool: 'quote_get' }),
-            signal: valuesController.signal
-          }),
-          fetch('http://localhost:9223/api/mcp', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ tool: 'data_get_pine_lines' }),
-            signal: valuesController.signal
-          }),
-          fetch('http://localhost:9223/api/mcp', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ tool: 'data_get_pine_tables' }),
-            signal: valuesController.signal
-          })
-        ]);
-        clearTimeout(valTimeoutId);
-
-        const valData = valRes.status === 'fulfilled' && valRes.value.ok ? await valRes.value.json() : null;
-        const quoteData = quoteRes.status === 'fulfilled' && quoteRes.value.ok ? await quoteRes.value.json() : null;
-        const linesData = linesRes.status === 'fulfilled' && linesRes.value.ok ? await linesRes.value.json() : null;
-        const tablesData = tablesRes.status === 'fulfilled' && tablesRes.value.ok ? await tablesRes.value.json() : null;
-
-        tradingviewContext = {
-          connected: true,
-          state: stateData,
-          values: valData,
-          quote: quoteData,
-          pineLines: linesData,
-          pineTables: tablesData
-        };
-      }
-    } catch (e) {
-      console.log("TradingView Bridge local no disponible en puerto 9223:", e.message);
-      tradingviewContext = { connected: false, error: e.message };
-    }
+    // Contexto local de TradingView desactivado
 
     try {
       // Invoke Supabase Edge Function 'chat-terapeuta'
-      const { data, error: funcError } = await supabase.functions.invoke('chat-terapeuta', {
-        body: { 
-          messages: apiMessages,
-          currentMood: dailyMoodToday,
-          conversationId: activeConversationId,
-          tradingviewContext,
-          model: selectedModel
-        }
+      const data = await invokeChatTerapeuta({
+        messages: apiMessages,
+        currentMood: dailyMoodToday,
+        conversationId: activeConversationId,
+        tradingviewContext,
+        model: selectedModel,
+        genericMode
       });
-
-      if (funcError) throw funcError;
 
       if (data && data.reply) {
         // Fallback client-side: limpiar tags <update_context> sin parsear (por seguridad)
@@ -606,27 +534,7 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
           cleanReply = cleanReply.replace(/<update_context>[\s\S]*?<\/update_context>/gi, '').trim();
         }
 
-        // Si hay acciones enviadas por Walter (control de la pantalla local de TradingView)
-        if (data.actions && Array.isArray(data.actions) && data.actions.length > 0) {
-          // Ejecutar secuencialmente cada una de las acciones
-          for (const act of data.actions) {
-            try {
-              console.log("Walter solicita ejecutar acción local en TradingView:", act);
-              const actionRes = await fetch('http://localhost:9223/api/mcp', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  tool: act.tool,
-                  arguments: act.arguments
-                })
-              });
-              const actionResult = await actionRes.json();
-              console.log("Resultado de la acción ejecutada:", actionResult);
-            } catch (actionErr) {
-              console.error("Fallo al ejecutar acción local pedida por Walter:", actionErr);
-            }
-          }
-        }
+        // Acciones locales de TradingView desactivadas
 
         if (activeConversationId) {
           await loadMessages(activeConversationId);
@@ -634,11 +542,11 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
 
         // Si se generó un nuevo título, actualizar la conversación
         if (data.generatedTitle) {
-          setConversations(prev => prev.map(c => 
+          setConversations(prev => prev.map(c =>
             c.id === activeConversationId ? { ...c, title: data.generatedTitle } : c
           ));
         }
-        
+
         if (data.updatedContext && onProfileUpdated) {
           onProfileUpdated({
             ...profile,
@@ -652,7 +560,7 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
       }
     } catch (err) {
       console.error("Error calling therapist Edge Function:", err.message);
-      setError("Error al conectar con Walter: " + err.message);
+      setError("Error al conectar con Asistente de apoyo: " + err.message);
     } finally {
       setLoading(false);
       isSendingRef.current = false;
@@ -672,8 +580,8 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
     isSendingRef.current = true;
     setLoading(true); // Evitar el Double Submit de forma síncrona inmediata
 
-    const userMessage = { 
-      role: 'user', 
+    const userMessage = {
+      role: 'user',
       content: input.trim(),
       ...(imageBase64 && { image: imageBase64 })
     };
@@ -695,37 +603,10 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
       console.error("Error saving user message:", err.message);
     }
 
-    await sendMessageToWalter(updatedMessages);
+    await sendMessageToAssistantSupport(updatedMessages);
   };
 
-  // Capture Walter Audit Trigger from LocalStorage
-  useEffect(() => {
-    const trigger = localStorage.getItem('walter_audit_trigger');
-    if (trigger) {
-      localStorage.removeItem('walter_audit_trigger');
-      try {
-        const data = JSON.parse(trigger);
-        const promptText = `Walter, audita mi posición actual en futuros. Símbolo: ${data.symbol}, Dirección: ${data.side === 'LONG' ? 'LARGO (COMPRA)' : 'CORTO (VENTA)'}, Lote/Tamaño: ${Math.abs(parseFloat(data.volume)).toFixed(4)}, Precio Entrada: ${parseFloat(data.entry).toFixed(4)}, Precio Marca: ${parseFloat(data.mark).toFixed(4)}, PnL Flotante actual: ${parseFloat(data.pnl).toFixed(2)} USDT, Apalancamiento: ${data.leverage}x. Por favor, analízame el gráfico y dame tu pauta de price action y gestión de riesgos para no quemar la cuenta.`;
-        
-        if (activeConversationId) {
-          supabase.from('messages').insert([{
-            conversation_id: activeConversationId,
-            role: 'user',
-            content: promptText
-          }]).then(() => {
-            const userMsg = { role: 'user', content: promptText };
-            setMessages(prev => {
-              const updated = [...prev, userMsg];
-              sendMessageToWalter(updated);
-              return updated;
-            });
-          });
-        }
-      } catch (err) {
-        console.error("Error loading audit trigger:", err);
-      }
-    }
-  }, [activeConversationId]);
+  // Trigger de auditoría de trading desactivado
 
   const activeConv = conversations.find(c => c.id === activeConversationId);
   const isClosed = activeConv?.status === 'completed';
@@ -753,8 +634,8 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
 
   const renderMessageContent = (content) => {
     if (!content) return null;
-    
-    const modelRegex = /\[model:(2.5|3.5|5.5-high|deepseek)\]/i;
+
+    const modelRegex = /\[model:(free|2.5|3.5|5.5-high|deepseek)\]/i;
     const match = content.match(modelRegex);
     let cleanText = content.replace(modelRegex, '').trim();
     let modelName = match ? match[1] : null;
@@ -765,7 +646,7 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
           {cleanText}
         </p>
         {modelName && (
-          <div style={{ 
+          <div style={{
             alignSelf: 'flex-start',
             display: 'flex',
             alignItems: 'center',
@@ -775,11 +656,11 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
             borderRadius: '4px',
             background: 'rgba(255, 255, 255, 0.04)',
             border: '1px solid rgba(255, 255, 255, 0.08)',
-            color: modelName === 'deepseek' ? '#a78bfa' : (modelName === '5.5-high' ? 'var(--color-emerald)' : (modelName === '3.5' ? 'var(--color-cyan)' : 'var(--text-secondary)')),
+            color: modelName === 'free' ? 'var(--color-cyan)' : (modelName === 'deepseek' ? '#a78bfa' : (modelName === '5.5-high' ? 'var(--color-emerald)' : (modelName === '3.5' ? 'var(--color-cyan)' : 'var(--text-secondary)'))),
             fontWeight: 700,
             marginTop: '4px'
           }}>
-            <span>{modelName === 'deepseek' ? '🐳 DeepSeek V4' : (modelName === '5.5-high' ? '💎 GPT 5.5 High' : (modelName === '3.5' ? '🧠 Gemini 3.5' : '⚡ Gemini 2.5'))}</span>
+            <span>{modelName === 'free' ? '⚡ OpenRouter Free' : (modelName === 'deepseek' ? '🐳 DeepSeek V4' : (modelName === '5.5-high' ? '💎 GPT 5.5 High' : (modelName === '3.5' ? '🧠 Gemini 3.5' : '⚡ Gemini 2.5')))}</span>
           </div>
         )}
       </div>
@@ -794,14 +675,23 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
       setLeftPanelOpen(false);
       setPanelOpen(false);
     }
-    
+
     let promptText = "";
     if (actionType === 'investigar') {
-      promptText = "Walter, realiza una investigación clínica interna con todo lo que sabes sobre mi perfil y la situación de lo que estamos tratando en esta sesión. Etiqueta el resultado con la fecha de hoy y el tema o temas principales correspondientes para organizarlo.";
+      promptText = "Asistente de apoyo, realiza una investigación clínica interna con todo lo que sabes sobre mi perfil y la situación de lo que estamos tratando en esta sesión. Etiqueta el resultado con la fecha de hoy y el tema o temas principales correspondientes para organizarlo.";
     } else if (actionType === 'conclusiones') {
-      promptText = "Walter, extrae conclusiones detalladas de lo que estamos tratando ahora mismo, basándote en mi historial de memoria y deudas. Etiqueta el resultado con la fecha de hoy y el tema o temas principales correspondientes para organizarlo.";
+      promptText = "Asistente de apoyo, extrae conclusiones detalladas de lo que estamos tratando ahora mismo, basándote en mi historial de memoria y deudas. Etiqueta el resultado con la fecha de hoy y el tema o temas principales correspondientes para organizarlo.";
     } else if (actionType === 'soluciones') {
-      promptText = "Walter, propón posibles soluciones o pautas de reset conductual para este conflicto basándote en mi perfil y situación financiera. Etiqueta el resultado con la fecha de hoy y el tema o temas correspondientes para organizarlo.";
+      promptText = "Asistente de apoyo, propón posibles soluciones o pautas de reset conductual para este conflicto basándote en mi perfil y situación financiera. Etiqueta el resultado con la fecha de hoy y el tema o temas correspondientes para organizarlo.";
+    }
+
+    if (genericMode) {
+      const genericPrompts = {
+        investigar: "Realiza una revisión interna usando solo mi memoria privada y lo tratado en esta sesión. Etiqueta el resultado con la fecha de hoy y los temas principales.",
+        conclusiones: "Extrae conclusiones detalladas de lo que estamos tratando ahora mismo, basándote solo en mi conversación y en mi memoria privada. Etiqueta el resultado con la fecha de hoy y los temas principales.",
+        soluciones: "Propón posibles pautas prácticas para este conflicto basándote solo en mi perfil privado y en esta conversación. Etiqueta el resultado con la fecha de hoy y los temas principales."
+      };
+      promptText = genericPrompts[actionType] || promptText;
     }
 
     if (!promptText) return;
@@ -809,8 +699,8 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
     isSendingRef.current = true;
     setLoading(true);
 
-    const userMessage = { 
-      role: 'user', 
+    const userMessage = {
+      role: 'user',
       content: promptText
     };
 
@@ -828,22 +718,22 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
       console.error("Error saving user message:", err.message);
     }
 
-    await sendMessageToWalter(updatedMessages);
+    await sendMessageToAssistantSupport(updatedMessages);
   };
 
   return (
-    <div style={{ 
-      height: '100%', 
-      display: 'flex', 
-      gap: isMobile ? '0' : '20px', 
-      position: 'relative', 
+    <div style={{
+      height: '100%',
+      display: 'flex',
+      gap: isMobile ? '0' : '20px',
+      position: 'relative',
       overflow: 'hidden',
       paddingBottom: isMobile ? '68px' : '0'
     }}>
-      
+
       {/* OVERLAY PARA MÓVIL */}
       {isMobile && (mobileShowSidebar || panelOpen) && (
-        <div 
+        <div
           onClick={() => {
             setMobileShowSidebar(false);
             setPanelOpen(false);
@@ -862,12 +752,12 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
       )}
 
       {/* COLUMNA 1: SIDEBAR DE CONVERSACIONES HISTÓRICAS */}
-      <div className="glass-panel" style={{ 
-        width: isMobile ? (mobileShowSidebar ? '260px' : '0px') : (leftPanelOpen ? '260px' : '0px'), 
-        opacity: isMobile ? (mobileShowSidebar ? 1 : 0) : (leftPanelOpen ? 1 : 0), 
-        display: 'flex', 
-        flexDirection: 'column', 
-        height: '100%', 
+      <div className="glass-panel" style={{
+        width: isMobile ? (mobileShowSidebar ? '260px' : '0px') : (leftPanelOpen ? '260px' : '0px'),
+        opacity: isMobile ? (mobileShowSidebar ? 1 : 0) : (leftPanelOpen ? 1 : 0),
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
         borderRight: (leftPanelOpen && !isMobile) ? '1px solid var(--border)' : 'none',
         padding: isMobile ? '16px' : (leftPanelOpen ? '16px' : '0px'),
         background: isMobile ? 'rgba(8, 13, 28, 0.98)' : 'rgba(0,0,0,0.15)',
@@ -894,25 +784,47 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
           <span>Nueva Sesión</span>
         </button>
 
+        {/* Barra de búsqueda de sesiones y notas */}
+        <div style={{ position: 'relative', width: '100%', marginTop: '4px' }}>
+          <input
+            type="text"
+            placeholder="Buscar sesión o notas..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            style={{
+              width: '100%',
+              height: '34px',
+              fontSize: '0.74rem',
+              padding: '0 30px 0 10px',
+              background: 'rgba(0,0,0,0.2)',
+              border: '1px solid var(--border)',
+              borderRadius: '6px',
+              color: '#ffffff',
+              outline: 'none'
+            }}
+          />
+          <Search size={14} color="var(--text-tertiary)" style={{ position: 'absolute', right: '10px', top: '10px' }} />
+        </div>
+
         <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px' }}>
           <span style={{ fontSize: '0.62rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 800 }}>
             Historial de Sesiones
           </span>
-          {conversations.length === 0 ? (
+          {filteredConversations.length === 0 ? (
             <p style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', fontStyle: 'italic', textAlign: 'center', padding: '12px' }}>
-              Sin sesiones registradas
+              Sin sesiones encontradas
             </p>
           ) : (
-            conversations.map((conv) => {
+            filteredConversations.map((conv) => {
               const isActive = conv.id === activeConversationId;
               const isEditing = editingConvId === conv.id;
               const dateStr = new Date(conv.updated_at).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
               return (
                 <div
                   key={conv.id}
-                  onClick={() => { 
+                  onClick={() => {
                     if (!isEditing) {
-                      setActiveConversationId(conv.id); 
+                      setActiveConversationId(conv.id);
                       setMobileShowSidebar(false);
                     }
                   }}
@@ -941,7 +853,7 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
                             (async () => {
                               const trimmed = editingTitle.trim();
                               if (trimmed) {
-                                await supabase.from('conversations').update({ title: trimmed }).eq('id', conv.id);
+                                await supabase.from('conversations').update({ title: trimmed }).eq('user_id', user.id).eq('id', conv.id);
                                 setConversations(prev => prev.map(c => c.id === conv.id ? { ...c, title: trimmed } : c));
                               }
                               setEditingConvId(null);
@@ -968,7 +880,7 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
                           e.stopPropagation();
                           const trimmed = editingTitle.trim();
                           if (trimmed) {
-                            await supabase.from('conversations').update({ title: trimmed }).eq('id', conv.id);
+                            await supabase.from('conversations').update({ title: trimmed }).eq('user_id', user.id).eq('id', conv.id);
                             setConversations(prev => prev.map(c => c.id === conv.id ? { ...c, title: trimmed } : c));
                           }
                           setEditingConvId(null);
@@ -992,11 +904,11 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
                         onDoubleClick={(e) => {
                           e.stopPropagation();
                           setEditingConvId(conv.id);
-                          setEditingTitle(conv.title || 'Nueva Sesión con Walter');
+                          setEditingTitle(conv.title || (genericMode ? 'Nueva Sesión' : 'Nueva Sesión con Asistente de apoyo'));
                         }}
-                        style={{ 
-                          fontSize: '0.78rem', 
-                          fontWeight: isActive ? 700 : 500, 
+                        style={{
+                          fontSize: '0.78rem',
+                          fontWeight: isActive ? 700 : 500,
                           color: isActive ? 'var(--color-cyan)' : '#ffffff',
                           whiteSpace: 'nowrap',
                           overflow: 'hidden',
@@ -1006,7 +918,7 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
                         }}
                         title="Doble clic para editar título"
                       >
-                        {conv.title || 'Nueva Sesión con Walter'}
+                        {conv.title || (genericMode ? 'Nueva Sesión' : 'Nueva Sesión con Asistente de apoyo')}
                       </span>
                       <button
                         onClick={async (e) => {
@@ -1026,8 +938,8 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
                     <span style={{ fontSize: '0.6rem', color: 'var(--text-secondary)' }}>
                       {dateStr}
                     </span>
-                    <span style={{ 
-                      fontSize: '0.52rem', 
+                    <span style={{
+                      fontSize: '0.52rem',
                       background: conv.status === 'completed' ? 'rgba(255,255,255,0.03)' : 'rgba(6,182,212,0.08)',
                       border: conv.status === 'completed' ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(6,182,212,0.25)',
                       color: conv.status === 'completed' ? 'var(--text-tertiary)' : 'var(--color-cyan)',
@@ -1047,12 +959,12 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
       </div>
       {/* COLUMNA 2: EL CHAT DE WALTER (CENTRAL) */}
       <div className="chat-container" style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', transition: 'all 0.3s ease' }}>
-        
+
         {/* Chat Header */}
         <div className="chat-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: isMobile ? '12px 14px' : '16px 20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             {isMobile ? (
-              <button 
+              <button
                 onClick={() => setMobileShowSidebar(!mobileShowSidebar)}
                 className="btn btn-outline flex-center"
                 style={{ padding: 0, height: '36px', width: '36px', minWidth: 0, borderColor: 'var(--border)' }}
@@ -1061,7 +973,7 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
                 <Menu size={18} />
               </button>
             ) : (
-              <button 
+              <button
                 onClick={() => setLeftPanelOpen(!leftPanelOpen)}
                 className="btn btn-outline flex-center"
                 style={{ padding: 0, height: '36px', width: '36px', minWidth: 0, borderColor: leftPanelOpen ? 'var(--color-cyan)' : 'var(--border)' }}
@@ -1070,11 +982,11 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
                 <Menu size={18} color={leftPanelOpen ? 'var(--color-cyan)' : 'var(--text-secondary)'} />
               </button>
             )}
-            <div className="flex-center" style={{ 
-              width: '40px', 
-              height: '40px', 
-              borderRadius: 'var(--radius-md)', 
-              background: 'hsla(var(--cyan), 0.1)', 
+            <div className="flex-center" style={{
+              width: '40px',
+              height: '40px',
+              borderRadius: 'var(--radius-md)',
+              background: 'hsla(var(--cyan), 0.1)',
               border: '1px solid hsla(var(--cyan), 0.25)',
               color: 'var(--color-cyan)'
             }}>
@@ -1091,7 +1003,7 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
                       if (e.key === 'Enter') {
                         const trimmed = editingTitle.trim();
                         if (trimmed) {
-                          await supabase.from('conversations').update({ title: trimmed }).eq('id', activeConversationId);
+                          await supabase.from('conversations').update({ title: trimmed }).eq('user_id', user.id).eq('id', activeConversationId);
                           setConversations(prev => prev.map(c => c.id === activeConversationId ? { ...c, title: trimmed } : c));
                         }
                         setEditingConvId(null);
@@ -1115,7 +1027,7 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
                       e.stopPropagation();
                       const trimmed = editingTitle.trim();
                       if (trimmed) {
-                        await supabase.from('conversations').update({ title: trimmed }).eq('id', activeConversationId);
+                        await supabase.from('conversations').update({ title: trimmed }).eq('user_id', user.id).eq('id', activeConversationId);
                         setConversations(prev => prev.map(c => c.id === activeConversationId ? { ...c, title: trimmed } : c));
                       }
                       setEditingConvId(null);
@@ -1126,28 +1038,28 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
                   </button>
                 </div>
               ) : (
-                <h4 
+                <h4
                   onDoubleClick={() => {
                     if (activeConversationId) {
                       setEditingConvId(activeConversationId);
-                      setEditingTitle(activeConv?.title || 'Nueva Sesión con Walter');
+                      setEditingTitle(activeConv?.title || (genericMode ? 'Nueva Sesión' : 'Nueva Sesión con Asistente de apoyo'));
                     }
                   }}
                   style={{ fontSize: '0.9rem', fontWeight: 700, margin: 0, cursor: 'text' }}
                   title="Doble clic para editar título"
                 >
-                  {activeConv?.title || 'Nueva Sesión con Walter'}
+                  {activeConv?.title || (genericMode ? 'Nueva Sesión' : 'Nueva Sesión con Asistente de apoyo')}
                 </h4>
               )}
               <p style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', margin: 0 }}>
-                {isMobile ? 'Walter' : 'Walter — Psicólogo Clínico & Gestor de Riesgo'}
+                {isMobile ? (genericMode ? 'Chat' : 'Asistente de apoyo') : (genericMode ? 'Chat de apoyo' : 'Asistente de apoyo — Psicólogo Clínico & Gestor de Riesgo')}
               </p>
             </div>
           </div>
-          
+
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <div style={{ display: 'flex', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '2px', height: '36px', alignItems: 'center', gap: '2px' }}>
-              <button 
+              <button
                 type="button"
                 onClick={() => setSelectedModel('2.5')}
                 style={{
@@ -1166,7 +1078,7 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
               >
                 ⚡ 2.5
               </button>
-              <button 
+              <button
                 type="button"
                 onClick={() => setSelectedModel('3.5')}
                 style={{
@@ -1185,7 +1097,7 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
               >
                 🧠 3.5
               </button>
-              <button 
+              <button
                 type="button"
                 onClick={() => setSelectedModel('5.5-high')}
                 style={{
@@ -1204,7 +1116,7 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
               >
                 💎 5.5 High
               </button>
-              <button 
+              <button
                 type="button"
                 onClick={() => setSelectedModel('deepseek')}
                 style={{
@@ -1226,17 +1138,17 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
             </div>
 
             {!isClosed && (
-              <button 
+              <button
                 onClick={closurePrepared ? handleConfirmCloseSession : handlePrepareClosure}
                 className={`btn ${closurePrepared ? 'btn-cyan animate-glow-cyan' : 'btn-outline'} flex-center`}
                 title={closurePrepared ? "Confirmar y archivar esta conversación" : "Preparar cierre clínico de sesión"}
-                style={{ 
-                  padding: isMobile ? '8px' : '8px 14px', 
-                  borderRadius: 'var(--radius-sm)', 
-                  height: '36px', 
-                  gap: '6px', 
-                  fontSize: '0.72rem', 
-                  borderColor: closurePrepared ? 'transparent' : 'var(--color-cyan)', 
+                style={{
+                  padding: isMobile ? '8px' : '8px 14px',
+                  borderRadius: 'var(--radius-sm)',
+                  height: '36px',
+                  gap: '6px',
+                  fontSize: '0.72rem',
+                  borderColor: closurePrepared ? 'transparent' : 'var(--color-cyan)',
                   color: closurePrepared ? '#ffffff' : 'var(--color-cyan)',
                   fontWeight: 700
                 }}
@@ -1245,7 +1157,7 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
                 {closurePrepared ? '🔒 Confirmar y Archivar' : '🔒 Preparar Cierre'}
               </button>
             )}
-            <button 
+            <button
               onClick={() => handleDeleteConversation(activeConversationId)}
               className="btn btn-outline flex-center"
               title="Eliminar esta conversación de Supabase"
@@ -1253,7 +1165,7 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
             >
               <Trash2 size={16} />
             </button>
-            <button 
+            <button
               onClick={() => setPanelOpen(!panelOpen)}
               className="btn btn-outline flex-center"
               title={panelOpen ? "Ocultar contexto de la mente" : "Ver contexto de la mente"}
@@ -1271,14 +1183,14 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
             <div key={idx} className={`chat-bubble ${msg.role}`} style={{ position: 'relative' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px', gap: '10px' }}>
                 <span style={{ fontSize: '0.68rem', fontWeight: 700, color: msg.role === 'user' ? '#ffffff' : 'var(--color-cyan)', textTransform: 'uppercase' }}>
-                  {msg.role === 'user' ? 'Emilio' : 'Walter'}
+                  {msg.role === 'user' ? (genericMode ? 'Usuario' : 'Usuario') : (genericMode ? 'Asistente' : 'Asistente de apoyo')}
                 </span>
               </div>
-              
+
               {/* Image attachment rendering */}
               {msg.image && (
                 <div style={{ marginBottom: '8px', maxWidth: '320px', borderRadius: 'var(--radius-sm)', overflow: 'hidden', border: '1px solid var(--border)' }}>
-                  <img src={msg.image} alt="Adjunto de Emilio" style={{ width: '100%', height: 'auto', display: 'block' }} />
+                  <img src={msg.image} alt={genericMode ? 'Adjunto del usuario' : 'Adjunto de Usuario'} style={{ width: '100%', height: 'auto', display: 'block' }} />
                 </div>
               )}
 
@@ -1288,7 +1200,7 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
 
           {loading && (
             <div className="chat-bubble assistant" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--color-cyan)', textTransform: 'uppercase', display: 'block', marginRight: '6px' }}>Walter</span>
+              <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--color-cyan)', textTransform: 'uppercase', display: 'block', marginRight: '6px' }}>{genericMode ? 'Asistente' : 'Asistente de apoyo'}</span>
               <div className="flex-center" style={{ gap: '4px' }}>
                 <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--color-cyan)', animation: 'pulse-soft 1s infinite alternate' }} />
                 <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--color-cyan)', animation: 'pulse-soft 1s infinite alternate 0.2s' }} />
@@ -1298,10 +1210,10 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
           )}
 
           {error && (
-            <div className="flex-center" style={{ 
-              alignSelf: 'center', 
-              background: 'hsla(var(--rose), 0.1)', 
-              border: '1px solid hsla(var(--rose), 0.25)', 
+            <div className="flex-center" style={{
+              alignSelf: 'center',
+              background: 'hsla(var(--rose), 0.1)',
+              border: '1px solid hsla(var(--rose), 0.25)',
               padding: '12px 16px',
               borderRadius: 'var(--radius-md)',
               color: 'var(--color-rose)',
@@ -1315,24 +1227,24 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
           )}
 
           {isClosed && activeConv && (
-            <div className="glass-panel" style={{ 
-              margin: '20px 0', 
-              padding: '20px', 
-              background: 'linear-gradient(135deg, rgba(6,182,212,0.04), rgba(15,23,42,0.6))', 
-              border: '1px solid var(--color-cyan)', 
+            <div className="glass-panel" style={{
+              margin: '20px 0',
+              padding: '20px',
+              background: 'linear-gradient(135deg, rgba(6,182,212,0.04), rgba(15,23,42,0.6))',
+              border: '1px solid var(--color-cyan)',
               borderRadius: '12px',
               boxShadow: 'var(--shadow-cyan)'
             }}>
               <h5 style={{ fontSize: '0.88rem', fontWeight: 800, color: 'var(--color-cyan)', margin: '0 0 14px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span>🧠 Informe Clínico de Cierre (Walter)</span>
+                <span>🧠 {genericMode ? 'Informe de Cierre' : 'Informe Clínico de Cierre (Asistente de apoyo)'}</span>
               </h5>
-              
+
               <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', fontSize: '0.78rem' }}>
                 <div>
                   <span style={{ fontSize: '0.62rem', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase', fontWeight: 700, marginBottom: '2px' }}>Hecho Clínico Capturado</span>
                   <p style={{ color: '#ffffff', margin: 0, lineHeight: 1.4 }}>{activeConv.captured_fact || "Ninguno registrado."}</p>
                 </div>
-                
+
                 <div>
                   <span style={{ fontSize: '0.62rem', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase', fontWeight: 700, marginBottom: '4px' }}>Conclusiones de la Sesión</span>
                   <ul style={{ margin: 0, paddingLeft: '14px', color: 'var(--text-primary)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -1366,7 +1278,7 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
                 <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '10px', marginTop: '4px' }}>
                   <span style={{ fontSize: '0.62rem', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase', fontWeight: 700, marginBottom: '2px' }}>Estudios Clínicos & Casos de Referencia</span>
                   <p style={{ color: 'var(--text-secondary)', margin: 0, lineHeight: 1.45, fontStyle: 'italic' }}>
-                    {activeConv.clinical_studies || "Estudio general sobre TDAH y trauma."}
+                    {activeConv.clinical_studies || "Resumen general pendiente."}
                   </p>
                 </div>
               </div>
@@ -1379,10 +1291,10 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
         {/* Input box */}
         <div style={{ borderTop: '1px solid var(--border)', background: 'var(--background-secondary)', padding: '16px', borderBottomLeftRadius: 'var(--radius-lg)', borderBottomRightRadius: 'var(--radius-lg)' }}>
           {isClosed ? (
-            <div className="glass-panel flex-center" style={{ 
-              padding: '16px', 
-              background: 'rgba(255, 255, 255, 0.01)', 
-              borderColor: 'var(--border)', 
+            <div className="glass-panel flex-center" style={{
+              padding: '16px',
+              background: 'rgba(255, 255, 255, 0.01)',
+              borderColor: 'var(--border)',
               borderRadius: 'var(--radius-md)',
               flexDirection: 'column',
               gap: '12px',
@@ -1392,16 +1304,16 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
                 🔒 <strong>Sesión Archivada y Cerrada.</strong> Se han consolidado el hecho y las conclusiones clínicas en el área de Salud y Mente.
               </span>
               <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'center' }}>
-                <button 
+                <button
                   onClick={() => handleCreateNewConversation()}
-                  className="btn btn-cyan animate-glow-cyan" 
+                  className="btn btn-cyan animate-glow-cyan"
                   style={{ height: '32px', fontSize: '0.72rem', padding: '0 16px', fontWeight: 700 }}
                 >
                   + Nueva Conversación / Tema
                 </button>
-                <button 
+                <button
                   onClick={handleReopenConversation}
-                  className="btn btn-outline" 
+                  className="btn btn-outline"
                   style={{ height: '32px', fontSize: '0.72rem', padding: '0 16px', fontWeight: 700, borderColor: 'rgba(6,182,212,0.3)', color: 'var(--color-cyan)' }}
                 >
                   🔓 Reabrir Sesión
@@ -1412,8 +1324,8 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
             <>
               {/* Botones de Acción Clínica Rápida */}
               <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}>
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   onClick={() => handleTriggerSpecialAction('investigar')}
                   className="btn btn-outline flex-center"
                   style={{ fontSize: '0.7rem', height: '28px', padding: '0 12px', borderRadius: 'var(--radius-sm)', borderColor: 'rgba(6,182,212,0.3)', color: 'var(--color-cyan)', fontWeight: 700, gap: '4px' }}
@@ -1421,8 +1333,8 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
                 >
                   🔍 Investigar Contexto
                 </button>
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   onClick={() => handleTriggerSpecialAction('conclusiones')}
                   className="btn btn-outline flex-center"
                   style={{ fontSize: '0.7rem', height: '28px', padding: '0 12px', borderRadius: 'var(--radius-sm)', borderColor: 'rgba(16,185,129,0.3)', color: 'var(--color-emerald)', fontWeight: 700, gap: '4px' }}
@@ -1430,8 +1342,8 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
                 >
                   📋 Extraer Conclusiones
                 </button>
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   onClick={() => handleTriggerSpecialAction('soluciones')}
                   className="btn btn-outline flex-center"
                   style={{ fontSize: '0.7rem', height: '28px', padding: '0 12px', borderRadius: 'var(--radius-sm)', borderColor: 'rgba(244,63,94,0.3)', color: 'var(--color-rose)', fontWeight: 700, gap: '4px' }}
@@ -1448,8 +1360,8 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
                     <img src={imageBase64} alt="Previsualización" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   </div>
                   <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Captura lista para enviar</span>
-                  <button 
-                    type="button" 
+                  <button
+                    type="button"
                     onClick={() => setImageBase64(null)}
                     style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '4px', color: 'var(--color-rose)' }}
                   >
@@ -1459,8 +1371,8 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
               )}
 
               <form onSubmit={handleSend} className="chat-input-area" style={{ display: 'flex', gap: '10px', margin: 0, padding: 0, border: 'none', background: 'none' }}>
-                <input 
-                  type="file" 
+                <input
+                  type="file"
                   ref={fileInputRef}
                   accept="image/*"
                   onChange={handleImageUpload}
@@ -1482,11 +1394,11 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
                   className={`btn ${isRecording ? 'btn-danger animate-pulse-soft' : 'btn-outline'} flex-center`}
                   title={isRecording ? "Grabando voz... Haz clic para transcribir" : "Dictar mensaje por voz (inteligente)"}
                   disabled={loading || transcribingAudio}
-                  style={{ 
-                    width: '46px', 
-                    height: '46px', 
-                    padding: 0, 
-                    borderRadius: 'var(--radius-sm)', 
+                  style={{
+                    width: '46px',
+                    height: '46px',
+                    padding: 0,
+                    borderRadius: 'var(--radius-sm)',
                     flexShrink: 0,
                     backgroundColor: isRecording ? 'rgba(239, 68, 68, 0.2)' : 'transparent',
                     borderColor: isRecording ? '#ef4444' : 'var(--border)',
@@ -1509,24 +1421,39 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
                   )}
                 </button>
 
-                <input 
-                  type="text" 
-                  className="chat-input" 
-                  placeholder={transcribingAudio ? "🧠 Walter transcribiendo y organizando audio..." : "Escribe tu mensaje a Walter o habla por micrófono..."}
+                <textarea
+                  ref={textareaRef}
+                  className="chat-input"
+                  placeholder={transcribingAudio ? "Transcribiendo y organizando audio..." : (genericMode ? "Escribe tu mensaje o habla por micrófono..." : "Escribe tu mensaje a Asistente de apoyo o habla por micrófono...")}
                   value={transcribingAudio ? "" : input}
                   onChange={(e) => setInput(e.target.value)}
                   onPaste={handlePaste}
                   onFocus={handleInputFocus}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSend(e);
+                    }
+                  }}
                   disabled={loading || transcribingAudio}
-                  style={{ 
+                  style={{
                     flex: 1,
                     fontStyle: transcribingAudio ? 'italic' : 'normal',
-                    color: transcribingAudio ? 'var(--color-cyan)' : 'var(--text-primary)'
+                    color: transcribingAudio ? 'var(--color-cyan)' : 'var(--text-primary)',
+                    resize: 'none',
+                    height: '46px',
+                    minHeight: '46px',
+                    maxHeight: '160px',
+                    paddingTop: '12px',
+                    paddingBottom: '12px',
+                    lineHeight: '1.4',
+                    fontFamily: 'inherit',
+                    overflowY: 'auto'
                   }}
                 />
-                <button 
-                  type="submit" 
-                  className="btn btn-cyan animate-glow-cyan" 
+                <button
+                  type="submit"
+                  className="btn btn-cyan animate-glow-cyan"
                   disabled={loading || (!input.trim() && !imageBase64)}
                   style={{ width: '46px', height: '46px', padding: 0, borderRadius: 'var(--radius-sm)', flexShrink: 0 }}
                 >
@@ -1538,14 +1465,14 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
         </div>
       </div>
       {/* SECCIÓN DERECHA: PANEL DE CONTEXTO EVOLUTIVO DE EMILIO (MEMORIA) */}
-      <div 
-        className="glass-panel" 
-        style={{ 
-          width: isMobile ? '300px' : (panelOpen ? '320px' : '0px'), 
-          opacity: panelOpen ? 1 : 0, 
-          overflow: 'hidden', 
-          transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)', 
-          display: 'flex', 
+      <div
+        className="glass-panel"
+        style={{
+          width: isMobile ? '300px' : (panelOpen ? '320px' : '0px'),
+          opacity: panelOpen ? 1 : 0,
+          overflow: 'hidden',
+          transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+          display: 'flex',
           flexDirection: 'column',
           height: '100%',
           borderLeft: (panelOpen && !isMobile) ? '1px solid var(--border)' : 'none',
@@ -1560,7 +1487,7 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid var(--border)', paddingBottom: '12px', marginBottom: '16px' }}>
           <Brain size={18} color="var(--color-cyan)" />
           <h4 style={{ fontSize: '0.9rem', fontWeight: 800, color: '#ffffff', margin: 0, whiteSpace: 'nowrap' }}>
-            Contexto Clínico & Memoria
+            {genericMode ? 'Contexto & Memoria' : 'Contexto Clínico & Memoria'}
           </h4>
         </div>
 
@@ -1579,7 +1506,7 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', borderBottom: '1px solid rgba(255,255,255,0.04)', paddingBottom: '8px', color: 'var(--color-cyan)' }}>
               <Brain size={14} />
-              <span style={{ fontSize: '0.64rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Diagnóstico Base (Mente)</span>
+              <span style={{ fontSize: '0.64rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{genericMode ? 'Contexto Base' : 'Diagnóstico Base (Mente)'}</span>
             </div>
             <div>
               <p style={{ color: 'var(--text-primary)', margin: 0, lineHeight: 1.45, whiteSpace: 'pre-wrap', fontWeight: 500 }}>
@@ -1597,12 +1524,12 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
               </div>
             )}
           </div>
-          
+
           {/* SECCIÓN ÚNICA: DIAGNÓSTICO DE ESTA SESIÓN */}
-          <div style={{ 
-            background: 'linear-gradient(135deg, rgba(6,182,212,0.06), rgba(15,23,42,0.8))', 
-            border: '1px solid rgba(6,182,212,0.25)', 
-            borderRadius: 'var(--radius-md)', 
+          <div style={{
+            background: 'linear-gradient(135deg, rgba(6,182,212,0.06), rgba(15,23,42,0.8))',
+            border: '1px solid rgba(6,182,212,0.25)',
+            borderRadius: 'var(--radius-md)',
             padding: '16px',
             boxShadow: 'var(--shadow-md)',
             display: 'flex',
@@ -1612,10 +1539,10 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(6,182,212,0.15)', paddingBottom: '10px', color: 'var(--color-cyan)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Brain size={16} />
-                <span style={{ fontSize: '0.74rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Diagnóstico de esta Sesión</span>
+                <span style={{ fontSize: '0.74rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{genericMode ? 'Resumen de esta Sesión' : 'Diagnóstico de esta Sesión'}</span>
               </div>
               {activeConv && !isEditingSessionDiag && (
-                <button 
+                <button
                   onClick={startEditingSessionDiag}
                   style={{
                     background: 'none',
@@ -1634,46 +1561,46 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
                 </button>
               )}
             </div>
-            
+
             {isEditingSessionDiag ? (
               <form onSubmit={handleSaveSessionDiagnosis} style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '0.72rem' }}>
                 <div>
                   <label style={{ display: 'block', color: 'var(--text-secondary)', fontWeight: 700, marginBottom: '2px', fontSize: '0.58rem', textTransform: 'uppercase' }}>Foco / Hecho Clínico</label>
-                  <input 
-                    type="text" 
-                    className="form-input" 
-                    value={editSessionFact} 
-                    onChange={(e) => setEditSessionFact(e.target.value)} 
+                  <input
+                    type="text"
+                    className="form-input"
+                    value={editSessionFact}
+                    onChange={(e) => setEditSessionFact(e.target.value)}
                     style={{ width: '100%', fontSize: '0.72rem', height: '28px', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border)', borderRadius: '4px', padding: '0 8px', color: '#fff' }}
                   />
                 </div>
                 <div>
                   <label style={{ display: 'block', color: 'var(--text-secondary)', fontWeight: 700, marginBottom: '2px', fontSize: '0.58rem', textTransform: 'uppercase' }}>Conclusiones (una por línea)</label>
-                  <textarea 
-                    rows="3" 
-                    className="form-input" 
-                    value={editSessionConclusions} 
-                    onChange={(e) => setEditSessionConclusions(e.target.value)} 
+                  <textarea
+                    rows="3"
+                    className="form-input"
+                    value={editSessionConclusions}
+                    onChange={(e) => setEditSessionConclusions(e.target.value)}
                     style={{ width: '100%', fontSize: '0.72rem', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border)', borderRadius: '4px', padding: '6px 8px', resize: 'none', color: '#fff' }}
                   />
                 </div>
                 <div>
                   <label style={{ display: 'block', color: 'var(--text-secondary)', fontWeight: 700, marginBottom: '2px', fontSize: '0.58rem', textTransform: 'uppercase' }}>Ejercicios o Soluciones (uno por línea)</label>
-                  <textarea 
-                    rows="3" 
-                    className="form-input" 
-                    value={editSessionExercises} 
-                    onChange={(e) => setEditSessionExercises(e.target.value)} 
+                  <textarea
+                    rows="3"
+                    className="form-input"
+                    value={editSessionExercises}
+                    onChange={(e) => setEditSessionExercises(e.target.value)}
                     style={{ width: '100%', fontSize: '0.72rem', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border)', borderRadius: '4px', padding: '6px 8px', resize: 'none', color: '#fff' }}
                   />
                 </div>
                 <div>
                   <label style={{ display: 'block', color: 'var(--text-secondary)', fontWeight: 700, marginBottom: '2px', fontSize: '0.58rem', textTransform: 'uppercase' }}>Investigación Relacionada</label>
-                  <textarea 
-                    rows="3" 
-                    className="form-input" 
-                    value={editSessionStudies} 
-                    onChange={(e) => setEditSessionStudies(e.target.value)} 
+                  <textarea
+                    rows="3"
+                    className="form-input"
+                    value={editSessionStudies}
+                    onChange={(e) => setEditSessionStudies(e.target.value)}
                     style={{ width: '100%', fontSize: '0.72rem', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border)', borderRadius: '4px', padding: '6px 8px', resize: 'none', color: '#fff' }}
                   />
                 </div>
@@ -1685,10 +1612,10 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
             ) : activeConv && (activeConv.captured_fact || activeConv.conclusions || activeConv.solutions_exercises || activeConv.clinical_studies) ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', fontSize: '0.72rem' }}>
                 {activeConv.captured_fact && (
-                  <div style={{ 
-                    background: 'linear-gradient(135deg, rgba(6,182,212,0.1), rgba(6,182,212,0.02))', 
-                    padding: '12px', 
-                    borderRadius: '8px', 
+                  <div style={{
+                    background: 'linear-gradient(135deg, rgba(6,182,212,0.1), rgba(6,182,212,0.02))',
+                    padding: '12px',
+                    borderRadius: '8px',
                     borderLeft: '4px solid var(--color-cyan)',
                     boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
                   }}>
@@ -1698,7 +1625,7 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
                     <strong style={{ color: '#ffffff', fontSize: '0.76rem', lineHeight: 1.4, display: 'block' }}>{activeConv.captured_fact}</strong>
                   </div>
                 )}
-                
+
                 {activeConv.conclusions && parseJsonArray(activeConv.conclusions).length > 0 && (
                   <div style={{
                     background: 'rgba(255, 255, 255, 0.02)',
@@ -1710,14 +1637,14 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
                     <span style={{ fontSize: '0.58rem', color: 'var(--text-secondary)', display: 'block', textTransform: 'uppercase', fontWeight: 800, marginBottom: '8px', letterSpacing: '0.05em' }}>Conclusiones</span>
                     <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                       {parseJsonArray(activeConv.conclusions).map((c, i) => (
-                        <li key={i} style={{ 
-                          lineHeight: 1.4, 
-                          background: 'rgba(255,255,255,0.01)', 
-                          padding: '6px 8px', 
-                          borderRadius: '4px', 
+                        <li key={i} style={{
+                          lineHeight: 1.4,
+                          background: 'rgba(255,255,255,0.01)',
+                          padding: '6px 8px',
+                          borderRadius: '4px',
                           border: '1px solid rgba(255,255,255,0.02)',
-                          display: 'flex', 
-                          justifyContent: 'space-between', 
+                          display: 'flex',
+                          justifyContent: 'space-between',
                           alignItems: 'center',
                           gap: '6px'
                         }}>
@@ -1727,26 +1654,26 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
                     </ul>
                   </div>
                 )}
-                
+
                 {activeConv.solutions_exercises && parseJsonArray(activeConv.solutions_exercises).length > 0 && (
-                  <div style={{ 
-                    background: 'linear-gradient(135deg, rgba(16,185,129,0.08), rgba(16,185,129,0.01))', 
-                    padding: '12px', 
-                    borderRadius: '8px', 
+                  <div style={{
+                    background: 'linear-gradient(135deg, rgba(16,185,129,0.08), rgba(16,185,129,0.01))',
+                    padding: '12px',
+                    borderRadius: '8px',
                     border: '1px solid rgba(16,185,129,0.2)',
                     boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
                   }}>
                     <span style={{ fontSize: '0.58rem', color: 'var(--color-emerald)', display: 'block', textTransform: 'uppercase', fontWeight: 800, marginBottom: '8px', letterSpacing: '0.05em' }}>Ejercicios o Soluciones</span>
                     <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                       {parseJsonArray(activeConv.solutions_exercises).map((s, i) => (
-                        <li key={i} style={{ 
-                          lineHeight: 1.4, 
-                          background: 'rgba(16,185,129,0.02)', 
-                          padding: '6px 8px', 
-                          borderRadius: '4px', 
+                        <li key={i} style={{
+                          lineHeight: 1.4,
+                          background: 'rgba(16,185,129,0.02)',
+                          padding: '6px 8px',
+                          borderRadius: '4px',
                           border: '1px solid rgba(16,185,129,0.05)',
-                          display: 'flex', 
-                          justifyContent: 'space-between', 
+                          display: 'flex',
+                          justifyContent: 'space-between',
                           alignItems: 'center',
                           gap: '6px',
                           fontWeight: 600
@@ -1757,9 +1684,9 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
                     </ul>
                   </div>
                 )}
-                
+
                 {activeConv.clinical_studies && (
-                  <div style={{ 
+                  <div style={{
                     background: 'rgba(255, 255, 255, 0.01)',
                     border: '1px solid rgba(255, 255, 255, 0.04)',
                     borderRadius: '8px',
@@ -1794,7 +1721,7 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
                   Sesión en Curso
                 </div>
                 <p style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.45 }}>
-                  Walter está analizando activamente tu TDAH, impulsividad y operativa en esta conversación.
+                  {genericMode ? 'El asistente irá consolidando el contexto de esta conversación cuando prepares el cierre.' : 'Asistente de apoyo está analizando activamente tu TDAH, impulsividad y operativa en esta conversación.'}
                 </p>
                 <p style={{ fontSize: '0.62rem', color: 'var(--text-tertiary)', margin: 0, lineHeight: 1.4, fontStyle: 'italic' }}>
                   Pulsa los botones inferiores ("Investigar Contexto", "Extraer Conclusiones" o "🔒 Preparar Cierre") para consolidar el diagnóstico de esta sesión.
@@ -1812,7 +1739,7 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
 
       {/* FLOATING HANDLES PARA DESPLEGAR DESDE MODO ENFOQUE */}
       {!leftPanelOpen && !isMobile && (
-        <button 
+        <button
           onClick={() => setLeftPanelOpen(true)}
           style={{
             position: 'absolute',
@@ -1842,7 +1769,7 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
       )}
 
       {!panelOpen && !isMobile && (
-        <button 
+        <button
           onClick={() => setPanelOpen(true)}
           style={{
             position: 'absolute',

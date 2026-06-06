@@ -4,12 +4,43 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Centro de Control de Supervivencia — Emilio</title>
-    <meta name="description" content="Portal privado para la gestión de crisis, blindaje conductual y soporte de reestructuración legal-financiera de Emilio." />
+    <title>Espacio Privado de Contexto</title>
+    <meta name="description" content="Espacio privado para organizar contexto, documentos, diario y conversaciones por usuario." />
     <!-- Google Fonts (Outfit & Inter) -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <script>
+      window.addEventListener('error', function(event) {
+        showErrorOverlay('Error de Ejecución', event.error ? event.error.stack : event.message);
+      });
+      window.addEventListener('unhandledrejection', function(event) {
+        showErrorOverlay('Promesa Rechazada', event.reason ? (event.reason.stack || event.reason) : 'Desconocido');
+      });
+      function showErrorOverlay(title, stack) {
+        var overlay = document.getElementById('error-overlay-global');
+        if (!overlay) {
+          overlay = document.createElement('div');
+          overlay.id = 'error-overlay-global';
+          overlay.style.position = 'fixed';
+          overlay.style.top = '10px';
+          overlay.style.left = '10px';
+          overlay.style.right = '10px';
+          overlay.style.bottom = '10px';
+          overlay.style.background = 'rgba(30, 0, 0, 0.95)';
+          overlay.style.color = '#ff9999';
+          overlay.style.padding = '20px';
+          overlay.style.fontFamily = 'monospace';
+          overlay.style.fontSize = '12px';
+          overlay.style.zIndex = '999999';
+          overlay.style.overflow = 'auto';
+          overlay.style.border = '3px solid #ff3333';
+          overlay.style.borderRadius = '8px';
+          document.body.appendChild(overlay);
+        }
+        overlay.innerHTML = '<h3 style="color: #ff3333; margin-top: 0;">⚠️ ' + title + '</h3><pre style="white-space: pre-wrap; word-break: break-all;">' + stack + '</pre>';
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

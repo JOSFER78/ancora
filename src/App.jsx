@@ -1,63 +1,265 @@
 import { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
+import { App as CapApp } from '@capacitor/app';
 import './App.css';
 import './index.css';
 
 // Views
-import LoginView from './views/LoginView';
+import LandingView from './views/LandingView';
 import DashboardView from './views/DashboardView';
+import PsicologoDashboardView from './views/PsicologoDashboardView';
+import AdminDashboardView from './views/AdminDashboardView';
 import MenteView from './views/MenteView';
 import EscudoLegalView from './views/EscudoLegalView';
-import TradingView from './views/TradingView';
 import AjustesView from './views/AjustesView';
 import ChatView from './views/ChatView';
+import AgentesView from './views/AgentesView';
+import ViabilityWidget from './components/trading/ViabilityWidget';
+
+// Patient Modular Views
+import PacienteHoyView from './views/paciente/PacienteHoyView';
+import PacienteChatView from './views/paciente/PacienteChatView';
+import PacienteDiarioView from './views/paciente/PacienteDiarioView';
+import PacienteTimelineView from './views/paciente/PacienteTimelineView';
+import PacienteSesionesView from './views/paciente/PacienteSesionesView';
+import PacienteHistoriaView from './views/paciente/PacienteHistoriaView';
+import PacientePrivacidadView from './views/paciente/PacientePrivacidadView';
+import PacientePerfilView from './views/paciente/PacientePerfilView';
+import PacientePlanView from './views/paciente/PacientePlanView';
+
+import { getUserAppMode, GENERIC_NAV_ITEMS, PERSONAL_NAV_ITEMS, PSICOLOGO_NAV_ITEMS, SUPERVISOR_NAV_ITEMS } from './appConfig';
+
 
 // Icons
-import { 
-  ShieldAlert, 
-  Heart, 
-  LayoutDashboard, 
-  Brain, 
-  FileText, 
-  Landmark, 
-  Settings, 
-  MessageSquare, 
-  ChevronLeft, 
-  ChevronRight, 
+import {
+  ShieldAlert,
+  Heart,
+  LayoutDashboard,
+  Brain,
+  FileText,
+  Landmark,
+  Settings,
+  MessageSquare,
+  ChevronLeft,
+  ChevronRight,
   User,
-  LogOut
+  LogOut,
+  Activity,
+  Bot,
+  Calendar,
+  Shield,
+  ShieldCheck
 } from 'lucide-react';
+
+
+
+const MOCK_PROFILES = {
+  // Paciente Pedro Sanz (sin psicólogo asignado, entra por primera vez)
+  'tisute@gmail.com': {
+    id: 'tisute-id',
+    role: 'paciente',
+    display_name: 'Pedro',
+    avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=150&h=150',
+    contexto_terapeutico: {
+      displayName: 'Pedro',
+      name: 'Pedro Sanz',
+      avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=150&h=150',
+      triaje: null,
+      assigned_psychologist_id: null,
+      paymentStatus: 'free_trial'
+    },
+    app_config: { verified: true }
+  },
+  // Paciente David Sevilla (sin psicólogo asignado, entra por primera vez)
+  'davidsevilla10@gmail.com': {
+    id: 'davidsevilla10-id',
+    role: 'paciente',
+    display_name: 'David',
+    avatar: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&q=80&w=150&h=150',
+    contexto_terapeutico: {
+      displayName: 'David',
+      name: 'David Sevilla',
+      avatar: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&q=80&w=150&h=150',
+      triaje: null,
+      assigned_psychologist_id: null,
+      paymentStatus: 'free_trial'
+    },
+    app_config: { verified: true }
+  },
+  // Psicólogo Ana Ramos (verificado, sin historial de pacientes previo)
+  'tisutet@hormail.com': {
+    id: '19057a26-ebcb-4d42-a668-80250299912a', // Coincide con mockPsychologists[0].id
+    role: 'psicologo',
+    display_name: 'Ana Ramos',
+    avatar: 'https://images.unsplash.com/photo-1594824813573-246434de83fb?auto=format&fit=crop&q=80&w=150&h=150',
+    contexto_terapeutico: {
+      fullName: 'Ana Ramos',
+      name: 'Ana Ramos',
+      avatar: 'https://images.unsplash.com/photo-1594824813573-246434de83fb?auto=format&fit=crop&q=80&w=150&h=150',
+      licenseNumber: 'M-19057',
+      sessionPrice: 49
+    },
+    app_config: {
+      verified: true,
+      license_number: 'M-19057',
+      qualification: 'MPGS (Psicólogo General Sanitario)',
+      rc_insurance: 'Seguro RC Activo (Axa)'
+    }
+  },
+  // Psicólogo José Fernández (verificado, sin historial de pacientes previo)
+  'usajosefernan@gmail.com': {
+    id: '49ccc6ae-e064-49c3-9951-4678c46b175a', // Coincide con mockPsychologists[1].id
+    role: 'psicologo',
+    display_name: 'José Fernández',
+    avatar: 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&q=80&w=150&h=150',
+    contexto_terapeutico: {
+      fullName: 'José Fernández',
+      name: 'José Fernández',
+      avatar: 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&q=80&w=150&h=150',
+      licenseNumber: 'M-49ccc',
+      sessionPrice: 55
+    },
+    app_config: {
+      verified: true,
+      license_number: 'M-49ccc',
+      qualification: 'Especialista Clínico Generalista',
+      rc_insurance: 'Seguro RC Activo (Mapfre)'
+    }
+  },
+  // Super Admin / Supervisor (José Naranjo)
+  'josferestudio@gmail.com': {
+    id: 'josferestudio-id',
+    role: 'supervisor',
+    display_name: 'José Naranjo',
+    avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&q=80&w=150&h=150',
+    contexto_terapeutico: {
+      displayName: 'José',
+      name: 'José Naranjo Fernández',
+      avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&q=80&w=150&h=150'
+    },
+    app_config: { verified: true }
+  }
+};
 
 export default function App() {
   const [session, setSession] = useState(null);
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
+  const [isVirtualDemo, setIsVirtualDemo] = useState(false);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
-  
+
   // Dynamic Global State
   const [dailyMoodToday, setDailyMoodToday] = useState(null);
   const [totalDebts, setTotalDebts] = useState(160000);
   const [loading, setLoading] = useState(true);
+  const [adminViewRole, setAdminViewRole] = useState(null); // null | 'paciente' | 'psicologo' | 'admin' | 'supervisor'
+
+
+  const isSuperAdmin = user?.email?.toLowerCase() === 'josferestudio@gmail.com';
+  
+  let activeRole = profile?.role;
+  if (isSuperAdmin && adminViewRole) {
+    activeRole = adminViewRole;
+  }
+
+  const appMode = {
+    isOwner: isSuperAdmin,
+    isPsicologo: activeRole === 'psicologo',
+    isSupervisor: activeRole === 'supervisor' || activeRole === 'admin' || (isSuperAdmin && !adminViewRole),
+    isGeneric: activeRole === 'paciente' || (!isSuperAdmin && activeRole !== 'psicologo' && activeRole !== 'supervisor' && activeRole !== 'admin'),
+    showPersonalModules: isSuperAdmin && !adminViewRole
+  };
+
+  const isVerifiedPsicologo = 
+    !appMode.isPsicologo || 
+    profile?.app_config?.verified === true || 
+    isSuperAdmin;
+
+  useEffect(() => {
+    if (activeRole === 'psicologo') {
+      setSidebarCollapsed(true);
+    } else {
+      setSidebarCollapsed(false);
+    }
+  }, [activeRole]);
+
+  const navItems = appMode.isSupervisor
+    ? SUPERVISOR_NAV_ITEMS
+    : (appMode.isPsicologo 
+        ? PSICOLOGO_NAV_ITEMS 
+        : (appMode.showPersonalModules ? PERSONAL_NAV_ITEMS : GENERIC_NAV_ITEMS));
+
+
+  const navIcons = {
+    dashboard: LayoutDashboard,
+    mente: Brain,
+    escudo: FileText,
+    deudas: Landmark,
+    agentes: Bot,
+    chat: MessageSquare,
+    diary: Heart,
+    documents: FileText,
+    ajustes: Settings,
+    timeline: Activity,
+    sesiones: Calendar,
+    historial: FileText,
+    privacidad: Shield,
+    perfil_usuario: User,
+    plan_terapeutico: Brain
+  };
+
+  const navTitle = {
+    dashboard: appMode.isSupervisor 
+      ? 'Consola de Administración ÁNCORA' 
+      : (appMode.isPsicologo ? 'Portal Clínico del Psicólogo' : 'Hoy — Resumen de hoy'),
+    mente: appMode.showPersonalModules ? 'Área Psicológica' : 'Contexto',
+    escudo: 'Hoja de Ruta Laboral e INSS',
+    deudas: 'Caja Libre, Deudas y Viabilidad',
+    agentes: 'Agentes Puente y Schedulers',
+    chat: appMode.isSupervisor
+      ? 'Gestión de Incidencias Técnicas'
+      : (appMode.isPsicologo 
+          ? 'Gestión de Consultas y Pacientes' 
+          : 'Chat Diario con Walter'),
+    diary: 'Diario Emocional',
+    documents: 'Documentos y Fuentes',
+    ajustes: 'Configuración y Stripe',
+    timeline: 'Timeline de Progreso y Síntomas',
+    sesiones: 'Tus Sesiones y Reservas',
+    historial: 'Mi Historial Clínico Completo',
+    privacidad: 'Configuración de Privacidad y Consentimiento',
+    perfil_usuario: 'Mi Perfil y Facturas',
+    plan_terapeutico: 'Mi Plan Clínico y Objetivos'
+  };
+
+
+  useEffect(() => {
+    if (!navItems.some(item => item.id === activeTab)) {
+      setActiveTab('dashboard');
+    }
+  }, [activeTab, navItems]);
 
   async function fetchUserProfile(currentUser) {
+    if (isVirtualDemo) return;
     try {
       let { data, error } = await supabase
         .from('profiles')
-        .select('*')
+        .select('id, role, updated_at, contexto_terapeutico, app_config')
         .eq('id', currentUser.id)
         .single();
-      
+
       if (error) {
-        // If profile doesn't exist, create it (fallback if trigger fails)
         if (error.code === 'PGRST116') {
+          const savedRole = localStorage.getItem('pending_oauth_role') || currentUser.user_metadata?.role || 'paciente';
+          localStorage.removeItem('pending_oauth_role');
           const { data: newProfile, error: createError } = await supabase
             .from('profiles')
-            .insert([{ id: currentUser.id, role: 'emilio' }])
+            .insert([{ id: currentUser.id, role: savedRole }])
             .select()
             .single();
-          
+
           if (createError) throw createError;
           setProfile(newProfile);
         } else {
@@ -74,6 +276,7 @@ export default function App() {
   }
 
   async function fetchTodayMood(currentUser) {
+    if (isVirtualDemo) return;
     try {
       const todayDate = new Date().toISOString().split('T')[0];
       const { data, error } = await supabase
@@ -82,7 +285,7 @@ export default function App() {
         .eq('user_id', currentUser.id)
         .eq('date', todayDate)
         .single();
-      
+
       if (!error && data) {
         setDailyMoodToday(data);
       }
@@ -92,12 +295,13 @@ export default function App() {
   }
 
   async function fetchTotalDebts(currentUser) {
+    if (isVirtualDemo) return;
     try {
       const { data, error } = await supabase
         .from('debts')
         .select('*')
         .eq('user_id', currentUser.id);
-      
+
       if (!error && data) {
         const sum = data.reduce((acc, curr) => {
           const amt = parseFloat(curr.amount) || 0;
@@ -114,6 +318,7 @@ export default function App() {
   useEffect(() => {
     // Check initial session
     supabase.auth.getSession().then(({ data: { session: initialSession } }) => {
+      if (isVirtualDemo) return;
       setSession(initialSession);
       setUser(initialSession?.user ?? null);
       if (initialSession?.user) {
@@ -127,6 +332,7 @@ export default function App() {
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, currentSession) => {
+      if (isVirtualDemo) return;
       setSession(currentSession);
       setUser(currentSession?.user ?? null);
       if (currentSession?.user) {
@@ -141,7 +347,58 @@ export default function App() {
     });
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [isVirtualDemo]);
+
+  // Capa 1: Blindaje Conductual Ciego (Ocultamiento de valores monetarios para Emilio)
+  useEffect(() => {
+    const isEmilio = user?.email?.toLowerCase() === 'josferestudio@gmail.com';
+    if (!isEmilio) return;
+
+    const replaceMonetaryValues = () => {
+      const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
+      let node;
+      while (node = walk.nextNode()) {
+        const text = node.nodeValue;
+        // Detecta patrones de dinero tipo: $120.50, 450.00 USDT, -15.40$, 1000€
+        if (/\$?[-+]?\d{1,3}(,\d{3})*(\.\d+)?\s*(USDT|USD|\$|EUR|€)/i.test(text)) {
+          // Reemplaza por notación abstracta de Riesgo R
+          node.nodeValue = text.replace(/\$?[-+]?\d{1,3}(,\d{3})*(\.\d+)?\s*(USDT|USD|\$|EUR|€)/ig, " [X.X R] ");
+        }
+      }
+    };
+
+    // Primera ejecución
+    replaceMonetaryValues();
+
+    // Monitorear cambios dinámicos en el DOM (MutationObserver)
+    const observer = new MutationObserver(() => {
+      replaceMonetaryValues();
+    });
+
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true
+    });
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [user, activeTab]);
+
+  // Controlar el botón "Atrás" de Android
+  useEffect(() => {
+    const handlerPromise = CapApp.addListener('backButton', (data) => {
+      if (activeTab === 'dashboard') {
+        CapApp.exitApp();
+      } else {
+        setActiveTab('dashboard');
+      }
+    });
+
+    return () => {
+      handlerPromise.then(h => h.remove());
+    };
+  }, [activeTab]);
 
   const handleMoodSaved = (newMood) => {
     setDailyMoodToday(newMood);
@@ -152,17 +409,50 @@ export default function App() {
   };
 
   const handleLogout = () => {
+    setIsVirtualDemo(false);
     setSession(null);
     setUser(null);
     setProfile(null);
     setDailyMoodToday(null);
   };
 
+  const handleEnterDemoMode = async (email, targetTab, extraAction) => {
+    setLoading(true);
+    try {
+      const lowercaseEmail = email.toLowerCase();
+      const mockProfile = MOCK_PROFILES[lowercaseEmail] || MOCK_PROFILES['tisute@gmail.com'];
+      const clonedProfile = JSON.parse(JSON.stringify(mockProfile));
+
+      if (extraAction === 'clear_psychologist' && clonedProfile.contexto_terapeutico) {
+        clonedProfile.contexto_terapeutico.assigned_psychologist_id = null;
+        clonedProfile.contexto_terapeutico.paymentStatus = 'free_trial';
+      }
+
+      setIsVirtualDemo(true);
+      setAdminViewRole(null); // Limpiar cualquier vista intermedia seleccionada por el admin
+      setUser({ id: clonedProfile.id, email: lowercaseEmail });
+      setSession({ user: { id: clonedProfile.id, email: lowercaseEmail } });
+      setProfile(clonedProfile);
+      
+      setActiveTab(targetTab || 'dashboard');
+
+      setDailyMoodToday(null);
+      setTotalDebts(160000);
+    } catch (err) {
+      console.error("Error al iniciar sesión en modo demo virtual:", err.message);
+      alert("Error al acceder a la Demo: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleLogoutClick = async () => {
     try {
       setProfileDropdownOpen(false);
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
+      if (!isVirtualDemo) {
+        const { error } = await supabase.auth.signOut();
+        if (error) throw error;
+      }
       handleLogout();
     } catch (e) {
       console.error("Logout error:", e.message);
@@ -179,91 +469,108 @@ export default function App() {
   }
 
   if (!session) {
-    return <LoginView onAuthSuccess={(u) => setUser(u)} />;
+    return <LandingView onAuthSuccess={(u) => setUser(u)} onEnterDemo={handleEnterDemoMode} />;
   }
 
   return (
-    <div className="app-container">
+    <>
+      {isVirtualDemo && (
+        <div className="demo-control-bar">
+          <div className="demo-control-brand">
+            <div className="demo-pulse-indicator" />
+            <span>Vista Demo Virtual</span>
+          </div>
+                    <div className="demo-role-selector" style={{ display: 'flex', gap: '4px', overflowX: 'auto', maxWidth: '80%', padding: '2px 0' }}>
+            <button
+              onClick={() => handleEnterDemoMode('tisute@gmail.com')}
+              className={`demo-role-btn ${user?.email === 'tisute@gmail.com' ? 'active' : ''}`}
+              style={{ padding: '4px 10px', fontSize: '0.65rem', whiteSpace: 'nowrap' }}
+            >
+              👤 Pedro (Pac.)
+            </button>
+            <button
+              onClick={() => handleEnterDemoMode('davidsevilla10@gmail.com')}
+              className={`demo-role-btn ${user?.email === 'davidsevilla10@gmail.com' ? 'active' : ''}`}
+              style={{ padding: '4px 10px', fontSize: '0.65rem', whiteSpace: 'nowrap' }}
+            >
+              👤 David (Pac.)
+            </button>
+            <button
+              onClick={() => handleEnterDemoMode('tisutet@hormail.com')}
+              className={`demo-role-btn ${user?.email === 'tisutet@hormail.com' ? 'active' : ''}`}
+              style={{ padding: '4px 10px', fontSize: '0.65rem', whiteSpace: 'nowrap' }}
+            >
+              🩺 Dra. Ana (Psic.)
+            </button>
+            <button
+              onClick={() => handleEnterDemoMode('usajosefernan@gmail.com')}
+              className={`demo-role-btn ${user?.email === 'usajosefernan@gmail.com' ? 'active' : ''}`}
+              style={{ padding: '4px 10px', fontSize: '0.65rem', whiteSpace: 'nowrap' }}
+            >
+              🩺 Dr. José (Psic.)
+            </button>
+            <button
+              onClick={() => handleEnterDemoMode('josferestudio@gmail.com')}
+              className={`demo-role-btn ${user?.email === 'josferestudio@gmail.com' ? 'active' : ''}`}
+              style={{ padding: '4px 10px', fontSize: '0.65rem', whiteSpace: 'nowrap' }}
+            >
+              ⚙️ Admin
+            </button>
+          </div>
+          <button onClick={handleLogoutClick} className="demo-exit-btn">
+            🚪 Salir de la Demo
+          </button>
+        </div>
+      )}
+      <div className="app-container" style={isVirtualDemo ? { marginTop: '45px', height: 'calc(100vh - 45px)' } : undefined}>
+
       {/* Sidebar Navigation */}
-      <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
+      {!appMode.isPsicologo && (
+        <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
         <div className="sidebar-brand-section">
           <div className="sidebar-header">
             <div className="sidebar-logo">
               <ShieldAlert size={20} color="var(--color-rose)" />
               <span>SISTEMA EN-78</span>
             </div>
-            <button 
-              className="sidebar-toggle-btn flex-center"
-              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            >
-              {sidebarCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
-            </button>
           </div>
         </div>
 
         <nav className="sidebar-nav">
-          <button 
-            onClick={() => setActiveTab('dashboard')}
-            className={`sidebar-link ${activeTab === 'dashboard' ? 'active' : ''}`}
-          >
-            <LayoutDashboard size={20} />
-            <span className="sidebar-link-label">Panel</span>
-          </button>
-
-          <button 
-            onClick={() => setActiveTab('mente')}
-            className={`sidebar-link ${activeTab === 'mente' ? 'active' : ''}`}
-          >
-            <Brain size={20} />
-            <span className="sidebar-link-label">Mente</span>
-          </button>
-
-          <button 
-            onClick={() => setActiveTab('escudo')}
-            className={`sidebar-link ${activeTab === 'escudo' ? 'active' : ''}`}
-          >
-            <FileText size={20} />
-            <span className="sidebar-link-label">INSS</span>
-          </button>
-
-          <button 
-            onClick={() => setActiveTab('trading')}
-            className={`sidebar-link ${activeTab === 'trading' ? 'active' : ''}`}
-          >
-            <Landmark size={20} />
-            <span className="sidebar-link-label">Deudas</span>
-          </button>
-
-          <button 
-            onClick={() => setActiveTab('chat')}
-            className={`sidebar-link ${activeTab === 'chat' ? 'active' : ''}`}
-            style={{ borderLeft: '3px solid var(--color-cyan)' }}
-          >
-            <MessageSquare size={20} color="var(--color-cyan)" />
-            <span className="sidebar-link-label" style={{ color: 'var(--color-cyan)' }}>Walter</span>
-          </button>
-
-          <button 
-            onClick={() => setActiveTab('ajustes')}
-            className={`sidebar-link ${activeTab === 'ajustes' ? 'active' : ''}`}
-          >
-            <Settings size={20} />
-            <span className="sidebar-link-label">Ajustes</span>
-          </button>
+          {navItems.map(item => {
+            const Icon = navIcons[item.id] || LayoutDashboard;
+            const isChat = item.id === 'chat';
+            return (
+              <button
+                key={item.id}
+                onClick={() => setActiveTab(item.id)}
+                className={`sidebar-link ${activeTab === item.id ? 'active' : ''}`}
+                style={isChat ? { borderLeft: '3px solid var(--color-cyan)' } : undefined}
+              >
+                <Icon size={20} color={isChat ? 'var(--color-cyan)' : undefined} />
+                <span className="sidebar-link-label" style={isChat ? { color: 'var(--color-cyan)' } : undefined}>
+                  {item.label}
+                </span>
+              </button>
+            );
+          })}
         </nav>
 
         <div className="sidebar-footer-section">
           <div className="sidebar-footer">
             <span className="sidebar-footer-title">
               <Heart size={14} color="var(--color-rose)" />
-              <span>Motivo de Vida</span>
+              <span>Tu espacio privado</span>
             </span>
             <p style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', lineHeight: 1.4, marginTop: '4px' }}>
-              Lola te necesita a su lado sano. Cada día sin perder es una victoria para ella.
+              {appMode.showPersonalModules
+                ? 'Lola te necesita a su lado sano. Cada día sin perder es una victoria para ella.'
+                : 'Tu espacio se completa con documentos, notas, conversaciones y registros propios.'}
             </p>
           </div>
         </div>
       </aside>
+      )}
 
       {/* Main Content Pane */}
       <div className="main-content">
@@ -271,73 +578,100 @@ export default function App() {
         <header className="topbar">
           <div className="topbar-title-section">
             <h1 style={{ fontSize: '1.1rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              {activeTab === 'dashboard' && 'Panel Principal de Control'}
-              {activeTab === 'mente' && 'Área Psicológica (Mente)'}
-              {activeTab === 'escudo' && 'Hoja de Ruta Laboral e INSS'}
-              {activeTab === 'trading' && 'Blindaje Operativo y Deudas'}
-              {activeTab === 'chat' && 'Sesión Clínica y Riesgo'}
-              {activeTab === 'ajustes' && 'Configuración de Credenciales'}
+              {navTitle[activeTab] || 'Panel Principal'}
             </h1>
             <span className="topbar-subtitle">
-              Paciente: Emilio José Naranjo Fernández — Agencia EFE
+              {appMode.showPersonalModules ? 'Paciente: Usuario privado José Naranjo Fernández — Agencia EFE' : 'Espacio privado por usuario'}
             </span>
           </div>
 
           <div className="topbar-actions">
-            {/* Atomoxetina Status Indicator */}
-            <div className="flex-center" style={{ 
-              background: 'var(--background-tertiary)', 
+            {isSuperAdmin && (
+              <div className="flex-center" style={{
+                background: 'rgba(68,125,130,0.08)',
+                border: '1px solid rgba(68,125,130,0.3)',
+                borderRadius: 'var(--radius-sm)',
+                padding: '6px 12px',
+                gap: '8px'
+              }}>
+                <span style={{ fontSize: '0.62rem', fontWeight: 800, color: 'var(--color-cyan)', textTransform: 'uppercase' }}>Super Admin CRM:</span>
+                <select
+                  value={adminViewRole || 'admin_crm'}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setAdminViewRole(val === 'admin_crm' ? null : val);
+                  }}
+                  style={{
+                    fontSize: '0.7rem',
+                    fontWeight: 700,
+                    background: 'transparent',
+                    color: '#ffffff',
+                    border: 'none',
+                    outline: 'none',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <option value="admin_crm" style={{ background: 'var(--background-secondary)', color: '#ffffff' }}>CRM / Consola Admin</option>
+                  <option value="paciente" style={{ background: 'var(--background-secondary)', color: '#ffffff' }}>Vista Paciente</option>
+                  <option value="psicologo" style={{ background: 'var(--background-secondary)', color: '#ffffff' }}>Vista Psicólogo</option>
+                </select>
+              </div>
+            )}
+
+            {/* Diario de Sensaciones Status Indicator */}
+            <div className="flex-center" style={{
+              background: 'var(--background-tertiary)',
               border: '1px solid var(--border)',
               borderRadius: 'var(--radius-sm)',
               padding: '6px 12px',
-              gap: '8px'
-            }}>
-              <div style={{ 
-                width: '7px', 
-                height: '7px', 
-                borderRadius: '50%', 
-                backgroundColor: dailyMoodToday?.atomoxetina_taken ? 'var(--color-emerald)' : 'var(--color-rose)',
-                boxShadow: `0 0 6px ${dailyMoodToday?.atomoxetina_taken ? 'var(--color-emerald)' : 'var(--color-rose)'}`
+              gap: '8px',
+              cursor: 'pointer'
+            }} onClick={() => setActiveTab('mente')}>
+              <div style={{
+                width: '7px',
+                height: '7px',
+                borderRadius: '50%',
+                backgroundColor: dailyMoodToday ? 'var(--color-emerald)' : 'var(--color-rose)',
+                boxShadow: `0 0 6px ${dailyMoodToday ? 'var(--color-emerald)' : 'var(--color-rose)'}`
               }} />
-              <span className="atomoxetina-status-text" style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-                {dailyMoodToday?.atomoxetina_taken ? 'Atomoxetina Activa' : 'Atomoxetina Inactiva'}
+              <span style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                {dailyMoodToday ? 'Diario Completado Hoy' : 'Diario de Sensaciones Pendiente'}
               </span>
             </div>
 
-            {/* Total Debt indicator */}
-            <div className="flex-center" style={{ 
-              background: 'var(--background-tertiary)', 
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--radius-sm)',
-              padding: '6px 12px',
-              gap: '6px',
-              fontSize: '0.7rem',
-              fontWeight: 700
-            }}>
-              <span className="debt-indicator-label" style={{ color: 'var(--text-secondary)' }}>Deuda:</span>
-              <span style={{ color: 'var(--color-rose)' }}>{totalDebts.toLocaleString()} €</span>
-            </div>
+
+
 
             {/* Profile Dropdown Trigger */}
             <div style={{ position: 'relative' }}>
-              <button 
+              <button
                 onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
-                className="flex-center profile-dropdown-trigger" 
-                style={{ 
-                  background: 'var(--background-tertiary)', 
+                className="flex-center profile-dropdown-trigger"
+                style={{
+                  background: 'var(--background-tertiary)',
                   border: '1px solid var(--border)',
                   borderRadius: 'var(--radius-sm)',
                   padding: '6px 12px',
                   gap: '6px',
                   fontSize: '0.7rem',
                   fontWeight: 700,
-                  color: profile?.role === 'supervisor' ? 'var(--color-cyan)' : 'var(--color-emerald)',
+                  color: profile?.role === 'supervisor' ? 'var(--color-cyan)' : (profile?.role === 'psicologo' ? 'var(--color-cyan)' : 'var(--color-emerald)'),
                   cursor: 'pointer',
                   outline: 'none'
                 }}
               >
-                <User size={14} />
-                <span className="profile-trigger-name">{profile?.role === 'supervisor' ? 'Supervisor' : 'Emilio'}</span>
+                {profile?.avatar || profile?.contexto_terapeutico?.avatar ? (
+                  <img 
+                    src={profile.avatar || profile.contexto_terapeutico.avatar} 
+                    alt="avatar" 
+                    style={{ width: '18px', height: '18px', borderRadius: '50%', objectFit: 'cover' }} 
+                  />
+                ) : (
+                  <User size={14} />
+                )}
+                <span className="profile-trigger-name">
+                  {profile?.display_name || profile?.contexto_terapeutico?.displayName || (profile?.role === 'supervisor' ? 'Supervisor' : (profile?.role === 'psicologo' ? 'Psicólogo' : 'Paciente'))}
+                </span>
               </button>
 
               {profileDropdownOpen && (
@@ -346,7 +680,7 @@ export default function App() {
                   top: '100%',
                   right: 0,
                   marginTop: '8px',
-                  width: '220px',
+                  width: '240px',
                   background: 'var(--background-secondary)',
                   border: '1px solid var(--border)',
                   borderRadius: 'var(--radius-md)',
@@ -357,31 +691,44 @@ export default function App() {
                   flexDirection: 'column',
                   gap: '10px'
                 }}>
-                  <div style={{ borderBottom: '1px solid var(--border)', paddingBottom: '8px' }}>
-                    <span style={{ fontSize: '0.62rem', color: 'var(--text-secondary)', display: 'block' }}>Email</span>
-                    <strong style={{ fontSize: '0.72rem', color: '#ffffff', wordBreak: 'break-all' }}>{user?.email}</strong>
+                  <div style={{ borderBottom: '1px solid var(--border)', paddingBottom: '8px', display: 'flex', gap: '10px', alignItems: 'center' }}>
+                    {(profile?.avatar || profile?.contexto_terapeutico?.avatar) && (
+                      <img 
+                        src={profile.avatar || profile.contexto_terapeutico.avatar} 
+                        alt="avatar" 
+                        style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover', border: '1px solid var(--border)' }} 
+                      />
+                    )}
+                    <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                      <strong style={{ fontSize: '0.78rem', color: '#ffffff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {profile?.contexto_terapeutico?.name || profile?.display_name || 'Usuario Demo'}
+                      </strong>
+                      <span style={{ fontSize: '0.62rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {user?.email}
+                      </span>
+                    </div>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                     <span style={{ fontSize: '0.62rem', color: 'var(--text-secondary)' }}>Rol actual</span>
-                    <div style={{ 
-                      fontSize: '0.7rem', 
-                      fontWeight: 600, 
-                      padding: '4px 8px', 
+                    <div style={{
+                      fontSize: '0.7rem',
+                      fontWeight: 600,
+                      padding: '4px 8px',
                       borderRadius: '4px',
-                      background: profile?.role === 'supervisor' ? 'rgba(6,182,212,0.1)' : 'rgba(16,185,129,0.1)',
-                      color: profile?.role === 'supervisor' ? 'var(--color-cyan)' : 'var(--color-emerald)',
-                      border: `1px solid ${profile?.role === 'supervisor' ? 'rgba(6,182,212,0.2)' : 'rgba(16,185,129,0.2)'}`
+                      background: profile?.role === 'supervisor' ? 'rgba(6,182,212,0.1)' : (profile?.role === 'psicologo' ? 'rgba(6,182,212,0.1)' : 'rgba(16,185,129,0.1)'),
+                      color: profile?.role === 'supervisor' ? 'var(--color-cyan)' : (profile?.role === 'psicologo' ? 'var(--color-cyan)' : 'var(--color-emerald)'),
+                      border: `1px solid ${profile?.role === 'supervisor' ? 'rgba(6,182,212,0.2)' : (profile?.role === 'psicologo' ? 'rgba(6,182,212,0.2)' : 'rgba(16,185,129,0.2)')}`
                     }}>
-                      {profile?.role === 'supervisor' ? 'Supervisor (Walter/Familia)' : 'Paciente (Emilio)'}
+                      {profile?.role === 'supervisor' ? 'Supervisor' : (profile?.role === 'psicologo' ? 'Psicólogo Habilitado' : (appMode.showPersonalModules ? 'Paciente (Emilio)' : 'Paciente'))}
                     </div>
                   </div>
-                  <button 
+                  <button
                     onClick={handleLogoutClick}
-                    className="btn btn-outline" 
-                    style={{ 
-                      width: '100%', 
-                      borderColor: 'hsla(var(--rose), 0.3)', 
-                      color: 'var(--color-rose)', 
+                    className="btn btn-outline"
+                    style={{
+                      width: '100%',
+                      borderColor: 'hsla(var(--rose), 0.3)',
+                      color: 'var(--color-rose)',
                       height: '32px',
                       fontSize: '0.72rem',
                       display: 'flex',
@@ -400,60 +747,325 @@ export default function App() {
         </header>
 
         {/* View content injection */}
-        <main className={`view-container ${activeTab === 'chat' ? 'chat-view-active' : ''}`}>
+        <main 
+          className={`view-container ${activeTab === 'chat' ? 'chat-view-active' : ''}`}
+          style={!isVerifiedPsicologo ? {
+            filter: 'blur(6px)',
+            pointerEvents: 'none',
+            userSelect: 'none'
+          } : {}}
+        >
           {activeTab === 'dashboard' && (
-            <DashboardView 
-              profile={profile} 
-              dailyMoodToday={dailyMoodToday} 
-              totalDebts={totalDebts} 
-            />
+            appMode.isSupervisor ? (
+              <AdminDashboardView
+                user={user}
+                profile={profile}
+              />
+            ) : appMode.isPsicologo ? (
+              <PsicologoDashboardView
+                user={user}
+                profile={profile}
+                isVirtualDemo={isVirtualDemo}
+                onLogout={handleLogout}
+                onProfileUpdated={(updatedProfile) => setProfile(updatedProfile)}
+                sidebarCollapsed={sidebarCollapsed}
+                setSidebarCollapsed={setSidebarCollapsed}
+              />
+            ) : appMode.isGeneric ? (
+              <PacienteHoyView
+                user={user}
+                profile={profile}
+                onNavigate={(tab) => setActiveTab(tab)}
+                dailyMoodToday={dailyMoodToday}
+                onMoodSaved={handleMoodSaved}
+                isVirtualDemo={isVirtualDemo}
+                onAssignPsychologist={async (psychoId, appointment) => {
+                  if (isVirtualDemo) {
+                    const updatedCT = { 
+                      ...(profile?.contexto_terapeutico || {}), 
+                      assigned_psychologist_id: psychoId,
+                      paymentStatus: 'paid'
+                    };
+                    setProfile({
+                      ...profile,
+                      contexto_terapeutico: updatedCT
+                    });
+
+                    if (appointment) {
+                      const newAppt = {
+                        id: 'virtual-appt-' + Date.now(),
+                        patient_id: user.id,
+                        psychologist_id: psychoId,
+                        appointment_date: appointment.date,
+                        appointment_time: appointment.time,
+                        session_type: 'individual',
+                        status: 'upcoming'
+                      };
+                      const localApptsStr = localStorage.getItem('virtual_appointments') || '[]';
+                      const localAppts = JSON.parse(localApptsStr);
+                      localAppts.push(newAppt);
+                      localStorage.setItem('virtual_appointments', JSON.stringify(localAppts));
+                    }
+                    return;
+                  }
+
+                  try {
+                    const updatedCT = { ...(profile?.contexto_terapeutico || {}), assigned_psychologist_id: psychoId };
+                    const { data, error } = await supabase
+                      .from('profiles')
+                      .update({ contexto_terapeutico: updatedCT })
+                      .eq('id', user.id)
+                      .select()
+                      .single();
+                    if (error) throw error;
+
+                    if (appointment) {
+                      const { error: apptError } = await supabase
+                        .from('appointments')
+                        .insert({
+                          patient_id: user.id,
+                          psychologist_id: psychoId,
+                          appointment_date: appointment.date,
+                          appointment_time: appointment.time,
+                          session_type: 'individual',
+                          status: 'upcoming'
+                        });
+                      if (apptError) {
+                        console.error("Error creating onboarding appointment:", apptError.message);
+                      }
+                    }
+
+                    setProfile(data);
+                  } catch (err) {
+                    console.error("Error saving assigned psychologist:", err.message);
+                  }
+                }}
+              />
+            ) : (
+              <DashboardView
+                user={user}
+                profile={profile}
+                dailyMoodToday={dailyMoodToday}
+                totalDebts={totalDebts}
+                appMode={appMode}
+                onProfileUpdated={(updatedProfile) => setProfile(updatedProfile)}
+              />
+            )
           )}
 
           {activeTab === 'mente' && (
-            <MenteView 
-              user={user} 
-              profile={profile} 
-              dailyMoodToday={dailyMoodToday} 
-              onMoodSaved={handleMoodSaved} 
+            <MenteView
+              user={user}
+              profile={profile}
+              dailyMoodToday={dailyMoodToday}
+              onMoodSaved={handleMoodSaved}
               onProfileUpdated={(newProf) => setProfile(newProf)}
+              genericMode={appMode.isGeneric}
+              genericSection="context"
             />
           )}
 
-          {activeTab === 'escudo' && (
-            <EscudoLegalView 
-              user={user} 
-              profile={profile} 
+          {activeTab === 'escudo' && appMode.showPersonalModules && (
+            <EscudoLegalView
+              user={user}
+              profile={profile}
             />
           )}
 
-          {activeTab === 'trading' && (
-            <TradingView 
-              user={user} 
-              totalDebts={totalDebts} 
-              onDebtsUpdated={handleDebtsUpdated} 
-              onTabChange={setActiveTab}
+          {activeTab === 'deudas' && appMode.showPersonalModules && (
+            <div className="view-content-limit">
+              <ViabilityWidget
+                user={user}
+                totalDebts={totalDebts}
+                onDebtsUpdated={handleDebtsUpdated}
+              />
+            </div>
+          )}
+
+          {activeTab === 'agentes' && appMode.showPersonalModules && (
+            <AgentesView
+              user={user}
+              profile={profile}
+              sidebarCollapsed={sidebarCollapsed}
+              setSidebarCollapsed={setSidebarCollapsed}
+              onProfileUpdated={(updatedProfile) => setProfile(updatedProfile)}
+            />
+          )}
+
+          {activeTab === 'diary' && (
+            appMode.isGeneric ? (
+              <PacienteDiarioView
+                dailyMoodToday={dailyMoodToday}
+                onMoodSaved={handleMoodSaved}
+              />
+            ) : (
+              <MenteView
+                user={user}
+                profile={profile}
+                dailyMoodToday={dailyMoodToday}
+                onMoodSaved={handleMoodSaved}
+                onProfileUpdated={(newProf) => setProfile(newProf)}
+                genericMode={true}
+                genericSection="diary"
+              />
+            )
+          )}
+
+          {activeTab === 'documents' && (
+            <MenteView
+              user={user}
+              profile={profile}
+              dailyMoodToday={dailyMoodToday}
+              onMoodSaved={handleMoodSaved}
+              onProfileUpdated={(newProf) => setProfile(newProf)}
+              genericMode={true}
+              genericSection="sources"
             />
           )}
 
           {activeTab === 'chat' && (
-            <ChatView 
-              user={user} 
+            appMode.isGeneric ? (
+              <PacienteChatView
+                profile={profile}
+                user={user}
+                onProfileUpdated={async (updatedProfile) => setProfile(updatedProfile)}
+              />
+            ) : (
+              <ChatView
+                user={user}
+                profile={profile}
+                dailyMoodToday={dailyMoodToday}
+                onProfileUpdated={(updatedProfile) => setProfile(updatedProfile)}
+                genericMode={appMode.isGeneric}
+              />
+            )
+          )}
+
+          {activeTab === 'timeline' && appMode.isGeneric && (
+            <PacienteTimelineView isVirtualDemo={isVirtualDemo} />
+          )}
+
+          {activeTab === 'sesiones' && appMode.isGeneric && (
+            <PacienteSesionesView profile={profile} user={user} isVirtualDemo={isVirtualDemo} />
+          )}
+
+          {activeTab === 'historial' && appMode.isGeneric && (
+            <PacienteHistoriaView 
               profile={profile}
-              dailyMoodToday={dailyMoodToday} 
+              onProfileUpdated={async (updatedProfile) => setProfile(updatedProfile)}
+              user={user}
+              isVirtualDemo={isVirtualDemo}
+            />
+          )}
+
+          {activeTab === 'privacidad' && appMode.isGeneric && (
+            <PacientePrivacidadView
+              user={user}
+              profile={profile}
               onProfileUpdated={(updatedProfile) => setProfile(updatedProfile)}
             />
           )}
 
+          {activeTab === 'perfil_usuario' && appMode.isGeneric && (
+            <PacientePerfilView
+              profile={profile}
+              onProfileUpdated={async (updatedProfile) => setProfile(updatedProfile)}
+              user={user}
+              isVirtualDemo={isVirtualDemo}
+            />
+          )}
+
+          {activeTab === 'plan_terapeutico' && appMode.isGeneric && (
+            <PacientePlanView
+              profile={profile}
+              user={user}
+              isVirtualDemo={isVirtualDemo}
+            />
+          )}
+
           {activeTab === 'ajustes' && (
-            <AjustesView 
-              user={user} 
-              profile={profile} 
-              onLogout={handleLogout} 
+            <AjustesView
+              user={user}
+              profile={profile}
+              onLogout={handleLogout}
               onProfileUpdated={(updatedProfile) => setProfile(updatedProfile)}
             />
           )}
-        </main>
+
+         </main>
+
+        {!isVerifiedPsicologo && (
+          <div style={{
+            position: 'absolute',
+            top: '70px',
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(5, 33, 58, 0.45)',
+            backdropFilter: 'blur(2px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 2000,
+            padding: '24px'
+          }}>
+            <div style={{
+              background: '#ffffff',
+              border: '1px solid rgba(5, 33, 58, 0.08)',
+              borderRadius: '16px',
+              padding: '32px',
+              maxWidth: '480px',
+              boxShadow: '0 20px 40px rgba(5, 33, 58, 0.15)',
+              textAlign: 'center',
+              color: '#05213A',
+              fontFamily: "'Inter', sans-serif"
+            }}>
+              <div className="flex-center" style={{
+                width: '56px',
+                height: '56px',
+                margin: '0 auto 16px',
+                background: 'linear-gradient(135deg, #447D82, #7F9F88)',
+                borderRadius: '16px',
+                boxShadow: '0 4px 15px rgba(68, 125, 130, 0.2)'
+              }}>
+                <Shield size={26} color="#ffffff" />
+              </div>
+              <h3 style={{
+                fontSize: '1.2rem',
+                fontWeight: 'bold',
+                fontFamily: "'Playfair Display', serif",
+                margin: '0 0 12px 0'
+              }}>
+                Validación Sanitaria de Perfil Pendiente
+              </h3>
+              <p style={{
+                fontSize: '0.78rem',
+                color: '#5F6F74',
+                lineHeight: 1.5,
+                margin: '0 0 20px 0',
+                textAlign: 'left'
+              }}>
+                Tu cuenta de psicólogo ha sido registrada correctamente. Actualmente visualizas el panel clínico en <strong>Modo Demostración</strong> con datos ficticios.
+                <br /><br />
+                Nuestro equipo médico está verificando tu número de colegiado y seguro de responsabilidad civil para validarte e incluirte en la base de datos de Áncora. Recibirás una notificación por correo una vez se apruebe tu perfil profesional.
+              </p>
+              <div style={{
+                display: 'flex',
+                justifyContent: 'center',
+                gap: '8px',
+                borderTop: '1px solid rgba(5, 33, 58, 0.06)',
+                paddingTop: '16px'
+              }}>
+                <span style={{ fontSize: '0.65rem', color: '#9AA6AB', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <ShieldCheck size={14} color="#7F9F88" />
+                  Áncora Seguridad & RGPD
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
+    </>
   );
 }

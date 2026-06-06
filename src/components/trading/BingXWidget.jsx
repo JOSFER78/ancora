@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../supabaseClient';
+import { invokeChatTerapeuta } from '../../lib/chatTerapeuta';
 import { RefreshCw, Brain, Landmark, AlertTriangle, ShieldCheck } from 'lucide-react';
 
 export default function BingXWidget({ user, onTabChange }) {
@@ -16,19 +17,7 @@ export default function BingXWidget({ user, onTabChange }) {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Sesión de Supabase inactiva.");
 
-      const response = await fetch('https://ysnorelkaccaikvuqgnv.supabase.co/functions/v1/chat-terapeuta', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`
-        },
-        body: JSON.stringify({ action: 'get_bingx_data' })
-      });
-
-      const resData = await response.json();
-      if (!response.ok) {
-        throw new Error(resData.error || `Error HTTP ${response.status}`);
-      }
+      const resData = await invokeChatTerapeuta({ action: 'get_bingx_data' });
 
       setBingxData(resData);
       setLastUpdated(new Date().toLocaleTimeString());
@@ -48,24 +37,12 @@ export default function BingXWidget({ user, onTabChange }) {
       if (!session) throw new Error("Sesión de Supabase inactiva.");
 
       // Llamada a la Edge Function para sincronizar el historial
-      const response = await fetch('https://ysnorelkaccaikvuqgnv.supabase.co/functions/v1/chat-terapeuta', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`
-        },
-        body: JSON.stringify({ action: 'sync_closed_trades' })
-      });
-
-      const resData = await response.json();
-      if (!response.ok) {
-        throw new Error(resData.error || `Error de Sincronización HTTP ${response.status}`);
-      }
+      await invokeChatTerapeuta({ action: 'sync_closed_trades' });
 
       // Disparar evento global para avisar a ViabilityWidget que recargue
       window.dispatchEvent(new Event('sync_journal_days'));
       alert(`Sincronización completada: se sincronizaron y consolidaron los trades de los últimos días.`);
-      
+
       // Actualizar datos de balances/posiciones actuales
       fetchBingxLive(true);
     } catch (err) {
@@ -100,7 +77,7 @@ export default function BingXWidget({ user, onTabChange }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      
+
       {/* Botones de control y estado de actualización */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -110,8 +87,8 @@ export default function BingXWidget({ user, onTabChange }) {
           </span>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
-          <button 
-            onClick={() => fetchBingxLive()} 
+          <button
+            onClick={() => fetchBingxLive()}
             disabled={loading}
             className="btn btn-outline flex-center"
             style={{ padding: '6px 12px', fontSize: '0.7rem', height: '30px', gap: '6px' }}
@@ -119,8 +96,8 @@ export default function BingXWidget({ user, onTabChange }) {
             <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
             <span>Actualizar Live</span>
           </button>
-          <button 
-            onClick={handleSyncHistory} 
+          <button
+            onClick={handleSyncHistory}
             disabled={syncingHistory}
             className="btn btn-emerald flex-center animate-glow-emerald"
             style={{ padding: '6px 12px', fontSize: '0.7rem', height: '30px', gap: '6px' }}
@@ -137,7 +114,7 @@ export default function BingXWidget({ user, onTabChange }) {
         <div className="glass-panel" style={{ padding: '16px', border: '1px solid hsla(var(--rose), 0.2)', background: 'hsla(var(--rose), 0.03)', textAlign: 'center' }}>
           <AlertTriangle size={24} color="var(--color-rose)" style={{ marginInline: 'auto', marginBottom: '8px' }} />
           <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'block' }}>
-            {error === "No se han configurado las claves de API de BingX en Ajustes." 
+            {error === "No se han configurado las claves de API de BingX en Ajustes."
               ? "Las credenciales de lectura no están configuradas en la pestaña de Ajustes."
               : `Fallo de conexión con la API de BingX: ${error}`
             }

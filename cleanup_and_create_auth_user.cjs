@@ -1,37 +1,25 @@
-const { createClient } = require('@supabase/supabase-js');
-const { Client } = require('pg');
+const { createPgClient, createSupabaseTestClient, requireEnv } = require('./local_supabase_env.cjs');
 
-const supabaseUrl = 'https://ysnorelkaccaikvuqgnv.supabase.co';
-const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlzbm9yZWxrYWNjYWlrdnVxZ252Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxOTg3NTYsImV4cCI6MjA5NDc3NDc1Nn0.iLZj0sbmyr6wMJEIeWG2B0kmo4yeVJJFaL9nEgJZmrs';
-
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
-
-const pgClient = new Client({
-  host: 'aws-0-eu-west-1.pooler.supabase.com',
-  port: 6543,
-  database: 'postgres',
-  user: 'postgres.ysnorelkaccaikvuqgnv',
-  password: 'EmilioSurvival2026!',
-  ssl: {
-    rejectUnauthorized: false
-  }
-});
+const supabase = createSupabaseTestClient();
+const pgClient = createPgClient();
 
 async function run() {
   try {
     await pgClient.connect();
     console.log("Connected to PostgreSQL.");
 
-    // Delete manually created user
-    console.log("Deleting old emilio@ayuda.com...");
-    await pgClient.query("DELETE FROM auth.users WHERE email = 'emilio@ayuda.com';");
+    const newUserEmail = requireEnv('NEW_USER_EMAIL');
+    const newUserPassword = requireEnv('NEW_USER_PASSWORD');
+
+    console.log(`Deleting old user ${newUserEmail}...`);
+    await pgClient.query("DELETE FROM auth.users WHERE email = $1;", [newUserEmail]);
     console.log("Deleted old user.");
 
     // Use Supabase Client to sign up
     console.log("Signing up user via Supabase SDK...");
     const { data, error } = await supabase.auth.signUp({
-      email: 'emilio@ayuda.com',
-      password: 'emilio123',
+      email: newUserEmail,
+      password: newUserPassword,
       options: {
         data: { role: 'emilio' }
       }
@@ -52,10 +40,16 @@ async function run() {
     `, [data.user.id]);
     console.log("Email confirmed.");
 
-    // Copy BingX credentials from josferestudio@gmail.com
-    const origProfile = await pgClient.query("SELECT bingx_api_key, bingx_api_secret FROM public.profiles WHERE id = 'aeb78e97-5a44-4c24-9390-c32508dda09d';");
-    if (origProfile.rows.length > 0 && origProfile.rows[0].bingx_api_key) {
+    if (process.env.COPY_BINGX_CREDENTIALS === 'true') {
+      const sourceProfileId = requireEnv('SOURCE_PROFILE_ID');
       console.log("Copying BingX credentials...");
+      const origProfile = await pgClient.query(
+        "SELECT bingx_api_key, bingx_api_secret FROM public.profiles WHERE id = $1;",
+        [sourceProfileId]
+      );
+      if (origProfile.rows.length === 0 || !origProfile.rows[0].bingx_api_key) {
+        throw new Error('No se encontraron credenciales BingX en SOURCE_PROFILE_ID.');
+      }
       await pgClient.query(`
         UPDATE public.profiles 
         SET bingx_api_key = $1, bingx_api_secret = $2 

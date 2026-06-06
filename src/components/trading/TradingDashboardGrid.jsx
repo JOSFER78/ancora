@@ -5,12 +5,14 @@ export default function TradingDashboardGrid({ children }) {
   // Configuración de widgets por defecto: { id, title, colSpan (1 o 2), collapsed (boolean) }
   const [widgets, setWidgets] = useState(() => {
     const defaultWidgets = [
-      { id: 'viability', title: 'Calendario Financiero Central & Plan de Caja', colSpan: 2, collapsed: false },
       { id: 'bingx', title: 'Seguimiento de Cuenta & Broker (BingX)', colSpan: 2, collapsed: false },
+      { id: 'calendar', title: 'Diario de Consistencia & Calendario Reto', colSpan: 2, collapsed: false },
       { id: 'security', title: 'Checklist de Seguridad', colSpan: 1, collapsed: false },
+      { id: 'amigdala', title: 'Reset de Amígdala (Choque Fisiológico)', colSpan: 1, collapsed: false },
       { id: 'grief', title: 'Procesador de Duelos (Ceguera de Escala)', colSpan: 1, collapsed: false },
       { id: 'panic', title: 'Simulador de Pánico (Amígdala)', colSpan: 1, collapsed: false },
     ];
+
     const saved = localStorage.getItem('tradezella_widgets_layout');
     if (saved) {
       try {

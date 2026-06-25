@@ -47,6 +47,22 @@ Para asegurar la exención del IVA clínica en España y evitar contingencias la
 
 ---
 
+## 🧠 Arquitectura de IA Local y Servidores Propios
+
+Para garantizar una confidencialidad médica absoluta y cumplir con el RGPD europeo y el Esquema Nacional de Seguridad (ENS), Áncora no utiliza APIs comerciales extranjeras que puedan comprometer la intimidad de los pacientes. La inferencia se realiza localmente en servidores de hardware propio dedicados.
+
+### 🖥️ Infraestructura GPU Proporcional ("Pepino GPU")
+*   **Servidor de Inferencia Física**: Estación de trabajo equipada con **2x GPUs NVIDIA GeForce RTX 4090 (48GB VRAM total)**, procesador AMD Ryzen 9 9950X (16 núcleos) y 128GB de memoria RAM DDR5.
+*   **Paralelización de Inferencia (vLLM)**: Se utiliza el motor **vLLM** configurado con **Tensor Parallelism (TP=2)** y *PagedAttention* para dividir y ejecutar los LLMs de manera síncrona en ambas GPUs a través de memoria compartida local (`FI_PROVIDER="shm"`), minimizando la latencia a <1.5 segundos.
+*   **Indexación Semántica y RAG**: La base de datos vectorial **Qdrant** se ejecuta en local sobre la CPU y memoria RAM (ocupando ~2GB de RAM), reservando la preciada VRAM de las GPUs exclusivamente para la inferencia de modelos masivos (modelos de 70B/72B parámetros y transcripción local con Whisper).
+
+### ⚙️ Gestión de Carga y Optimización del Ancho de Banda
+*   **Reserva de Franjas Horarias**: Para evitar la saturación de los servidores locales, los usuarios reservan bloques de chat de 15 minutos diarios acumulables en la app. El sistema soporta un límite seguro de **10 usuarios simultáneos por bloque de 15 minutos por servidor (PC)**.
+*   **Colas de Prioridad Asíncronas**: Los mensajes no planificados o adquiridos con créditos gratuitos se gestionan mediante colas de prioridad baja en **Redis y BullMQ**. Si el servidor físico está lleno, el mensaje espera en cola y la UI notifica de forma transparente: *"Servidores a alta capacidad. Procesando en cola de espera..."*.
+*   **Escalabilidad a Data Center (1.000+ DAU)**: Al superar los 1.000 usuarios activos diarios (generando ingresos de ~40.000 €/mes), la granja de servidores locales se migrará a **servidores dedicados Bare Metal GPU** en un centro de datos especializado en España (como OVHcloud Madrid o hosting nacional), eliminando la complejidad eléctrica de casa y asegurando la soberanía de los datos a nivel nacional.
+
+---
+
 ## 🛠️ Stack Tecnológico
 
 *   **Frontend**: React 19 + Vite (JavaScript ES Modules).

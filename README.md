@@ -39,7 +39,7 @@ En la actualidad, millones de personas utilizan modelos de lenguaje de propósit
 Para asegurar la exención del IVA clínica en España y evitar contingencias laborales (evitando falsos autónomos), los cobros se dividen automáticamente en origen mediante **Stripe Connect**:
 *   **Onboarding y Diagnóstico Inicial**: 99,00 € (promocionado a 49,00 € con cupón de bienvenida).
 *   **Planes de Suscripción Individual**:
-    - **Plan Esencial**: 69 €/mes (incluye diario de IA + revisión humana rápida semanal).
+    - **Plan Esencial (Mínimo de Seguridad)**: 69 €/mes. Es el plan de entrada obligatorio para garantizar el uso de la plataforma y **dos supervisiones de 15 minutos con un psicólogo colegiado**. Es el estándar mínimo de protección clínica necesario para que los usuarios estén protegidos con diagnósticos, validación y supervisión humana del contenido y progreso de lo que interactúan y hablan con la IA, mitigando los riesgos del autotratamiento autónomo.
     - **Plan Intermedio**: 99 €/mes.
     - **Plan Intensivo**: 159 €/mes.
 *   **Planes Grupales**: Duo (240 €/mes) y Familiar (380 €/mes).

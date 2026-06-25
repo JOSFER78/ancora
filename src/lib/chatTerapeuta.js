@@ -21,7 +21,7 @@ async function buildFunctionError(error) {
   return new Error(message);
 }
 
-export async function invokeChatTerapeuta(body) {
+export async function invokeChatTerapeuta(body, signal = null) {
   let timeoutMs = 90000;
   if (body?.action === 'consolidate_mente_sync') {
     timeoutMs = 180000;
@@ -39,7 +39,7 @@ export async function invokeChatTerapeuta(body) {
   let result;
   try {
     result = await Promise.race([
-      supabase.functions.invoke('chat-terapeuta', { body }),
+      supabase.functions.invoke('chat-terapeuta', { body, signal }),
       timeout
     ]);
   } catch (error) {

@@ -1,20 +1,20 @@
-import { supabase } from '../supabaseClient';
+﻿import { supabase } from '../supabaseClient';
 
 /**
- * Jerarquía de Niveles de Autoridad Clínica
+ * JerarquÃ­a de Niveles de Autoridad ClÃ­nica
  */
 export const AuthorityLevels = {
-  VALIDATED: 1, // Validado por psicólogo
+  VALIDATED: 1, // Validado por psicÃ³logo
   DOCUMENTED: 2, // Documentado (informes, PDFs)
   DECLARED: 3,   // Declarado por paciente
   INFERRED: 4    // Inferencia de IA
 };
 
 export const AuthorityLabels = {
-  1: 'Validado por Psicólogo',
+  1: 'Validado por PsicÃ³logo',
   2: 'Documentado en Informe',
   3: 'Declarado por Paciente',
-  4: 'Inferencia de Walter IA'
+  4: 'Inferencia IA Ãncora'
 };
 
 /**
@@ -24,25 +24,238 @@ function isTableMissingError(error) {
   return error && (error.code === '42P01' || error.message?.includes('does not exist'));
 }
 
+function normalizeClinicalProposal(row) {
+  const data = row.proposal_data || {};
+  return {
+    ...row,
+    source_table: 'clinical_proposals',
+    source_type: data.source_type || 'clinical_engine',
+    source_metadata: {
+      fileName: data.file_name || row.file_name || data.source_file || '',
+      quote: row.source_quote || '',
+      document_id: row.document_id || null,
+      extraction_id: row.extraction_id || null
+    },
+    proposal_type: row.proposal_type,
+    proposal_data: data,
+    confidence: Number(row.confidence ?? 0.5),
+    status: row.status || 'pending'
+  };
+}
+
+function safeFileName(name) {
+  return String(name || 'documento')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9._-]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 120) || 'documento';
+}
+
+export async function getClinicalDocuments(patientId) {
+  const { data, error } = await supabase
+    .from('clinical_documents')
+    .select('id, patient_id, uploaded_by, file_name, mime_type, file_size, source_kind, extraction_status, extraction_error, created_at, updated_at')
+    .eq('patient_id', patientId)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    if (isTableMissingError(error)) return [];
+    throw error;
+  }
+  return data || [];
+}
+
+export async function getClinicalProfile(patientId) {
+  const { data, error } = await supabase
+    .from('clinical_profiles')
+    .select('*')
+    .eq('patient_id', patientId)
+    .maybeSingle();
+
+  if (error) {
+    if (isTableMissingError(error)) return null;
+    throw error;
+  }
+  return data || null;
+}
+
+export async function buildPatientSnapshot(patientId) {
+  const { data, error } = await supabase.functions.invoke('clinical-synthesize', {
+    body: {
+      action: 'build_patient_snapshot',
+      patient_id: patientId
+    }
+  });
+  if (error) throw new Error(error.message || 'Error al sintetizar memoria clÃ­nica.');
+  if (data?.error) throw new Error(data.error);
+  return data;
+}
+
+export async function getPatientContextSnapshot(patientId) {
+  const { data, error } = await supabase
+    .from('patient_context_snapshots')
+    .select('*')
+    .eq('patient_id', patientId)
+    .eq('snapshot_type', 'clinical_chat')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    if (isTableMissingError(error)) return null;
+    throw error;
+  }
+  return data || null;
+}
+
+export async function getClinicalLifeTree(patientId) {
+  const { data, error } = await supabase
+    .from('clinical_life_tree')
+    .select('*')
+    .eq('patient_id', patientId)
+    .maybeSingle();
+
+  if (error) {
+    if (isTableMissingError(error)) return null;
+    throw error;
+  }
+  return data || null;
+}
+
+export async function getClinicalTimelineIndex(patientId) {
+  const { data, error } = await supabase
+    .from('clinical_timeline_index')
+    .select('*')
+    .eq('patient_id', patientId)
+    .order('event_date', { ascending: true, nullsFirst: false })
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    if (isTableMissingError(error)) return [];
+    throw error;
+  }
+  return data || [];
+}
+
+export async function processConversationTurn(conversationId, messageId = null) {
+  const { data, error } = await supabase.functions.invoke('clinical-synthesize', {
+    body: {
+      action: 'process_conversation_turn',
+      conversation_id: conversationId,
+      ...(messageId ? { message_id: messageId } : {})
+    }
+  });
+  if (error) throw new Error(error.message || 'Error al actualizar memoria conversacional.');
+  if (data?.error) throw new Error(data.error);
+  return data;
+}
+
+export async function uploadClinicalDocument(file, patientId) {
+  const { data: authData } = await supabase.auth.getUser();
+  const userId = authData?.user?.id;
+  if (!userId) throw new Error('SesiÃ³n no disponible.');
+
+  const documentId = crypto.randomUUID();
+  const cleanName = safeFileName(file.name || `documento-${documentId}.txt`);
+  const storagePath = `${patientId}/${documentId}/${cleanName}`;
+  const mimeType = file.type || 'application/octet-stream';
+
+  const { error: uploadError } = await supabase.storage
+    .from('clinical-documents')
+    .upload(storagePath, file, {
+      contentType: mimeType,
+      upsert: false
+    });
+  if (uploadError) throw uploadError;
+
+  const { data: doc, error: docError } = await supabase
+    .from('clinical_documents')
+    .insert({
+      id: documentId,
+      patient_id: patientId,
+      uploaded_by: userId,
+      storage_path: storagePath,
+      file_name: file.name || cleanName,
+      mime_type: mimeType,
+      file_size: file.size || 0,
+      source_kind: 'upload',
+      extraction_status: 'pending'
+    })
+    .select()
+    .single();
+  if (docError) throw docError;
+
+  const { data: ingestData, error: ingestError } = await supabase.functions.invoke('clinical-ingest', {
+    body: {
+      action: 'process_document',
+      document_id: documentId
+    }
+  });
+
+  if (ingestError) {
+    throw new Error(ingestError.message || 'Error al procesar el documento en clinical-ingest.');
+  }
+  if (ingestData?.error) {
+    throw new Error(ingestData.error);
+  }
+
+  try {
+    await buildPatientSnapshot(patientId);
+  } catch (snapshotError) {
+    console.warn('Documento procesado, pero no se pudo regenerar el snapshot clÃ­nico:', snapshotError);
+  }
+
+  return { document: doc, ingest: ingestData };
+}
+
+export async function processChatSessionClinically(conversationId) {
+  const { data: conversation } = await supabase
+    .from('conversations')
+    .select('user_id')
+    .eq('id', conversationId)
+    .maybeSingle();
+
+  const { data, error } = await supabase.functions.invoke('clinical-ingest', {
+    body: {
+      action: 'process_chat_session',
+      conversation_id: conversationId
+    }
+  });
+  if (error) throw new Error(error.message || 'Error al procesar la sesion de chat.');
+  if (data?.error) throw new Error(data.error);
+
+  if (conversation?.user_id) {
+    try {
+      await buildPatientSnapshot(conversation.user_id);
+    } catch (snapshotError) {
+      console.warn('Sesion procesada, pero no se pudo regenerar el snapshot clinico:', snapshotError);
+    }
+  }
+
+  return data;
+}
+
 /**
  * Obtener propuestas pendientes de la IA para un paciente.
  */
 export async function getPendingProposals(patientId) {
   try {
     const { data, error } = await supabase
-      .from('pending_proposals')
+      .from('clinical_proposals')
       .select('*')
       .eq('patient_id', patientId)
-      .eq('status', 'pending');
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false });
 
     if (error) {
       if (isTableMissingError(error)) {
-        console.warn("Tabla 'pending_proposals' no existe en Supabase. Usando fallback de localStorage.");
+        console.warn("Tabla 'clinical_proposals' no existe en Supabase. Usando fallback de localStorage.");
         return getLocalProposals(patientId);
       }
       throw error;
     }
-    return data || [];
+    return (data || []).map(normalizeClinicalProposal);
   } catch (err) {
     console.error("Error al obtener propuestas de Supabase, usando fallback:", err);
     return getLocalProposals(patientId);
@@ -56,6 +269,120 @@ export async function acceptProposal(proposal, updatedData = null, customAuthori
   const finalData = updatedData || proposal.proposal_data;
   const patientId = proposal.patient_id;
   const finalAuthorityLevel = customAuthorityLevel !== null ? customAuthorityLevel : AuthorityLevels.VALIDATED;
+  const clinicalAuthorityLevel = customAuthorityLevel !== null ? customAuthorityLevel : AuthorityLevels.DOCUMENTED;
+
+  if (proposal.source_table === 'clinical_proposals' || proposal.document_id || proposal.extraction_id) {
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      const reviewerId = authData?.user?.id || null;
+
+      const { error: proposalErr } = await supabase
+        .from('clinical_proposals')
+        .update({
+          status: 'accepted',
+          reviewed_by: reviewerId,
+          reviewed_at: new Date().toISOString()
+        })
+        .eq('id', proposal.id);
+      if (proposalErr) throw proposalErr;
+
+      const factClaim = finalData.claim || finalData.event || finalData.name || finalData.question || 'Dato clÃ­nico aceptado';
+      await supabase.from('clinical_facts').insert({
+        patient_id: patientId,
+        document_id: proposal.document_id || proposal.source_metadata?.document_id || null,
+        extraction_id: proposal.extraction_id || proposal.source_metadata?.extraction_id || null,
+        proposal_id: proposal.id,
+        kind: finalData.kind || proposal.proposal_type,
+        claim: factClaim,
+        verbatim_quote: proposal.source_quote || proposal.source_metadata?.quote || null,
+        date_value: finalData.date || null,
+        date_precision: finalData.date_precision || 'unknown',
+        confidence: proposal.confidence || 0.5,
+        authority_level: clinicalAuthorityLevel,
+        source_info: {
+          proposal_type: proposal.proposal_type,
+          source_metadata: proposal.source_metadata || {}
+        }
+      });
+
+      if (proposal.proposal_type === 'medication') {
+        const { error: medErr } = await supabase
+          .from('medications')
+          .insert({
+            patient_id: patientId,
+            name: finalData.name,
+            dose: finalData.dose || 'No especificada',
+            frequency: finalData.frequency || 'No especificada',
+            prescriber: finalData.prescriber || 'No especificado',
+            status: 'active',
+            authority_level: clinicalAuthorityLevel,
+            source_info: {
+              proposal_id: proposal.id,
+              quote: proposal.source_quote || proposal.source_metadata?.quote || null
+            }
+          });
+        if (medErr) throw medErr;
+      } else if (proposal.proposal_type === 'timeline_event') {
+        const { error: eventErr } = await supabase
+          .from('timeline_events')
+          .insert({
+            patient_id: patientId,
+            event_date: finalData.date || null,
+            date_precision: finalData.date_precision || 'unknown',
+            event_type: finalData.event_type || 'clinical_observation',
+            description: finalData.event || finalData.claim,
+            associated_emotion: finalData.associated_emotion || null,
+            intensity: finalData.intensity || null,
+            authority_level: clinicalAuthorityLevel,
+            source_info: {
+              proposal_id: proposal.id,
+              quote: proposal.source_quote || proposal.source_metadata?.quote || null
+            }
+          });
+        if (eventErr) throw eventErr;
+      } else if (proposal.proposal_type === 'risk_event') {
+        const { error: riskErr } = await supabase
+          .from('risk_events')
+          .insert({
+            patient_id: patientId,
+            document_id: proposal.document_id || proposal.source_metadata?.document_id || null,
+            risk_type: finalData.risk_type || 'other',
+            severity: finalData.severity || 'moderate',
+            evidence_quote: finalData.evidence_quote || proposal.source_quote || null,
+            recommended_action: finalData.recommended_action || '',
+            status: 'reviewed'
+          });
+        if (riskErr) throw riskErr;
+      } else if (proposal.proposal_type === 'profile_patch') {
+        const patch = finalData || {};
+        const { data: existing } = await supabase
+          .from('clinical_profiles')
+          .select('*')
+          .eq('patient_id', patientId)
+          .maybeSingle();
+        const merged = {
+          patient_id: patientId,
+          summary_vital: patch.summary_vital || existing?.summary_vital || null,
+          psychological_history: patch.psychological_history || existing?.psychological_history || null,
+          medical_history: patch.medical_history || existing?.medical_history || null,
+          relationship_context: patch.relationship_context || existing?.relationship_context || null,
+          patterns: patch.patterns || existing?.patterns || null,
+          goals: patch.goals || existing?.goals || null,
+          risk_summary: patch.risk_summary || existing?.risk_summary || null,
+          last_synthesized_at: new Date().toISOString()
+        };
+        const { error: profileErr } = await supabase
+          .from('clinical_profiles')
+          .upsert(merged, { onConflict: 'patient_id' });
+        if (profileErr) throw profileErr;
+      }
+
+      return { success: true };
+    } catch (err) {
+      console.error("Error al aceptar propuesta clÃ­nica:", err);
+      throw err;
+    }
+  }
 
   try {
     // 1. Actualizar estado de la propuesta
@@ -66,7 +393,7 @@ export async function acceptProposal(proposal, updatedData = null, customAuthori
 
     if (proposalErr && !isTableMissingError(proposalErr)) throw proposalErr;
 
-    // 2. Insertar el dato real según el tipo
+    // 2. Insertar el dato real segÃºn el tipo
     if (proposal.proposal_type === 'medication') {
       const { error: medErr } = await supabase
         .from('medications')
@@ -75,7 +402,7 @@ export async function acceptProposal(proposal, updatedData = null, customAuthori
           name: finalData.name,
           dose: finalData.dose,
           frequency: finalData.frequency,
-          prescriber: finalData.prescriber || 'Walter IA (Propuesta)',
+          prescriber: finalData.prescriber || 'IA Ãncora (Propuesta)',
           status: 'active',
           authority_level: finalAuthorityLevel,
           source_info: {
@@ -106,7 +433,7 @@ export async function acceptProposal(proposal, updatedData = null, customAuthori
       if (eventErr && !isTableMissingError(eventErr)) throw eventErr;
     }
 
-    // Si falló por falta de tablas, ejecutar lógica local
+    // Si fallÃ³ por falta de tablas, ejecutar lÃ³gica local
     if (proposalErr && isTableMissingError(proposalErr)) {
       acceptLocalProposal(proposal, finalData, finalAuthorityLevel);
     }
@@ -124,9 +451,16 @@ export async function acceptProposal(proposal, updatedData = null, customAuthori
  */
 export async function rejectProposal(proposalId, patientId) {
   try {
+    const { data: authData } = await supabase.auth.getUser();
+    const reviewerId = authData?.user?.id || null;
+
     const { error } = await supabase
-      .from('pending_proposals')
-      .update({ status: 'rejected' })
+      .from('clinical_proposals')
+      .update({
+        status: 'rejected',
+        reviewed_by: reviewerId,
+        reviewed_at: new Date().toISOString()
+      })
       .eq('id', proposalId);
 
     if (error) {
@@ -166,7 +500,7 @@ export async function getMedications(patientId) {
 }
 
 /**
- * Guardar medicación declarada directamente.
+ * Guardar medicaciÃ³n declarada directamente.
  */
 export async function addMedication(patientId, med, level = AuthorityLevels.DECLARED) {
   try {
@@ -189,13 +523,13 @@ export async function addMedication(patientId, med, level = AuthorityLevels.DECL
     }
     return data[0];
   } catch (err) {
-    console.error("Error al agregar medicación, usando local:", err);
+    console.error("Error al agregar medicaciÃ³n, usando local:", err);
     return addLocalMedication(patientId, med, level);
   }
 }
 
 /**
- * Obtener el Timeline Clínico del paciente.
+ * Obtener el Timeline ClÃ­nico del paciente.
  */
 export async function getTimelineEvents(patientId) {
   try {
@@ -208,7 +542,7 @@ export async function getTimelineEvents(patientId) {
       if (isTableMissingError(error)) return getLocalTimelineEvents(patientId);
       throw error;
     }
-    // Ordenar cronológicamente
+    // Ordenar cronolÃ³gicamente
     return (data || []).sort((a, b) => new Date(a.event_date).getTime() - new Date(b.event_date).getTime());
   } catch (err) {
     console.error("Error al obtener timeline, usando local:", err);
@@ -246,17 +580,17 @@ export async function addTimelineEvent(patientId, ev, level = AuthorityLevels.DE
 }
 
 /**
- * Simulación de Pipeline de Walter IA tras subida de documentos
+ * SimulaciÃ³n heredada de pipeline IA tras subida de documentos.
  */
 /**
- * Analiza un texto en busca de información clínica (Medicaciones, Eventos, Emociones).
+ * Analiza un texto en busca de informaciÃ³n clÃ­nica (Medicaciones, Eventos, Emociones).
  */
-export function analyzeTextClinically(text, sourceName) {
+function analyzeTextClinicallyLegacy(text, sourceName) {
   const proposals = [];
   const timestamp = Date.now();
   const lowerText = text.toLowerCase();
 
-  // 1. Diccionario de medicamentos conocidos (para verificación rápida)
+  // 1. Diccionario de medicamentos conocidos (para verificaciÃ³n rÃ¡pida)
   const medsDict = [
     { name: 'Sertralina', patterns: [/sertralina/i] },
     { name: 'Atomoxetina', patterns: [/atomoxetina/i] },
@@ -277,15 +611,15 @@ export function analyzeTextClinically(text, sourceName) {
 
   const doseRegex = /(\d+(?:\.\d+)?)\s*(mg|mcg|g|ml|miligramos|microgramos|comprimido|comprimidos|pastilla|pastillas|capsula|capsulas)/gi;
   const freqPatterns = [
-    { text: '1 comprimido diario en el desayuno', regex: /(diario|cada mañana|en el desayuno|mañanas|mañana|ayunas|desayuno)/i },
+    { text: '1 comprimido diario en el desayuno', regex: /(diario|cada maÃ±ana|en el desayuno|maÃ±anas|maÃ±ana|ayunas|desayuno)/i },
     { text: '1 comprimido antes de dormir', regex: /(por la noche|noches|antes de dormir|noche|noche)/i },
-    { text: 'Cada 24 horas', regex: /(cada 24h|cada 24 horas|1 al día)/i },
-    { text: 'Cada 12 horas', regex: /(cada 12h|cada 12 horas|2 al día)/i },
-    { text: 'Cada 8 horas', regex: /(cada 8h|cada 8 horas|3 al día)/i }
+    { text: 'Cada 24 horas', regex: /(cada 24h|cada 24 horas|1 al dÃ­a)/i },
+    { text: 'Cada 12 horas', regex: /(cada 12h|cada 12 horas|2 al dÃ­a)/i },
+    { text: 'Cada 8 horas', regex: /(cada 8h|cada 8 horas|3 al dÃ­a)/i }
   ];
-  const prescriberRegex = /(?:dra?\.|médico|psiquiatra|endocrino|cardiólogo|doctora?)\s+([a-záéíóúüñ\s]{3,20})/gi;
+  const prescriberRegex = /(?:dra?\.|mÃ©dico|psiquiatra|endocrino|cardiÃ³logo|doctora?)\s+([a-zÃ¡Ã©Ã­Ã³ÃºÃ¼Ã±\s]{3,20})/gi;
 
-  // Extracción A: Medicamentos conocidos del diccionario
+  // ExtracciÃ³n A: Medicamentos conocidos del diccionario
   medsDict.forEach(med => {
     let matched = false;
     med.patterns.forEach(pattern => {
@@ -305,7 +639,7 @@ export function analyzeTextClinically(text, sourceName) {
         dose = allDoses[0];
       }
 
-      let frequency = 'Según pauta médica';
+      let frequency = 'SegÃºn pauta mÃ©dica';
       for (const freq of freqPatterns) {
         if (freq.regex.test(lowerText)) {
           frequency = freq.text;
@@ -313,7 +647,7 @@ export function analyzeTextClinically(text, sourceName) {
         }
       }
 
-      let prescriber = 'Walter IA (Deducido)';
+      let prescriber = 'IA Ãncora (Deducido)';
       prescriberRegex.lastIndex = 0;
       const prescMatch = prescriberRegex.exec(text);
       if (prescMatch) {
@@ -327,8 +661,8 @@ export function analyzeTextClinically(text, sourceName) {
         source_type: 'document',
         source_metadata: { 
           fileName: sourceName, 
-          section: 'Extracción de Medicación', 
-          textMessage: `Mención de ${med.name} encontrada en el texto.`
+          section: 'ExtracciÃ³n de MedicaciÃ³n', 
+          textMessage: `MenciÃ³n de ${med.name} encontrada en el texto.`
         },
         proposal_data: {
           name: med.name,
@@ -343,8 +677,8 @@ export function analyzeTextClinically(text, sourceName) {
     }
   });
 
-  // Extracción B: Detección libre de cualquier fármaco con dosis (ej. "Lortac 20mg")
-  const genericMedRegex = /\b([a-zA-Záéíóúüñ]{3,20})\s+(\d+(?:\.\d+)?)\s*(mg|mcg|g|ml|miligramos|microgramos)/gi;
+  // ExtracciÃ³n B: DetecciÃ³n libre de cualquier fÃ¡rmaco con dosis (ej. "Lortac 20mg")
+  const genericMedRegex = /\b([a-zA-ZÃ¡Ã©Ã­Ã³ÃºÃ¼Ã±]{3,20})\s+(\d+(?:\.\d+)?)\s*(mg|mcg|g|ml|miligramos|microgramos)/gi;
   let genericMatch;
   genericMedRegex.lastIndex = 0;
   while ((genericMatch = genericMedRegex.exec(text)) !== null) {
@@ -357,7 +691,7 @@ export function analyzeTextClinically(text, sourceName) {
     const alreadyExtracted = proposals.some(p => p.proposal_type === 'medication' && p.proposal_data.name.toLowerCase() === medLower);
     
     if (!isCommonWord && !alreadyExtracted) {
-      let frequency = 'Según pauta médica';
+      let frequency = 'SegÃºn pauta mÃ©dica';
       for (const freq of freqPatterns) {
         if (freq.regex.test(lowerText)) {
           frequency = freq.text;
@@ -365,7 +699,7 @@ export function analyzeTextClinically(text, sourceName) {
         }
       }
 
-      let prescriber = 'Walter IA (Deducido)';
+      let prescriber = 'IA Ãncora (Deducido)';
       prescriberRegex.lastIndex = 0;
       const prescMatch = prescriberRegex.exec(text);
       if (prescMatch) {
@@ -379,8 +713,8 @@ export function analyzeTextClinically(text, sourceName) {
         source_type: 'document',
         source_metadata: { 
           fileName: sourceName, 
-          section: 'Extracción NLP Libre', 
-          textMessage: `Se detectó pauta farmacológica: "${genericMatch[0]}"`
+          section: 'ExtracciÃ³n NLP Libre', 
+          textMessage: `Se detectÃ³ pauta farmacolÃ³gica: "${genericMatch[0]}"`
         },
         proposal_data: {
           name: medNameCandidate.charAt(0).toUpperCase() + medNameCandidate.slice(1),
@@ -395,23 +729,23 @@ export function analyzeTextClinically(text, sourceName) {
     }
   }
 
-  // Extracción C: Múltiples eventos del timeline analizando frase a frase
+  // ExtracciÃ³n C: MÃºltiples eventos del timeline analizando frase a frase
   const sentences = text.split(/[.\n;]/).map(s => s.trim()).filter(s => s.length > 15);
   
   const eventKeywords = [
-    { type: 'crisis', keywords: [/crisis/i, /ataque/i, /pánico/i, /desbordado/i, /lloré/i, /llanto/i, /ansiedad/i, /angustia/i, /rumiación/i, /insomnio/i] },
-    { type: 'vital_event', keywords: [/murió/i, /falleció/i, /duelo/i, /ruptura/i, /separación/i, /mudanza/i, /despido/i, /diagnóstico/i, /fallecimiento/i, /muerte/i, /ingreso/i, /accidente/i] },
-    { type: 'symptom_start', keywords: [/empecé/i, /inicio/i, /comenzó/i, /insomnio/i, /cansancio/i, /fatiga/i, /presión/i, /dolor/i] },
-    { type: 'therapy_session', keywords: [/terapia/i, /sesión/i, /psicólogo/i, /consulta/i, /médico/i, /tratamiento/i] }
+    { type: 'crisis', keywords: [/crisis/i, /ataque/i, /pÃ¡nico/i, /desbordado/i, /llorÃ©/i, /llanto/i, /ansiedad/i, /angustia/i, /rumiaciÃ³n/i, /insomnio/i] },
+    { type: 'vital_event', keywords: [/muriÃ³/i, /falleciÃ³/i, /duelo/i, /ruptura/i, /separaciÃ³n/i, /mudanza/i, /despido/i, /diagnÃ³stico/i, /fallecimiento/i, /muerte/i, /ingreso/i, /accidente/i] },
+    { type: 'symptom_start', keywords: [/empecÃ©/i, /inicio/i, /comenzÃ³/i, /insomnio/i, /cansancio/i, /fatiga/i, /presiÃ³n/i, /dolor/i] },
+    { type: 'therapy_session', keywords: [/terapia/i, /sesiÃ³n/i, /psicÃ³logo/i, /consulta/i, /mÃ©dico/i, /tratamiento/i] }
   ];
 
   const emotions = [
-    { name: 'Tristeza', patterns: [/triste/i, /llorar/i, /pena/i, /duelo/i, /vacío/i, /desolado/i, /dolor/i] },
-    { name: 'Ansiedad', patterns: [/ansiedad/i, /nervios/i, /pánico/i, /ahogo/i, /presión/i, /angustia/i] },
+    { name: 'Tristeza', patterns: [/triste/i, /llorar/i, /pena/i, /duelo/i, /vacÃ­o/i, /desolado/i, /dolor/i] },
+    { name: 'Ansiedad', patterns: [/ansiedad/i, /nervios/i, /pÃ¡nico/i, /ahogo/i, /presiÃ³n/i, /angustia/i] },
     { name: 'Miedo', patterns: [/miedo/i, /temor/i, /asustado/i, /fobia/i] },
-    { name: 'Agobio', patterns: [/agobiado/i, /desbordado/i, /estrés/i, /agotado/i, /presión/i] },
+    { name: 'Agobio', patterns: [/agobiado/i, /desbordado/i, /estrÃ©s/i, /agotado/i, /presiÃ³n/i] },
     { name: 'Culpa', patterns: [/culpa/i, /culpable/i, /remordimiento/i] },
-    { name: 'Frustración', patterns: [/frustrado/i, /rabia/i, /enojo/i, /impotencia/i] },
+    { name: 'FrustraciÃ³n', patterns: [/frustrado/i, /rabia/i, /enojo/i, /impotencia/i] },
     { name: 'Alivio', patterns: [/alivio/i, /tranquilidad/i, /paz/i, /calma/i] }
   ];
 
@@ -422,7 +756,7 @@ export function analyzeTextClinically(text, sourceName) {
   sentences.forEach((sentence, idx) => {
     const lowerSentence = sentence.toLowerCase();
     
-    // Buscar si la frase contiene alguna palabra de evento o emoción
+    // Buscar si la frase contiene alguna palabra de evento o emociÃ³n
     let isEvent = false;
     let eventType = 'other';
     for (const ek of eventKeywords) {
@@ -443,7 +777,7 @@ export function analyzeTextClinically(text, sourceName) {
     }
 
     if (isEvent || isEmotional) {
-      // Extraer fecha para esta frase específica
+      // Extraer fecha para esta frase especÃ­fica
       let sentenceDate = new Date().toISOString().substring(0, 10);
       let dateMatch = dateRegex.exec(sentence);
       if (dateMatch) {
@@ -484,7 +818,7 @@ export function analyzeTextClinically(text, sourceName) {
         source_type: 'document',
         source_metadata: { 
           fileName: sourceName, 
-          section: 'Análisis NLP Dinámico por Oraciones', 
+          section: 'AnÃ¡lisis NLP DinÃ¡mico por Oraciones', 
           textMessage: sentence
         },
         proposal_data: {
@@ -501,7 +835,7 @@ export function analyzeTextClinically(text, sourceName) {
     }
   });
 
-  // Si no se extrajo absolutamente nada específico, generar una propuesta de hito general basada en el texto real
+  // Si no se extrajo absolutamente nada especÃ­fico, generar una propuesta de hito general basada en el texto real
   if (proposals.length === 0) {
     proposals.push({
       id: `prop-${timestamp}-dyn-gen`,
@@ -529,9 +863,9 @@ export function analyzeTextClinically(text, sourceName) {
 }
 
 /**
- * Analiza semánticamente el nombre de un archivo binario para extraer entidades.
+ * Analiza semÃ¡nticamente el nombre de un archivo binario para extraer entidades.
  */
-export function analyzeFileNameClinically(fileName, fileSizeStr) {
+function analyzeFileNameClinicallyLegacy(fileName, fileSizeStr) {
   const timestamp = Date.now();
   const lowerName = fileName.toLowerCase();
   
@@ -556,7 +890,7 @@ export function analyzeFileNameClinically(fileName, fileSizeStr) {
       const doseMatch = /(\d+)(?:mg|mcg)/i.exec(lowerName);
       const dose = doseMatch ? doseMatch[0] : (med.name === 'Eutirox' ? '75mcg' : '50mg');
       const frequency = med.name === 'Melatonina' || med.name === 'Diazepam' ? '1 comprimido antes de dormir' : '1 comprimido diario en el desayuno';
-      const prescriber = med.name === 'Eutirox' ? 'Dr. Alejandro Soto (Endocrino)' : 'Dra. Isabel Benítez (Psiquiatra)';
+      const prescriber = med.name === 'Eutirox' ? 'Dr. Alejandro Soto (Endocrino)' : 'Dra. Isabel BenÃ­tez (Psiquiatra)';
 
       return [
         {
@@ -566,8 +900,8 @@ export function analyzeFileNameClinically(fileName, fileSizeStr) {
           source_type: 'document',
           source_metadata: { 
             fileName, 
-            section: 'OCR de Visión / OCR Nombre', 
-            textMessage: `Se ha detectado medicación en el nombre del archivo: ${fileName}.` 
+            section: 'OCR de VisiÃ³n / OCR Nombre', 
+            textMessage: `Se ha detectado medicaciÃ³n en el nombre del archivo: ${fileName}.` 
           },
           proposal_data: {
             name: med.name,
@@ -590,11 +924,11 @@ export function analyzeFileNameClinically(fileName, fileSizeStr) {
         patient_id: null,
         proposal_type: 'timeline_event',
         source_type: 'document',
-        source_metadata: { fileName, section: 'OCR / Transcripción Semántica' },
+        source_metadata: { fileName, section: 'OCR / TranscripciÃ³n SemÃ¡ntica' },
         proposal_data: {
           date: '2025-06-01',
           event_type: 'vital_event',
-          event: 'Proceso de duelo familiar significativo (detectado semánticamente en el nombre del archivo).',
+          event: 'Proceso de duelo familiar significativo (detectado semÃ¡nticamente en el nombre del archivo).',
           associated_emotion: 'Tristeza / Duelo',
           intensity: 8
         },
@@ -612,12 +946,12 @@ export function analyzeFileNameClinically(fileName, fileSizeStr) {
         patient_id: null,
         proposal_type: 'timeline_event',
         source_type: 'document',
-        source_metadata: { fileName, section: 'OCR / Transcripción Semántica' },
+        source_metadata: { fileName, section: 'OCR / TranscripciÃ³n SemÃ¡ntica' },
         proposal_data: {
           date: new Date().toISOString().substring(0, 10),
           event_type: 'crisis',
           event: `Episodio agudo de malestar/ansiedad registrado en: ${fileName}`,
-          associated_emotion: 'Ansiedad / Pánico',
+          associated_emotion: 'Ansiedad / PÃ¡nico',
           intensity: 8
         },
         confidence: 0.85,
@@ -634,12 +968,12 @@ export function analyzeFileNameClinically(fileName, fileSizeStr) {
         patient_id: null,
         proposal_type: 'timeline_event',
         source_type: 'document',
-        source_metadata: { fileName, section: 'Estructuración de Informe' },
+        source_metadata: { fileName, section: 'EstructuraciÃ³n de Informe' },
         proposal_data: {
           date: '2024-09-15',
           event_type: 'therapy_session',
-          event: 'Mención de proceso terapéutico o informe clínico previo.',
-          associated_emotion: 'Preocupación',
+          event: 'MenciÃ³n de proceso terapÃ©utico o informe clÃ­nico previo.',
+          associated_emotion: 'PreocupaciÃ³n',
           intensity: 6
         },
         confidence: 0.84,
@@ -649,8 +983,8 @@ export function analyzeFileNameClinically(fileName, fileSizeStr) {
     ];
   }
 
-  const fileTypeLabel = lowerName.endsWith('.wav') || lowerName.endsWith('.mp3') ? 'Audio Clínico' : (lowerName.endsWith('.pdf') ? 'Documento PDF' : 'Imagen/OCR');
-  const actionLabel = fileTypeLabel === 'Audio Clínico' ? 'Transcripción de voz' : 'OCR y visión multimodal';
+  const fileTypeLabel = lowerName.endsWith('.wav') || lowerName.endsWith('.mp3') ? 'Audio ClÃ­nico' : (lowerName.endsWith('.pdf') ? 'Documento PDF' : 'Imagen/OCR');
+  const actionLabel = fileTypeLabel === 'Audio ClÃ­nico' ? 'TranscripciÃ³n de voz' : 'OCR y visiÃ³n multimodal';
 
   return [
     {
@@ -660,7 +994,7 @@ export function analyzeFileNameClinically(fileName, fileSizeStr) {
       source_type: 'document',
       source_metadata: { 
         fileName, 
-        section: `Análisis de ${fileTypeLabel}` 
+        section: `AnÃ¡lisis de ${fileTypeLabel}` 
       },
       proposal_data: {
         date: new Date().toISOString().substring(0, 10),
@@ -676,7 +1010,9 @@ export function analyzeFileNameClinically(fileName, fileSizeStr) {
   ];
 }
 
-export async function simulateDocumentIngestion(patientId, fileName, fileSizeStr = '1.2 MB', fileContent = null) {
+async function legacyDocumentIngestionDisabled(patientId, fileName, fileSizeStr = '1.2 MB', fileContent = null) {
+  throw new Error('La ingesta simulada esta desactivada. Usa uploadClinicalDocument y clinical-ingest.');
+
   const key = `proposals_${patientId}`;
   const local = localStorage.getItem(key);
   const currentProposals = local ? JSON.parse(local) : [];
@@ -684,9 +1020,9 @@ export async function simulateDocumentIngestion(patientId, fileName, fileSizeStr
   let newProposals = [];
 
   if (fileContent && fileContent.trim().length > 0) {
-    newProposals = analyzeTextClinically(fileContent, fileName);
+    newProposals = analyzeTextClinicallyLegacy(fileContent, fileName);
   } else {
-    newProposals = analyzeFileNameClinically(fileName, fileSizeStr);
+    newProposals = analyzeFileNameClinicallyLegacy(fileName, fileSizeStr);
   }
 
   // Asignar patientId a todas las propuestas y marcar como accepted
@@ -728,7 +1064,7 @@ export async function simulateDocumentIngestion(patientId, fileName, fileSizeStr
             name: p.proposal_data.name,
             dose: p.proposal_data.dose,
             frequency: p.proposal_data.frequency,
-            prescriber: p.proposal_data.prescriber || 'Walter IA (Extraído)',
+            prescriber: p.proposal_data.prescriber || 'IA Ãncora (ExtraÃ­do)',
             status: 'active',
             authority_level: AuthorityLevels.DOCUMENTED,
             source_info: {
@@ -779,7 +1115,7 @@ function getLocalProposals(patientId) {
   const local = localStorage.getItem(key);
   if (local) return JSON.parse(local).filter(p => p.status === 'pending');
 
-  // Si no hay datos, inicializamos con propuestas mockeadas por defecto para María Fernanda (p-1)
+  // Si no hay datos, inicializamos con propuestas mockeadas por defecto para MarÃ­a Fernanda (p-1)
   if (patientId === 'p-1' || patientId === 'tisute-id') {
     const mockProposals = [
       {
@@ -791,7 +1127,7 @@ function getLocalProposals(patientId) {
         proposal_data: {
           name: 'Atomoxetina',
           dose: '40mg',
-          frequency: '1-0-0 (Mañanas)',
+          frequency: '1-0-0 (MaÃ±anas)',
           prescriber: 'Dr. Manuel Castro (Psiquiatra)'
         },
         confidence: 0.96,
@@ -803,12 +1139,12 @@ function getLocalProposals(patientId) {
         patient_id: patientId,
         proposal_type: 'timeline_event',
         source_type: 'chat_message',
-        source_metadata: { textMessage: 'Lloré en el baño porque sentí que nunca voy a ser suficiente' },
+        source_metadata: { textMessage: 'LlorÃ© en el baÃ±o porque sentÃ­ que nunca voy a ser suficiente' },
         proposal_data: {
           date: new Date(Date.now() - 86400000).toISOString().substring(0, 10),
           event_type: 'crisis',
-          event: 'Episodio de llanto e ideación de insuficiencia severa en el trabajo.',
-          associated_emotion: 'Tristeza / Frustración',
+          event: 'Episodio de llanto e ideaciÃ³n de insuficiencia severa en el trabajo.',
+          associated_emotion: 'Tristeza / FrustraciÃ³n',
           intensity: 9
         },
         confidence: 0.85,
@@ -838,7 +1174,7 @@ function acceptLocalProposal(proposal, finalData, customAuthorityLevel = null) {
       name: finalData.name,
       dose: finalData.dose,
       frequency: finalData.frequency,
-      prescriber: finalData.prescriber || 'Walter IA (Propuesta Aceptada)'
+      prescriber: finalData.prescriber || 'IA Ãncora (Propuesta Aceptada)'
     }, finalLevel);
   } else if (proposal.proposal_type === 'timeline_event') {
     addLocalTimelineEvent(patientId, {
@@ -867,12 +1203,12 @@ function getLocalMedications(patientId) {
   let defaultMeds = [];
   if (patientId === 'p-1' || patientId === 'tisute-id') {
     defaultMeds = [
-      { id: 'm-1', patient_id: patientId, name: 'Atomoxetina', dose: '40mg', frequency: '1-0-0 (Mañanas)', prescriber: 'Dr. Manuel Castro', status: 'active', authority_level: AuthorityLevels.VALIDATED },
-      { id: 'm-2', patient_id: patientId, name: 'Melatonina', dose: '1.9mg', frequency: '0-0-1 (Noches)', prescriber: 'Recomendación Farmacéutica', status: 'active', authority_level: AuthorityLevels.DECLARED }
+      { id: 'm-1', patient_id: patientId, name: 'Atomoxetina', dose: '40mg', frequency: '1-0-0 (MaÃ±anas)', prescriber: 'Dr. Manuel Castro', status: 'active', authority_level: AuthorityLevels.VALIDATED },
+      { id: 'm-2', patient_id: patientId, name: 'Melatonina', dose: '1.9mg', frequency: '0-0-1 (Noches)', prescriber: 'RecomendaciÃ³n FarmacÃ©utica', status: 'active', authority_level: AuthorityLevels.DECLARED }
     ];
   } else if (patientId === 'p-2') {
     defaultMeds = [
-      { id: 'm-3', patient_id: patientId, name: 'Propranolol', dose: '10mg', frequency: '1-0-0 (Mañanas)', prescriber: 'Cardiólogo', status: 'active', authority_level: AuthorityLevels.VALIDATED }
+      { id: 'm-3', patient_id: patientId, name: 'Propranolol', dose: '10mg', frequency: '1-0-0 (MaÃ±anas)', prescriber: 'CardiÃ³logo', status: 'active', authority_level: AuthorityLevels.VALIDATED }
     ];
   } else if (patientId === 'p-4') {
     defaultMeds = [
@@ -911,17 +1247,17 @@ function getLocalTimelineEvents(patientId) {
   let defaultEvents = [];
   if (patientId === 'p-1' || patientId === 'tisute-id') {
     defaultEvents = [
-      { id: 'ev-1', patient_id: patientId, event_date: '2021-04-12', event_type: 'vital_event', description: 'Diagnóstico de hipotiroidismo primario subclínico.', associated_emotion: 'Preocupación', intensity: 5, authority_level: AuthorityLevels.DOCUMENTED },
-      { id: 'ev-2', patient_id: patientId, event_date: '2024-09-15', event_type: 'symptom_start', description: 'Inicio de primer periodo de terapia cognitivo-conductual por estrés laboral.', associated_emotion: 'Agobio', intensity: 8, authority_level: AuthorityLevels.DOCUMENTED },
-      { id: 'ev-3', patient_id: patientId, event_date: '2026-05-30', event_type: 'therapy_session', description: 'Sesión de encuadre clínico y consentimiento firmado.', associated_emotion: 'Alivio', intensity: 3, authority_level: AuthorityLevels.VALIDATED }
+      { id: 'ev-1', patient_id: patientId, event_date: '2021-04-12', event_type: 'vital_event', description: 'DiagnÃ³stico de hipotiroidismo primario subclÃ­nico.', associated_emotion: 'PreocupaciÃ³n', intensity: 5, authority_level: AuthorityLevels.DOCUMENTED },
+      { id: 'ev-2', patient_id: patientId, event_date: '2024-09-15', event_type: 'symptom_start', description: 'Inicio de primer periodo de terapia cognitivo-conductual por estrÃ©s laboral.', associated_emotion: 'Agobio', intensity: 8, authority_level: AuthorityLevels.DOCUMENTED },
+      { id: 'ev-3', patient_id: patientId, event_date: '2026-05-30', event_type: 'therapy_session', description: 'SesiÃ³n de encuadre clÃ­nico y consentimiento firmado.', associated_emotion: 'Alivio', intensity: 3, authority_level: AuthorityLevels.VALIDATED }
     ];
   } else if (patientId === 'p-2') {
     defaultEvents = [
-      { id: 'ev-4', patient_id: patientId, event_date: '2026-05-28', event_type: 'therapy_session', description: 'Sesión de encuadre clínico inicial completada.', associated_emotion: 'Confusión', intensity: 6, authority_level: AuthorityLevels.VALIDATED }
+      { id: 'ev-4', patient_id: patientId, event_date: '2026-05-28', event_type: 'therapy_session', description: 'SesiÃ³n de encuadre clÃ­nico inicial completada.', associated_emotion: 'ConfusiÃ³n', intensity: 6, authority_level: AuthorityLevels.VALIDATED }
     ];
   } else if (patientId === 'p-4') {
     defaultEvents = [
-      { id: 'ev-5', patient_id: patientId, event_date: '2026-06-05', event_type: 'therapy_session', description: 'Sesión de encuadre. Se detecta alta rumiación financiera.', associated_emotion: 'Estrés', intensity: 8, authority_level: AuthorityLevels.VALIDATED }
+      { id: 'ev-5', patient_id: patientId, event_date: '2026-06-05', event_type: 'therapy_session', description: 'SesiÃ³n de encuadre. Se detecta alta rumiaciÃ³n financiera.', associated_emotion: 'EstrÃ©s', intensity: 8, authority_level: AuthorityLevels.VALIDATED }
     ];
   }
   localStorage.setItem(key, JSON.stringify(defaultEvents));

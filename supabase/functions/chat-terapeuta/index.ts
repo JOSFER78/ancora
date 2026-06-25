@@ -5,8 +5,8 @@ var corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS"
 };
-var TEXT_MODEL = "deepseek/deepseek-v4-pro";
-var EXTRACTION_MODEL = "google/gemini-2.5-flash";
+var TEXT_MODEL = "nvidia/nemotron-3-super-120b-a12b:free";
+var EXTRACTION_MODEL = "nvidia/nemotron-3-super-120b-a12b:free";
 function getUserIdFromToken(token) {
   try {
     const parts = token.split(".");
@@ -31,186 +31,6 @@ function getUserEmailFromToken(token) {
   } catch (e) {
     console.error("Error decoding JWT email:", e);
     return "";
-  }
-}
-async function getBingXSignature(queryString, apiSecret) {
-  const encoder = new TextEncoder();
-  const keyBuf = encoder.encode(apiSecret);
-  const msgBuf = encoder.encode(queryString);
-  const key = await crypto.subtle.importKey(
-    "raw",
-    keyBuf,
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
-  const sigBuf = await crypto.subtle.sign("HMAC", key, msgBuf);
-  return Array.from(new Uint8Array(sigBuf)).map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-async function fetchBingXPositions(apiKey, apiSecret) {
-  try {
-    const timestamp = Date.now();
-    const recvWindow = 5e3;
-    const params = `recvWindow=${recvWindow}&timestamp=${timestamp}`;
-    const signature = await getBingXSignature(params, apiSecret);
-    const url = `https://open-api.bingx.com/openApi/swap/v2/user/positions?${params}&signature=${signature}`;
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 1200);
-    const response = await fetch(url, {
-      method: "GET",
-      headers: {
-        "X-BX-APIKEY": apiKey,
-        "Accept": "application/json"
-      },
-      signal: controller.signal
-    });
-    clearTimeout(timeoutId);
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`BingX positions HTTP error ${response.status}: ${errText}`);
-    }
-    const json = await response.json();
-    return json.data || [];
-  } catch (e) {
-    console.error("Error fetching BingX positions:", e.message);
-    return [];
-  }
-}
-async function executeBingXOrder(apiKey, apiSecret, symbol, side, positionSide, quantity, type = "MARKET", price, stopPrice, reduceOnly = true) {
-  try {
-    const timestamp = Date.now();
-    const recvWindow = 5e3;
-    const paramObj = {
-      symbol: symbol.toUpperCase(),
-      side: side.toUpperCase(),
-      positionSide: positionSide.toUpperCase(),
-      type: type.toUpperCase(),
-      reduceOnly: reduceOnly ? "true" : "false",
-      quantity: quantity.toString(),
-      recvWindow: recvWindow.toString(),
-      timestamp: timestamp.toString()
-    };
-    if (price !== void 0 && price !== null) {
-      paramObj.price = price.toString();
-    }
-    if (stopPrice !== void 0 && stopPrice !== null) {
-      paramObj.stopPrice = stopPrice.toString();
-    }
-    const sortedQueryString = Object.keys(paramObj).sort().map((key) => `${key}=${encodeURIComponent(paramObj[key])}`).join("&");
-    const signature = await getBingXSignature(sortedQueryString, apiSecret);
-    const url = `https://open-api.bingx.com/openApi/swap/v2/trade/order?${sortedQueryString}&signature=${signature}`;
-    console.log(`Executing BingX Order: POST ${url.replace(apiKey, "API_KEY").replace(signature, "SIGNATURE")}`);
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "X-BX-APIKEY": apiKey,
-        "Accept": "application/json"
-      }
-    });
-    if (!response.ok) {
-      const errText = await response.text();
-      return `Error HTTP de BingX (${response.status}): ${errText}`;
-    }
-    const json = await response.json();
-    if (json.code === 0) {
-      const orderId = json.data?.orderId || "Desconocido";
-      return `\xC9xito. Orden ejecutada en BingX (${type}). ID de Orden: ${orderId}. S\xEDmbolo: ${symbol}, Cantidad: ${quantity}${price ? `, Precio: ${price}` : ""}${stopPrice ? `, StopPrice: ${stopPrice}` : ""}`;
-    } else {
-      return `Fallo en BingX (C\xF3digo ${json.code}): ${json.msg || "Error no especificado."}`;
-    }
-  } catch (e) {
-    console.error("Error executing BingX order:", e.message);
-    return `Error inesperado al enviar la orden a BingX: ${e.message}`;
-  }
-}
-async function cancelBingXOpenOrders(apiKey, apiSecret, symbol) {
-  try {
-    const timestamp = Date.now();
-    const recvWindow = 5e3;
-    const paramObj = {
-      symbol: symbol.toUpperCase(),
-      recvWindow: recvWindow.toString(),
-      timestamp: timestamp.toString()
-    };
-    const sortedQueryString = Object.keys(paramObj).sort().map((key) => `${key}=${encodeURIComponent(paramObj[key])}`).join("&");
-    const signature = await getBingXSignature(sortedQueryString, apiSecret);
-    const url = `https://open-api.bingx.com/openApi/swap/v2/trade/allOpenOrders?${sortedQueryString}&signature=${signature}`;
-    console.log(`Cancelling all BingX open orders: DELETE ${url.replace(apiKey, "API_KEY").replace(signature, "SIGNATURE")}`);
-    const response = await fetch(url, {
-      method: "DELETE",
-      headers: {
-        "X-BX-APIKEY": apiKey,
-        "Accept": "application/json"
-      }
-    });
-    if (!response.ok) {
-      const errText = await response.text();
-      return `Error HTTP de BingX al cancelar \xF3rdenes (${response.status}): ${errText}`;
-    }
-    const json = await response.json();
-    if (json.code === 0) {
-      return `\xC9xito. Todas las \xF3rdenes pendientes para el par ${symbol} han sido canceladas en BingX.`;
-    } else {
-      return `Fallo al cancelar \xF3rdenes en BingX (C\xF3digo ${json.code}): ${json.msg || "Error no especificado."}`;
-    }
-  } catch (e) {
-    console.error("Error cancelling BingX open orders:", e.message);
-    return `Error inesperado al cancelar \xF3rdenes pendientes en BingX: ${e.message}`;
-  }
-}
-async function fetchBingXBalance(apiKey, apiSecret) {
-  try {
-    const timestamp = Date.now();
-    const recvWindow = 5e3;
-    const params = `recvWindow=${recvWindow}&timestamp=${timestamp}`;
-    const signature = await getBingXSignature(params, apiSecret);
-    const url = `https://open-api.bingx.com/openApi/swap/v3/user/balance?${params}&signature=${signature}`;
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 1200);
-    const response = await fetch(url, {
-      method: "GET",
-      headers: {
-        "X-BX-APIKEY": apiKey,
-        "Accept": "application/json"
-      },
-      signal: controller.signal
-    });
-    clearTimeout(timeoutId);
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`BingX balance HTTP error ${response.status}: ${errText}`);
-    }
-    const json = await response.json();
-    return json.data || null;
-  } catch (e) {
-    console.error("Error fetching BingX balance:", e.message);
-    return null;
-  }
-}
-async function fetchBingXHistoryOrders(apiKey, apiSecret) {
-  try {
-    const timestamp = Date.now();
-    const recvWindow = 5e3;
-    const limit = 100;
-    const params = `limit=${limit}&recvWindow=${recvWindow}&timestamp=${timestamp}`;
-    const signature = await getBingXSignature(params, apiSecret);
-    const url = `https://open-api.bingx.com/openApi/swap/v2/user/historyOrders?${params}&signature=${signature}`;
-    const response = await fetch(url, {
-      method: "GET",
-      headers: {
-        "X-BX-APIKEY": apiKey,
-        "Accept": "application/json"
-      }
-    });
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`BingX historyOrders HTTP error ${response.status}: ${errText}`);
-    }
-    const json = await response.json();
-    return json.data || [];
-  } catch (e) {
-    console.error("Error fetching BingX history orders:", e.message);
-    throw e;
   }
 }
 async function fetchUserProfile(supabaseUrl, serviceKey, userId) {
@@ -362,6 +182,165 @@ async function fetchConversationMessages(supabaseUrl, serviceKey, conversationId
     return [];
   }
 }
+
+async function fetchJsonList(supabaseUrl, serviceKey, path) {
+  try {
+    const response = await fetch(`${supabaseUrl}/rest/v1/${path}`, {
+      method: "GET",
+      headers: {
+        "apikey": serviceKey,
+        "Authorization": `Bearer ${serviceKey}`,
+        "Accept": "application/json"
+      }
+    });
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error(`fetchJsonList ${path} HTTP ${response.status}: ${errText}`);
+      return [];
+    }
+    const json = await response.json();
+    return Array.isArray(json) ? json : [];
+  } catch (e) {
+    console.error(`fetchJsonList ${path}:`, e.message);
+    return [];
+  }
+}
+
+function compactText(value, max = 800) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  return text.length > max ? `${text.slice(0, max)}...` : text;
+}
+
+function isExcludedOperationalMemory(value) {
+  const text = String(value || "").replace(/\s+/g, " ").trim().toLowerCase();
+  return /\b(en-78|walter|trading|bingx|drawdown|apalanc|scalping|btc|usdt|mercado|rentabilidad|ordenes?|operativa)\b/.test(text);
+}
+
+function proposalText(proposal) {
+  const data = proposal?.proposal_data || {};
+  return compactText(data.claim || data.event || data.name || data.question || data.summary_vital || data.risk_summary || "", 420);
+}
+
+async function fetchClinicalMemory(supabaseUrl, serviceKey, patientId) {
+  const [
+    profiles,
+    snapshots,
+    lifeTrees,
+    timelineIndex,
+    proposals,
+    facts,
+    riskEvents,
+    appointments,
+    conversations
+  ] = await Promise.all([
+    fetchJsonList(supabaseUrl, serviceKey, `clinical_profiles?patient_id=eq.${patientId}&select=summary_vital,psychological_history,medical_history,relationship_context,patterns,goals,risk_summary,last_synthesized_at&limit=1`),
+    fetchJsonList(supabaseUrl, serviceKey, `patient_context_snapshots?patient_id=eq.${patientId}&snapshot_type=eq.clinical_chat&select=content,summary,source_counts,created_at&order=created_at.desc&limit=1`),
+    fetchJsonList(supabaseUrl, serviceKey, `clinical_life_tree?patient_id=eq.${patientId}&select=tree_data,source_summary,last_synthesized_at&limit=1`),
+    fetchJsonList(supabaseUrl, serviceKey, `clinical_timeline_index?patient_id=eq.${patientId}&status=eq.synthesized&select=event_date,date_precision,life_stage,domain,title,description,evidence_quotes,confidence&order=event_date.asc.nullslast,created_at.asc&limit=25`),
+    fetchJsonList(supabaseUrl, serviceKey, `clinical_proposals?patient_id=eq.${patientId}&status=eq.pending&select=proposal_type,proposal_data,source_quote,confidence,created_at&order=created_at.desc&limit=16`),
+    fetchJsonList(supabaseUrl, serviceKey, `clinical_facts?patient_id=eq.${patientId}&select=kind,claim,verbatim_quote,date_value,date_precision,created_at&order=created_at.desc&limit=12`),
+    fetchJsonList(supabaseUrl, serviceKey, `risk_events?patient_id=eq.${patientId}&select=risk_type,severity,evidence_quote,recommended_action,status,created_at&order=created_at.desc&limit=5`),
+    fetchJsonList(supabaseUrl, serviceKey, `appointments?patient_id=eq.${patientId}&select=*&order=created_at.desc&limit=5`),
+    fetchJsonList(supabaseUrl, serviceKey, `conversations?user_id=eq.${patientId}&select=title,captured_fact,conclusions,solutions_exercises,clinical_studies,status,updated_at&order=updated_at.desc&limit=6`)
+  ]);
+
+  const lines = [];
+  const profile = profiles[0] || null;
+  const snapshot = snapshots[0] || null;
+  const lifeTree = lifeTrees[0] || null;
+
+  lines.push("--- MEMORIA CLINICA HERMES / ANCORA ---");
+  lines.push("Uso: contexto privado compacto para orientar preguntas, apoyo y preparacion de sesion. No diagnostiques, no prescribas y no presentes lo pendiente como validado.");
+  lines.push("Importante: este contexto NO contiene documentos completos ni extracciones largas. Usa solo sintesis versionadas, hechos trazables, timeline, arbol vital, riesgos y propuestas pendientes.");
+
+  if (snapshot?.content) {
+    lines.push("\nSintesis compacta disponible:");
+    lines.push(isExcludedOperationalMemory(snapshot.content) ? "Snapshot anterior descartado por contener material no clinico/operativo. Regenerar memoria clinica." : compactText(snapshot.content, 3600));
+    if (snapshot.source_counts) lines.push(`Fuentes sintetizadas: ${compactText(JSON.stringify(snapshot.source_counts), 360)}`);
+  } else {
+    lines.push("\nSintesis compacta: aun no hay snapshot clinico generado. Si el paciente pregunta, explica que el sistema necesita procesar/sintetizar su historial antes de usarlo en chat.");
+  }
+
+  if (profile) {
+    lines.push("\nPerfil clinico consolidado:");
+    for (const [label, key] of [
+      ["Resumen vital", "summary_vital"],
+      ["Antecedentes psicologicos", "psychological_history"],
+      ["Antecedentes medicos", "medical_history"],
+      ["Contexto relacional", "relationship_context"],
+      ["Patrones", "patterns"],
+      ["Objetivos", "goals"],
+      ["Riesgo", "risk_summary"]
+    ]) {
+      if (profile[key] && !isExcludedOperationalMemory(profile[key])) lines.push(`- ${label}: ${compactText(profile[key], 600)}`);
+    }
+  } else {
+    lines.push("\nPerfil clinico consolidado: aun no hay perfil validado; usa solo memoria pendiente como hipotesis de trabajo.");
+  }
+
+  if (lifeTree?.tree_data) {
+    lines.push("\nArbol vital sintetizado:");
+    const tree = lifeTree.tree_data || {};
+    for (const key of ["family_origin", "childhood", "adolescence", "relationships", "ruptures_losses", "work_studies", "health", "supports_resources", "current_situation", "protective_factors", "open_questions"]) {
+      const value = tree[key];
+      if (Array.isArray(value) && value.length > 0 && !isExcludedOperationalMemory(value.join("; "))) lines.push(`- ${key}: ${compactText(value.join("; "), 800)}`);
+      else if (value && !isExcludedOperationalMemory(JSON.stringify(value))) lines.push(`- ${key}: ${compactText(JSON.stringify(value), 800)}`);
+    }
+  }
+
+  if (timelineIndex.length > 0) {
+    lines.push("\nEje cronologico sintetizado por fecha clinica:");
+    for (const ev of timelineIndex) {
+      if (isExcludedOperationalMemory(`${ev.title || ""} ${ev.description || ""}`)) continue;
+      const quote = Array.isArray(ev.evidence_quotes) && ev.evidence_quotes.length > 0 ? ` | evidencia: "${compactText(ev.evidence_quotes[0], 180)}"` : "";
+      lines.push(`- ${ev.event_date || "sin fecha"} (${ev.date_precision || "unknown"}, ${ev.life_stage || "unknown"}): ${compactText(ev.title || ev.description, 420)}${quote}`);
+    }
+  }
+
+  if (facts.length > 0) {
+    lines.push("\nHechos clinicos ya aceptados/documentados:");
+    for (const fact of facts) {
+      if (isExcludedOperationalMemory(`${fact.claim || ""} ${fact.verbatim_quote || ""}`)) continue;
+      lines.push(`- ${fact.kind}: ${compactText(fact.claim, 420)}${fact.verbatim_quote ? ` | cita: "${compactText(fact.verbatim_quote, 240)}"` : ""}`);
+    }
+  }
+
+  if (proposals.length > 0) {
+    lines.push("\nPropuestas IA pendientes de revision psicologica:");
+    for (const prop of proposals) {
+      if (isExcludedOperationalMemory(`${proposalText(prop)} ${prop.source_quote || ""}`)) continue;
+      const quote = prop.source_quote ? ` | cita: "${compactText(prop.source_quote, 220)}"` : "";
+      lines.push(`- ${prop.proposal_type}: ${proposalText(prop)}${quote}`);
+    }
+  }
+
+  if (riskEvents.length > 0) {
+    lines.push("\nRiesgos registrados para vigilancia:");
+    for (const risk of riskEvents) {
+      lines.push(`- ${risk.severity}/${risk.risk_type} [${risk.status}]: ${compactText(risk.evidence_quote, 360)} Accion sugerida: ${compactText(risk.recommended_action, 260)}`);
+    }
+  }
+
+  if (appointments.length > 0) {
+    lines.push("\nCitas/sesiones en agenda o recientes:");
+    for (const appt of appointments) {
+      const payload = Object.entries(appt).filter(([key]) => !["id", "patient_id", "psychologist_id"].includes(key)).map(([key, value]) => `${key}=${value}`).join(", ");
+      lines.push(`- ${compactText(payload, 500)}`);
+    }
+  }
+
+  if (conversations.length > 0) {
+    lines.push("\nConversaciones/sesiones previas:");
+    for (const conv of conversations) {
+      lines.push(`- ${conv.title || "Sin titulo"} [${conv.status || "sin estado"}]: ${compactText(conv.captured_fact || conv.clinical_studies || conv.conclusions || "", 520)}`);
+    }
+  }
+
+  return {
+    hasClinicalMemory: Boolean(snapshot?.content) || timelineIndex.length > 0 || proposals.length > 0 || facts.length > 0 || Boolean(profile),
+    prompt: lines.join("\n")
+  };
+}
 async function saveConversationConclusions(supabaseUrl, serviceKey, conversationId, conclusionsData, status = "completed") {
   try {
     const url = `${supabaseUrl}/rest/v1/conversations?id=eq.${conversationId}`;
@@ -483,23 +462,6 @@ async function fetchRecentMoods(supabaseUrl, serviceKey, userId) {
     return [];
   }
 }
-async function fetchUserDebts(supabaseUrl, serviceKey, userId) {
-  try {
-    const url = `${supabaseUrl}/rest/v1/debts?user_id=eq.${userId}&order=priority.asc`;
-    const response = await fetch(url, {
-      method: "GET",
-      headers: {
-        "apikey": serviceKey,
-        "Authorization": `Bearer ${serviceKey}`,
-        "Accept": "application/json"
-      }
-    });
-    if (!response.ok) return [];
-    return await response.json();
-  } catch {
-    return [];
-  }
-}
 async function upsertJournalDays(supabaseUrl, serviceKey, userId, days) {
   if (days.length === 0) return;
   const url = `${supabaseUrl}/rest/v1/journal_days?on_conflict=user_id,date`;
@@ -550,100 +512,6 @@ async function generateConversationTitle(openrouterApiKey, userMessage) {
     console.error("Error generating title:", e.message);
   }
   return title.replace(/"/g, "").replace(/\./g, "").trim() || "Nueva Sesi\xF3n";
-}
-async function fetchYahooHistory(ticker, interval = "15m", range = "2d") {
-  try {
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=${interval}&range=${range}`;
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 1e3);
-    const resp = await fetch(url, {
-      headers: { "User-Agent": "Mozilla/5.0" },
-      signal: controller.signal
-    });
-    clearTimeout(timeoutId);
-    if (!resp.ok) return [];
-    const data = await resp.json();
-    const result = data?.chart?.result?.[0];
-    if (!result) return [];
-    const timestamps = result.timestamp || [];
-    const quote = result.indicators?.quote?.[0] || {};
-    const opens = quote.open || [];
-    const highs = quote.high || [];
-    const lows = quote.low || [];
-    const closes = quote.close || [];
-    const volumes = quote.volume || [];
-    const candles = [];
-    for (let i = 0; i < timestamps.length; i++) {
-      if (opens[i] != null && closes[i] != null && highs[i] != null && lows[i] != null) {
-        candles.push({
-          time: timestamps[i],
-          open: opens[i],
-          high: highs[i],
-          low: lows[i],
-          close: closes[i],
-          volume: volumes[i] || 0
-        });
-      }
-    }
-    return candles;
-  } catch (err) {
-    console.error(`Error fetching Yahoo History for ${ticker}:`, err.message);
-    return [];
-  }
-}
-function calculateEMA(prices, period) {
-  if (prices.length < period) return [];
-  const k = 2 / (period + 1);
-  const ema = [];
-  let sum = 0;
-  for (let i = 0; i < period; i++) {
-    sum += prices[i];
-  }
-  let prevEma = sum / period;
-  ema.push(prevEma);
-  for (let i = period; i < prices.length; i++) {
-    const val = prices[i] * k + prevEma * (1 - k);
-    ema.push(val);
-    prevEma = val;
-  }
-  return ema;
-}
-function calculateRSI(prices, period = 14) {
-  if (prices.length <= period) return [];
-  const rsi = [];
-  const gains = [];
-  const losses = [];
-  for (let i = 1; i < prices.length; i++) {
-    const diff = prices[i] - prices[i - 1];
-    gains.push(diff > 0 ? diff : 0);
-    losses.push(diff < 0 ? -diff : 0);
-  }
-  let avgGain = gains.slice(0, period).reduce((a, b) => a + b, 0) / period;
-  let avgLoss = losses.slice(0, period).reduce((a, b) => a + b, 0) / period;
-  let rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
-  rsi.push(100 - 100 / (1 + rs));
-  for (let i = period; i < prices.length - 1; i++) {
-    avgGain = (avgGain * (period - 1) + gains[i]) / period;
-    avgLoss = (avgLoss * (period - 1) + losses[i]) / period;
-    rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
-    rsi.push(100 - 100 / (1 + rs));
-  }
-  return rsi;
-}
-function calculateBollingerBands(prices, period = 20, multiplier = 2) {
-  const middle = [];
-  const upper = [];
-  const lower = [];
-  for (let i = period - 1; i < prices.length; i++) {
-    const slice = prices.slice(i - period + 1, i + 1);
-    const sma = slice.reduce((a, b) => a + b, 0) / period;
-    middle.push(sma);
-    const variance = slice.reduce((a, b) => a + Math.pow(b - sma, 2), 0) / period;
-    const stdDev = Math.sqrt(variance);
-    upper.push(sma + multiplier * stdDev);
-    lower.push(sma - multiplier * stdDev);
-  }
-  return { middle, upper, lower };
 }
 async function callOpenRouter(model, messages, temperature = 0.3, responseFormatJson = false, timeoutMs = 4e4, openrouterApiKey) {
   const controller = new AbortController();
@@ -871,8 +739,96 @@ ${conv.clinical_studies}` : ""
   const transcript = dbMessages.map((m) => `${m.role === "user" ? "Usuario" : isOwner ? "Walter" : "Asistente"}: ${String(m.content || "").replace(/\[model:.*?\]/g, "").trim()}`).filter(Boolean).join("\n");
   if (transcript) parts.push(`Transcripcion:
 ${transcript}`);
-  return parts.join("\n\n");
 }
+
+async function fetchUserCredits(supabaseUrl, serviceKey, userId) {
+  try {
+    const url = `${supabaseUrl}/rest/v1/patient_credits?patient_id=eq.${userId}&select=*`;
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        "apikey": serviceKey,
+        "Authorization": `Bearer ${serviceKey}`,
+        "Accept": "application/json"
+      }
+    });
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error(`Fetch credits HTTP error ${response.status}: ${errText}`);
+      return null;
+    }
+    const list = await response.json();
+    return list[0] || null;
+  } catch (err) {
+    console.error(`Error fetching credits for user ${userId}:`, err.message);
+    return null;
+  }
+}
+
+async function updateUserTextCredits(supabaseUrl, serviceKey, userId, tokensUsed) {
+  try {
+    const credits = await fetchUserCredits(supabaseUrl, serviceKey, userId);
+    if (!credits) return null;
+    const newUsed = (credits.text_credits_used || 0) + tokensUsed;
+    const url = `${supabaseUrl}/rest/v1/patient_credits?patient_id=eq.${userId}`;
+    const response = await fetch(url, {
+      method: "PATCH",
+      headers: {
+        "apikey": serviceKey,
+        "Authorization": `Bearer ${serviceKey}`,
+        "Content-Type": "application/json",
+        "Prefer": "return=representation"
+      },
+      body: JSON.stringify({
+        text_credits_used: newUsed,
+        updated_at: new Date().toISOString()
+      })
+    });
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error(`Update text credits HTTP error ${response.status}: ${errText}`);
+      return null;
+    }
+    const list = await response.json();
+    return list[0] || null;
+  } catch (err) {
+    console.error(`Error updating text credits for user ${userId}:`, err.message);
+    return null;
+  }
+}
+
+async function updateUserLiveCredits(supabaseUrl, serviceKey, userId, secondsUsed) {
+  try {
+    const credits = await fetchUserCredits(supabaseUrl, serviceKey, userId);
+    if (!credits) return null;
+    const newUsed = (credits.live_credits_used || 0) + secondsUsed;
+    const url = `${supabaseUrl}/rest/v1/patient_credits?patient_id=eq.${userId}`;
+    const response = await fetch(url, {
+      method: "PATCH",
+      headers: {
+        "apikey": serviceKey,
+        "Authorization": `Bearer ${serviceKey}`,
+        "Content-Type": "application/json",
+        "Prefer": "return=representation"
+      },
+      body: JSON.stringify({
+        live_credits_used: newUsed,
+        updated_at: new Date().toISOString()
+      })
+    });
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error(`Update live credits HTTP error ${response.status}: ${errText}`);
+      return null;
+    }
+    const list = await response.json();
+    return list[0] || null;
+  } catch (err) {
+    console.error(`Error updating live credits for user ${userId}:`, err.message);
+    return null;
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -1035,94 +991,41 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
     const body = await req.json();
     const { action, messages, currentMood, conversationId, tradingviewContext, model, reset, only } = body;
-    if (action === "debug_env") {
+    
+    if (action === "live_session_close") {
+      const { durationSeconds } = body;
+      if (durationSeconds === undefined || typeof durationSeconds !== "number" || durationSeconds <= 0) {
+        return new Response(JSON.stringify({ error: "durationSeconds es requerido y debe ser un número positivo." }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" }
+        });
+      }
+      const updatedCredits = await updateUserLiveCredits(supabaseUrl, supabaseServiceKey, userId, durationSeconds);
+      if (!updatedCredits) {
+        return new Response(JSON.stringify({ error: "No se pudieron actualizar los créditos del paciente." }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" }
+        });
+      }
       return new Response(JSON.stringify({
-        envKeys: Object.keys(Deno.env.toObject())
+        success: true,
+        credits: {
+          text_credits_total: updatedCredits.text_credits_total,
+          text_credits_used: updatedCredits.text_credits_used,
+          live_credits_total: updatedCredits.live_credits_total,
+          live_credits_used: updatedCredits.live_credits_used,
+          cycle_start_date: updatedCredits.cycle_start_date,
+          cycle_end_date: updatedCredits.cycle_end_date
+        }
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" }
       });
     }
-    if (action === "sync_closed_trades") {
-      if (!isOwner) {
-        return new Response(JSON.stringify({ error: "M\xF3dulo de trading no disponible para este usuario." }), {
-          status: 403,
-          headers: { ...corsHeaders, "Content-Type": "application/json" }
-        });
-      }
-      const profile2 = await fetchUserProfile(supabaseUrl, supabaseServiceKey, userId);
-      if (!profile2) {
-        return new Response(JSON.stringify({ error: "Perfil no encontrado en Supabase." }), {
-          status: 404,
-          headers: { ...corsHeaders, "Content-Type": "application/json" }
-        });
-      }
-      if (!profile2.bingx_api_key || !profile2.bingx_api_secret) {
-        return new Response(JSON.stringify({ error: "Configura las claves de API de BingX en Ajustes." }), {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" }
-        });
-      }
-      const historyOrders = await fetchBingXHistoryOrders(profile2.bingx_api_key, profile2.bingx_api_secret);
-      const dailyPnL = {};
-      for (const order of historyOrders) {
-        if (order.status !== "FILLED") continue;
-        const profitNum = parseFloat(order.realizedProfit || order.realizedPnl || order.profit || "0");
-        if (profitNum === 0) continue;
-        const time = order.updateTime || order.time;
-        if (!time) continue;
-        const date = new Date(time);
-        const formatter = new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Madrid", year: "numeric", month: "2-digit", day: "2-digit" });
-        const dateStr = formatter.format(date);
-        if (!dailyPnL[dateStr]) {
-          dailyPnL[dateStr] = { pnl: 0, trades: 0 };
-        }
-        dailyPnL[dateStr].pnl += profitNum;
-        dailyPnL[dateStr].trades += 1;
-      }
-      const upsertData = Object.entries(dailyPnL).map(([dateStr, stats]) => {
-        let status = "no_trade";
-        if (stats.pnl > 0) status = "win";
-        else if (stats.pnl < 0) status = "loss";
-        return {
-          user_id: userId,
-          date: dateStr,
-          pnl: stats.pnl,
-          trades: stats.trades,
-          status
-        };
-      });
-      if (upsertData.length > 0) {
-        await upsertJournalDays(supabaseUrl, supabaseServiceKey, userId, upsertData);
-      }
-      return new Response(JSON.stringify({ success: true, count: upsertData.length, data: upsertData }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" }
-      });
-    }
-    if (action === "get_bingx_data") {
-      if (!isOwner) {
-        return new Response(JSON.stringify({ error: "M\xF3dulo de trading no disponible para este usuario." }), {
-          status: 403,
-          headers: { ...corsHeaders, "Content-Type": "application/json" }
-        });
-      }
-      const profile2 = await fetchUserProfile(supabaseUrl, supabaseServiceKey, userId);
-      if (!profile2) {
-        return new Response(JSON.stringify({ error: "Perfil no encontrado en la base de datos." }), {
-          status: 404,
-          headers: { ...corsHeaders, "Content-Type": "application/json" }
-        });
-      }
-      if (!profile2.bingx_api_key || !profile2.bingx_api_secret) {
-        return new Response(JSON.stringify({ error: "No se han configurado las claves de API de BingX en Ajustes." }), {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" }
-        });
-      }
-      const [positions, balance] = await Promise.all([
-        fetchBingXPositions(profile2.bingx_api_key, profile2.bingx_api_secret),
-        fetchBingXBalance(profile2.bingx_api_key, profile2.bingx_api_secret)
-      ]);
-      return new Response(JSON.stringify({ positions, balance }), {
+
+    if (action === "debug_env") {
+      return new Response(JSON.stringify({
+        envKeys: Object.keys(Deno.env.toObject())
+      }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" }
       });
     }
@@ -1195,16 +1098,35 @@ IMPORTANTE: Devuelve \xFAnicamente JSON v\xE1lido.`;
       const closurePrompt = isOwner ? prompt : genericClosePrompt;
       let conclusionsData = null;
       let lastErrorMsg = "";
+      let closePromptTokens = 0;
+      let closeCompletionTokens = 0;
+      let closeCacheTokens = 0;
       try {
-        console.log(`PREPARAR CIERRE: Llamando a callOpenRouter con ${TEXT_MODEL}...`);
-        const replyText2 = await callOpenRouter(
-          TEXT_MODEL,
-          [{ role: "user", content: closurePrompt }],
-          0.2,
-          true,
-          8e4,
-          openrouterApiKey2
-        );
+        console.log(`PREPARAR CIERRE: Llamando a OpenRouter con ${TEXT_MODEL}...`);
+        const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${openrouterApiKey2}`
+          },
+          body: JSON.stringify({
+            model: TEXT_MODEL,
+            messages: [{ role: "user", content: closurePrompt }],
+            temperature: 0.2,
+            response_format: { type: "json_object" }
+          })
+        });
+        if (!res.ok) {
+          const errText = await res.text();
+          throw new Error(`HTTP ${res.status}: ${errText}`);
+        }
+        const json = await res.json();
+        const replyText2 = json.choices?.[0]?.message?.content || "";
+        
+        closePromptTokens = json.usage?.prompt_tokens || 0;
+        closeCompletionTokens = json.usage?.completion_tokens || 0;
+        closeCacheTokens = json.usage?.prompt_tokens_details?.cached || json.usage?.cache_read_input_tokens || 0;
+
         if (replyText2) {
           const cleanJson = cleanJsonString(replyText2);
           try {
@@ -1231,7 +1153,7 @@ IMPORTANTE: Devuelve \xFAnicamente JSON v\xE1lido.`;
         }
       } catch (err) {
         lastErrorMsg = err.message || String(err);
-        console.error("Error analyzing close conversation with callOpenRouter:", lastErrorMsg);
+        console.error("Error analyzing close conversation:", lastErrorMsg);
       }
       if (!conclusionsData) {
         return new Response(JSON.stringify({ error: `Fallo al analizar la sesi\xF3n con el modelo de an\xE1lisis. Detalles: ${lastErrorMsg}` }), {
@@ -1241,9 +1163,8 @@ IMPORTANTE: Devuelve \xFAnicamente JSON v\xE1lido.`;
       }
       await saveConversationConclusions(supabaseUrl, supabaseServiceKey, conversationId, conclusionsData, "active");
       const formattedSummary = conclusionsData.assistant_summary || "Borrador de cierre preparado.";
-      const summaryWithMessage = `${formattedSummary}
-
-[model:deepseek]`;
+      const closeCachePercent = closePromptTokens > 0 ? Math.round((closeCacheTokens / closePromptTokens) * 100) : 0;
+      const summaryWithMessage = `${formattedSummary}\n\n[model:${TEXT_MODEL}][usage:${closePromptTokens}|${closeCompletionTokens}|${closeCachePercent}%]`;
       await saveMessageToDb(supabaseUrl, supabaseServiceKey, conversationId, "assistant", summaryWithMessage);
       const profile2 = await fetchUserProfile(supabaseUrl, supabaseServiceKey, userId);
       return new Response(JSON.stringify({ success: true, data: conclusionsData, updatedContext: profile2?.contexto_terapeutico || null }), {
@@ -1746,10 +1667,28 @@ IMPORTANTE: No menciones nombres, entidades, deuda, trading, herramientas extern
           headers: { ...corsHeaders, "Content-Type": "application/json" }
         });
       }
-      const openrouterApiKey2 = Deno.env.get("OPENROUTER_API_KEY");
-      if (!openrouterApiKey2) {
-        return new Response(JSON.stringify({ error: "OPENROUTER_API_KEY no est\xE1 configurado en las variables de entorno de Supabase." }), {
+      const geminiApiKey = Deno.env.get("GEMINI_API_KEY");
+      if (!geminiApiKey) {
+        return new Response(JSON.stringify({ error: "GEMINI_API_KEY no está configurado en las variables de entorno de Supabase." }), {
           status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" }
+        });
+      }
+      const credits = await fetchUserCredits(supabaseUrl, supabaseServiceKey, userId);
+      if (credits && credits.text_credits_used >= credits.text_credits_total) {
+        return new Response(JSON.stringify({
+          error: "Has consumido el cupo de chat de tu plan mensual. Tu racha no se perderá.",
+          creditsExceeded: true,
+          credits: {
+            text_credits_total: credits.text_credits_total,
+            text_credits_used: credits.text_credits_used,
+            live_credits_total: credits.live_credits_total,
+            live_credits_used: credits.live_credits_used,
+            document_credits_total: credits.document_credits_total,
+            document_credits_used: credits.document_credits_used
+          }
+        }), {
+          status: 402, // Payment Required
           headers: { ...corsHeaders, "Content-Type": "application/json" }
         });
       }
@@ -1763,58 +1702,81 @@ IMPORTANTE: No menciones nombres, entidades, deuda, trading, herramientas extern
           mimeType = matchMime[1];
         }
       }
-      const prompt = "Transcribe y organiza de forma limpia, legible, bien puntuada y coherente el siguiente audio en espa\xF1ol. Mant\xE9n el tono literal pero corrige errores de pronunciaci\xF3n o muletillas obvias. Devuelve \xFAnicamente el texto de la transcripci\xF3n, sin introducciones, explicaciones, ni marcas adicionales (como comillas o tags).";
+      const prompt = "Transcribe y organiza de forma limpia, legible, bien puntuada y coherente el siguiente audio en español. Mantén el tono literal pero corrige errores de pronunciación o muletillas obvias. Devuelve únicamente el texto de la transcripción, sin introducciones, explicaciones, ni marcas adicionales (como comillas o tags).";
       let transcription = "";
       let lastErrorMessage = "";
+      let tokensUsed = 0;
       try {
-        const audioFormat = mimeType.split("/")[1] || "webm";
-        const openrouterPayload2 = {
-          model: "google/gemini-2.5-flash",
-          messages: [{
-            role: "user",
-            content: [
+        const geminiPayload = {
+          contents: [{
+            parts: [
+              { text: prompt },
               {
-                type: "text",
-                text: prompt
-              },
-              {
-                type: "input_audio",
-                input_audio: {
-                  data: base64Data.trim(),
-                  format: audioFormat
+                inlineData: {
+                  mimeType: mimeType,
+                  data: base64Data.trim()
                 }
               }
             ]
           }],
-          temperature: 0.1
+          generationConfig: {
+            temperature: 0.1
+          }
         };
-        const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-live-preview:generateContent?key=${geminiApiKey}`, {
           method: "POST",
           headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${openrouterApiKey2}`
+            "Content-Type": "application/json"
           },
-          body: JSON.stringify(openrouterPayload2)
+          body: JSON.stringify(geminiPayload)
         });
         if (res.ok) {
           const json2 = await res.json();
-          transcription = json2.choices?.[0]?.message?.content?.trim() || "";
+          transcription = json2.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
+          tokensUsed = json2.usageMetadata?.totalTokenCount || Math.ceil((transcription.length + audio.length) / 4);
         } else {
           const errText = await res.text();
-          lastErrorMessage = `API de OpenRouter devolvi\xF3 error ${res.status}: ${errText}`;
+          lastErrorMessage = `API de Google Gemini devolvió error ${res.status}: ${errText}`;
           console.error(lastErrorMessage);
         }
       } catch (err) {
-        lastErrorMessage = `Excepci\xF3n al llamar al modelo para transcripci\xF3n: ${err.message}`;
+        lastErrorMessage = `Excepción al llamar al modelo para transcripción: ${err.message}`;
         console.error(lastErrorMessage);
       }
       if (!transcription) {
-        return new Response(JSON.stringify({ error: `Fallo al transcribir el audio. Detalles: ${lastErrorMessage || "Respuesta vac\xEDa del modelo."}` }), {
+        return new Response(JSON.stringify({ error: `Fallo al transcribir el audio. Detalles: ${lastErrorMessage || "Respuesta vacía del modelo."}` }), {
           status: 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" }
         });
       }
-      return new Response(JSON.stringify({ success: true, transcription }), {
+      let updatedCredits = null;
+      if (tokensUsed > 0) {
+        updatedCredits = await updateUserTextCredits(supabaseUrl, supabaseServiceKey, userId, tokensUsed);
+      }
+      return new Response(JSON.stringify({
+        success: true,
+        transcription,
+        tokensUsed,
+        credits: updatedCredits ? {
+          text_credits_total: updatedCredits.text_credits_total,
+          text_credits_used: updatedCredits.text_credits_used,
+          live_credits_total: updatedCredits.live_credits_total,
+          live_credits_used: updatedCredits.live_credits_used,
+          document_credits_total: updatedCredits.document_credits_total,
+          document_credits_used: updatedCredits.document_credits_used,
+          cycle_start_date: updatedCredits.cycle_start_date,
+          cycle_end_date: updatedCredits.cycle_end_date
+        } : (credits ? {
+          text_credits_total: credits.text_credits_total,
+          text_credits_used: credits.text_credits_used,
+          live_credits_total: credits.live_credits_total,
+          live_credits_used: credits.live_credits_used,
+          document_credits_total: credits.document_credits_total,
+          document_credits_used: credits.document_credits_used,
+          cycle_start_date: credits.cycle_start_date,
+          cycle_end_date: credits.cycle_end_date
+        } : null)
+      }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" }
       });
     }
@@ -1833,65 +1795,35 @@ IMPORTANTE: No menciones nombres, entidades, deuda, trading, herramientas extern
         });
       }
     }
-    const [profile, conversationTitle, recentMoods, debtsList, menteSources] = await Promise.all([
+
+    // Validar créditos del paciente (Texto)
+    const credits = await fetchUserCredits(supabaseUrl, supabaseServiceKey, userId);
+    if (credits) {
+      if (credits.text_credits_used >= credits.text_credits_total) {
+        return new Response(JSON.stringify({
+          error: "Has consumido el cupo de chat de tu plan semanal. Tu racha no se perderá.",
+          creditsExceeded: true,
+          credits: {
+            text_credits_total: credits.text_credits_total,
+            text_credits_used: credits.text_credits_used,
+            live_credits_total: credits.live_credits_total,
+            live_credits_used: credits.live_credits_used
+          }
+        }), {
+          status: 402, // Payment Required
+          headers: { ...corsHeaders, "Content-Type": "application/json" }
+        });
+      }
+    }
+    
+    let updatedCredits = null;
+    const [profile, conversationTitle, recentMoods, menteSources, clinicalMemory] = await Promise.all([
       fetchUserProfile(supabaseUrl, supabaseServiceKey, userId),
       conversationId ? fetchConversationTitle(supabaseUrl, supabaseServiceKey, conversationId) : Promise.resolve(""),
       fetchRecentMoods(supabaseUrl, supabaseServiceKey, userId),
-      isOwner ? fetchUserDebts(supabaseUrl, supabaseServiceKey, userId) : Promise.resolve([]),
-      fetchMenteSources(supabaseUrl, supabaseServiceKey, userId)
+      fetchMenteSources(supabaseUrl, supabaseServiceKey, userId),
+      fetchClinicalMemory(supabaseUrl, supabaseServiceKey, userId)
     ]);
-    const totalDebtAmount = debtsList.reduce((sum, d) => sum + ((parseFloat(d.amount) || 0) - (parseFloat(d.paid_amount) || 0)), 0);
-    const marketKeywords = {
-      "xauusd": "GC=F",
-      "oro": "GC=F",
-      "gold": "GC=F",
-      "btc": "BTC-USD",
-      "bitcoin": "BTC-USD",
-      "eth": "ETH-USD",
-      "ethereum": "ETH-USD",
-      "sp500": "^GSPC",
-      "s&p": "^GSPC",
-      "sp 500": "^GSPC",
-      "nasdaq": "^IXIC",
-      "eurusd": "EURUSD=X",
-      "eur/usd": "EURUSD=X",
-      "petroleo": "CL=F",
-      "oil": "CL=F",
-      "crudo": "CL=F",
-      "plata": "SI=F",
-      "silver": "SI=F"
-    };
-    const lastUserMsgs = messages.filter((m) => m.role === "user").slice(-3);
-    const userText = lastUserMsgs.map((m) => (m.content || "").toLowerCase()).join(" ");
-    let mainTicker = "";
-    let mainPairName = "";
-    for (const [keyword, ticker] of Object.entries(marketKeywords)) {
-      if (userText.includes(keyword)) {
-        mainTicker = ticker;
-        mainPairName = keyword.toUpperCase();
-        break;
-      }
-    }
-    let bingxPositions = null;
-    let bingxBalance = null;
-    let yahooHistoryCandles = [];
-    const networkPromises = [];
-    let bingxPosPromiseIdx = -1;
-    let bingxBalPromiseIdx = -1;
-    let yahooPromiseIdx = -1;
-    if (isOwner && profile && profile.bingx_api_key && profile.bingx_api_secret) {
-      bingxPosPromiseIdx = networkPromises.push(fetchBingXPositions(profile.bingx_api_key, profile.bingx_api_secret)) - 1;
-      bingxBalPromiseIdx = networkPromises.push(fetchBingXBalance(profile.bingx_api_key, profile.bingx_api_secret)) - 1;
-    }
-    if (isOwner && mainTicker && (!tradingviewContext || !tradingviewContext.connected)) {
-      yahooPromiseIdx = networkPromises.push(fetchYahooHistory(mainTicker, "15m", "2d")) - 1;
-    }
-    if (networkPromises.length > 0) {
-      const results = await Promise.all(networkPromises);
-      if (bingxPosPromiseIdx !== -1) bingxPositions = results[bingxPosPromiseIdx];
-      if (bingxBalPromiseIdx !== -1) bingxBalance = results[bingxBalPromiseIdx];
-      if (yahooPromiseIdx !== -1) yahooHistoryCandles = results[yahooPromiseIdx];
-    }
     const openrouterApiKey = Deno.env.get("OPENROUTER_API_KEY");
     if (!openrouterApiKey) {
       return new Response(JSON.stringify({ error: "OPENROUTER_API_KEY no est\xE1 configurado en las variables de entorno de Supabase." }), {
@@ -1913,121 +1845,24 @@ Debes adaptar estrictamente el 100% de tu foco a este tema y a la pauta que el u
 
 `;
     }
-    if (isOwner) {
+    if (clinicalMemory?.prompt) {
       auditPrompt += `
 
---- ESTADO DE DEUDAS DEL USUARIO PROPIETARIO ---
-Deuda Total Pendiente: ${totalDebtAmount.toFixed(2)} \u20AC
+${clinicalMemory.prompt}
 `;
     }
     if (currentMood) {
-      const medicationLine = isOwner ? `
-- Medicaci\xF3n registrada hoy: ${currentMood.atomoxetina_taken ? "S\xCD" : "NO"}.` : "";
       auditPrompt += `
 
 --- REGISTRO DIARIO ACTUAL (HOY) ---
 - Nivel interno 1: ${currentMood.anxiety_level ?? "N/A"}/10, Nivel interno 2: ${currentMood.impulsivity_level ?? "N/A"}/10.
-- Notas del diario: "${currentMood.notes ?? "Sin notas"}".${medicationLine}`;
-    }
-    if (isOwner && bingxPositions && bingxPositions.length > 0) {
-      auditPrompt += `
-
---- AUDITOR\xCDA DE TRADING EN TIEMPO REAL (BINGX) ---
-Veo que el usuario propietario tiene las siguientes posiciones abiertas en este momento:
-`;
-      bingxPositions.forEach((pos) => {
-        auditPrompt += `- S\xEDmbolo: ${pos.symbol}, Direcci\xF3n: ${pos.positionSide}, Lote/Tama\xF1o: ${pos.positionAmt}, Precio Entrada: ${pos.entryPrice}, PnL Flotante: ${pos.unrealizedProfit} USDT, Apalancamiento: ${pos.leverage}x, Margen: ${pos.isolatedMargin} USDT
-`;
-      });
-      if (bingxBalance) {
-        auditPrompt += `Balance en Futuros: ${bingxBalance.balance} USDT, Disponible: ${bingxBalance.availableBalance} USDT.
-`;
-      }
-      auditPrompt += `
-INSTRUCCI\xD3N DEL GESTOR DE RIESGO: El apalancamiento alto multiplica el peligro y acorta el margen de error, por lo que el control estricto del tama\xF1o de la posici\xF3n y la colocaci\xF3n del stop-loss es cr\xEDtico y no negociable.
-Analiza si el usuario est\xE1 sobre-apalancado (ej. m\xE1s de 5-10x en su contexto o lotajes desproporcionados), si tiene p\xE9rdidas acumuladas flotantes graves sin stop-loss o si est\xE1 recargando posiciones perdedoras.
-Si hay riesgo grave de ruina, interrumpe el tono terap\xE9utico habitual y exige de forma firme, asertiva y directa que ejecute el 'Protocolo de Reset' y reduzca o cierre su posici\xF3n al 50% o al 100% de inmediato. Recu\xE9rdale priorizar estabilidad, salud y control antes que recuperar de golpe.`;
-    } else if (isOwner) {
-      auditPrompt += `
-
---- ESTADO DE TRADING ---
-No hay posiciones abiertas en BingX en este momento. Si el usuario menciona que est\xE1 operando o quiere operar, recu\xE9rdale rellenar el Checklist de BingX y verificar si su sistema de bloqueo temporal est\xE1 activo.`;
-    }
-    if (isOwner && tradingviewContext && tradingviewContext.connected) {
-      const state = tradingviewContext.state || {};
-      const quote = tradingviewContext.quote || {};
-      const values = tradingviewContext.values || {};
-      auditPrompt += `
-
---- CONTEXTO T\xC9CNICO EN PANTALLA (TRADINGVIEW DESKTOP USUARIO PROPIETARIO) ---
-El usuario propietario tiene TradingView abierto en su escritorio con los siguientes datos en directo:
-- Activo en gr\xE1fico: ${state.symbol || "N/A"} (${state.resolution ? state.resolution + " timeframe" : "N/A"})
-- Tipo de gr\xE1fico: ${state.chartType === 1 ? "Velas Japonesas" : state.chartType || "N/A"}
-- Precio de Cotizaci\xF3n actual: $${quote.last || quote.close || "N/A"}
-- Indicadores en pantalla y sus valores:
-`;
-      if (values.studies && Array.isArray(values.studies)) {
-        values.studies.forEach((st) => {
-          auditPrompt += `  * ${st.name}: ${JSON.stringify(st.values)}
-`;
-        });
-      } else {
-        auditPrompt += `  (No se leyeron indicadores de la pantalla o no hay estudios cargados)
-`;
-      }
-      if (tradingviewContext.pineLines && tradingviewContext.pineLines.study_count > 0) {
-        auditPrompt += `- Niveles de soporte/resistencia Pine: 
-`;
-        tradingviewContext.pineLines.studies.forEach((s) => {
-          auditPrompt += `  * ${s.name}: Niveles Horizontales: ${JSON.stringify(s.horizontal_levels)}
-`;
-        });
-      }
-      if (tradingviewContext.pineTables && tradingviewContext.pineTables.study_count > 0) {
-        auditPrompt += `- Tablas de Datos Pine en pantalla: 
-`;
-        tradingviewContext.pineTables.studies.forEach((s) => {
-          s.tables.forEach((t, idx) => {
-            auditPrompt += `  * Tabla ${idx + 1} (${s.name}):
-    ${t.rows.join("\n    ")}
-`;
-          });
-        });
-      }
-    }
-    if (mainTicker && (!tradingviewContext || !tradingviewContext.connected)) {
-      const candles = yahooHistoryCandles;
-      if (candles && candles.length > 20) {
-        const closes = candles.map((c) => c.close);
-        const latestPrice = closes[closes.length - 1];
-        const ema9 = calculateEMA(closes, 9);
-        const ema21 = calculateEMA(closes, 21);
-        const rsi14 = calculateRSI(closes, 14);
-        const bb = calculateBollingerBands(closes, 20, 2);
-        const latestEma9 = ema9[ema9.length - 1];
-        const latestEma21 = ema21[ema21.length - 1];
-        const latestRsi14 = rsi14[rsi14.length - 1];
-        const latestBbUpper = bb.upper[bb.upper.length - 1];
-        const latestBbMiddle = bb.middle[bb.middle.length - 1];
-        const latestBbLower = bb.lower[bb.lower.length - 1];
-        auditPrompt += `
-
---- C\xC1LCULO T\xC9CNICO EN TIEMPO REAL (YAHOO FINANCE) ---
-Par analizado por menci\xF3n en chat: ${mainPairName} (${mainTicker})
-- \xDAltimo Precio: $${latestPrice.toFixed(2)}
-- EMA 9: $${latestEma9?.toFixed(2) || "N/A"} (Tendencia corta)
-- EMA 21: $${latestEma21?.toFixed(2) || "N/A"} (Tendencia media)
-- RSI 14: ${latestRsi14?.toFixed(2) || "N/A"} (${latestRsi14 > 70 ? "SOBRECOMPRA" : latestRsi14 < 30 ? "SOBREVENTA" : "ZONA NEUTRA"})
-- Bandas Bollinger (20, 2): Upper: $${latestBbUpper?.toFixed(2)}, Middle: $${latestBbMiddle?.toFixed(2)}, Lower: $${latestBbLower?.toFixed(2)}
-- Cruce EMAs: ${latestEma9 > latestEma21 ? "Cruce Alcista (EMA9 > EMA21)" : "Cruce Bajista (EMA9 < EMA21)"}
-`;
-      }
+- Notas del diario: "${currentMood.notes ?? "Sin notas"}".`;
     }
     const defaultCtx = { foto_persona: "No hay mapa consolidado a\xFAn.", temas: [] };
     const userCtx = profile?.contexto_terapeutico || defaultCtx;
     auditPrompt += `
 
---- MAPA PSICOL\xD3GICO Y SITUACI\xD3N ACTUAL (RESUMEN DE MENTE) ---
+--- MAPA PSICOL\xD3GICO Y SITUACI\xF3N ACTUAL (RESUMEN DE MENTE) ---
 S\xEDntesis del mapa consolidado del usuario:
 ${userCtx.foto_persona || "No hay mapa consolidado a\xFAn."}
 
@@ -2045,7 +1880,7 @@ Temas terap\xE9uticos vigentes en seguimiento:
 `;
       }
     }
-    const personalSystemInstruction = `Eres Walter, asistente privado de Josfer en psicolog\xEDa, rendimiento y trading. Tu prioridad es psicol\xF3gica: investigar paso a paso lo que ocurre, ordenar el contexto y proponer pautas pr\xE1cticas. Usa solo la memoria y los datos din\xE1micos inyectados; no trates ning\xFAn dato hist\xF3rico como fijo si no aparece en esos datos.
+    const personalSystemInstruction = `Eres Walter, asistente privado de Josfer en psicolog\xEDa, rendimiento y bienestar emocional. Tu prioridad es psicol\xF3gica: investigar paso a paso lo que ocurre, ordenar el contexto y proponer pautas pr\xE1cticas de regulaci\xF3n emocional y mental. Usa solo la memoria y los datos din\xE1micos inyectados; no trates ning\xFAn dato hist\xF3rico como fijo si no aparece en esos datos.
 
 REGLA FUNDAMENTAL DE TRATO Y DIN\xC1MICA DE CHAT (MANDATORIA):
 - **Foco estricto en el tema de la sesi\xF3n (CR\xCDTICO):** No saques a relucir datos sensibles del pasado de forma no solicitada en tus respuestas ordinarias de chat. Mant\xE9n el chat enfocado de forma pr\xE1ctica, objetiva y directa sobre el tema espec\xEDfico que se est\xE1 tratando en la sesi\xF3n activa. La memoria general ya est\xE1 disponible en el panel derecho de Mente; no la repitas ni la lectures en tus contestaciones de chat a menos que el usuario la mencione directamente o sea el tema central de la sesi\xF3n.
@@ -2061,57 +1896,25 @@ REGLA FUNDAMENTAL DE TRATO Y DIN\xC1MICA DE CHAT (MANDATORIA):
 - **M\xE9todo de investigaci\xF3n: Indagar antes de concluir:** No des por sentado un diagn\xF3stico ni saques conclusiones apresuradas. Valida la emoci\xF3n del usuario brevemente (1 o 2 frases con empat\xEDa real, ej: "Te leo y ese peso es real...") y pasa a hacer preguntas abiertas y socr\xE1ticas para recopilar informaci\xF3n sobre lo que piensa y siente en este momento. No intentes solucionar todo en cada respuesta. Primero indaga y recopila informaci\xF3n.
 - **Hacerlo paso a paso:** Deja que el usuario elabore el hilo de la conversaci\xF3n respondiendo a tus preguntas. Cierra siempre tu intervenci\xF3n con una o m\xE1ximo dos preguntas claras y dirigidas que inviten a la autoreflexi\xF3n.
 - **Escucha activa y adaptaci\xF3n al tema/t\xEDtulo:** El usuario marca la pauta de lo que quiere trabajar mediante el t\xEDtulo de la sesi\xF3n o el texto de su mensaje. Ad\xE1ptate estrictamente a ese tema. Si abre un tema del pasado o de su historia de forma expl\xEDcita, indaga y desarr\xF3llalo mediante preguntas precisas, evitando sermones.
-- **Proactividad basada en datos:** Eres un copiloto. Investiga proactivamente los datos inyectados en tu contexto (posiciones abiertas en BingX, saldo de cuenta, cotizaciones de TradingView o Yahoo Finance). Si detectas alg\xFAn nivel t\xE9cnico clave, o un riesgo de sobre-apalancamiento, indaga, preg\xFAntale directamente sobre ese dato espec\xEDfico y prop\xF3n soluciones pr\xE1cticas de forma directa.
-- **Interacci\xF3n paso a paso:** No intentes solucionarlo todo en una sola respuesta. Indaga con preguntas precisas, prop\xF3n ejecuciones de \xF3rdenes o cambios de gr\xE1fico en TradingView, y deja que sea el usuario quien responda.
 
-REGLA DE OPERATIVA:
-- El usuario decide si opera o no. Ay\xFAdale a operar mejor, a ser rentable y emocionalmente estable. NUNCA le digas que deje de operar o que el trading es una adicci\xF3n/compulsi\xF3n.
-
-Tu rol es DUAL:
-
-1. PSIC\xD3LOGO DE TRADING Y RENDIMIENTO:
+Tu rol es:
+1. PSIC\xD3LOGO DE RENDIMIENTO Y BIENESTAR:
    - Trato de Espa\xF1a (t\xFA), asertivo, cl\xEDnico, emp\xE1tico y centrado en el proceso.
-   - Aplica psicolog\xEDa del rendimiento: combatir la ceguera de escala (valorar ganancias peque\xF1as como ladrillos reales), regular el estado de \xE1nimo y prescribir 'Reset de Am\xEDgdala' en momentos de tilt o alta activaci\xF3n.
+   - Regula el estado de \xE1nimo y prescribe 'Reset de Am\xEDgdala' en momentos de estr\xE9s o alta activaci\xF3n emocional.
    - No menciones teor\xEDas densas ni etiquetas cl\xEDnicas cerradas a menos que el usuario te lo pida expl\xEDcitamente. Valida cient\xEDficamente solo de manera breve y en una sola frase cuando mencione un bloqueo profundo.
 
-2. GESTOR DE RIESGOS EN TIEMPO REAL:
-   - Audita sus posiciones en BingX. Si hay riesgo de ruina o sobre-apalancamiento (>10x), exige firmemente el 'Protocolo de Reset' y sugiere \xF3rdenes de reducci\xF3n o cierre del 50%/100%.
-
-3. CONTROL REMOTO DE TRADINGVIEW:
-   - Si el usuario te pide ver un activo, cambiar de gr\xE1fico, o si deseas enfocarle de forma proactiva en un timeframe superior, emite el tag al final de tu respuesta:
-     <execute_action>
-     {
-       "tool": "chart_set_symbol",
-       "arguments": { "symbol": "BTCUSD" }
-     }
-     </execute_action>
-
-     Herramientas: 'chart_set_symbol' (args: symbol), 'chart_set_timeframe' (args: timeframe: '1'|'5'|'15'|'60'|'D'), 'chart_set_type' (args: chart_type: 'Candles'|'Line'), 'chart_manage_indicator' (args: action: 'add'|'remove', indicator), 'pane_set_layout' (args: layout: 's'|'2h'|'2v'|'4'), 'tab_new', 'tab_switch' (args: index), 'ui_fullscreen'.
-
-4. SISTEMA DE ACTUALIZACI\xD3N DE MEMORIA:
+2. SISTEMA DE ACTUALIZACI\xF3N DE MEMORIA:
    - Si acord\xE1is un compromiso, identificas una conclusi\xF3n clave o prescribe una pauta, a\xF1ade obligatoriamente:
      <update_context>
      {
        "conclusiones": ["Conclusi\xF3n concisa sobre su patr\xF3n actual"],
-       "compromisos": ["Compromiso de gesti\xF3n de riesgo acordado"],
+       "compromisos": ["Compromiso de bienestar acordado"],
        "pautas_accion": ["Pauta de reset conductual prescrita"]
      }
      </update_context>
 
-5. CAMBIO AG\xC9NTICO DE T\xCDTULO:
-   - Si el tema cambia sustancialmente, emite <update_title>Nuevo T\xEDtulo Sugerido</update_title> y pregunta si el usuario est\xE1 de acuerdo con el cambio de t\xEDtulo.
-
-
-6. CONTROL DE OPERACIONES EN BINGX:
-   - Si el usuario confirma ejecutar una operaci\xF3n o te pide gestionar sus \xF3rdenes en el chat, emite <execute_trade> con el JSON correspondiente al final de tu respuesta:
-     * Cierre parcial/mercado: type="MARKET", reduceOnly=true.
-     * Carga limitada: type="LIMIT", price=PRECIO, reduceOnly=false.
-     * Stop Loss / Take Profit: type="TRIGGER_MARKET", stopPrice=PRECIO, reduceOnly=true.
-     * Cancelar \xF3rdenes del par: action="CANCEL_ALL", symbol="S\xCDMBOLO-USDT".
-     * Nota: En LONG, el SL/reducci\xF3n debe ser side="SELL", positionSide="LONG". En SHORT, side="BUY", positionSide="SHORT".
-     * El 'symbol' debe terminar en '-USDT'. La quantity es el n\xFAmero real de contratos/monedas.
-     * Pide confirmaci\xF3n previa antes de colocar \xF3rdenes de ejecuci\xF3n (l\xEDmite, mercado o stop), excepto si el usuario te lo pide directamente o hay una urgencia de riesgo evidente.
-     * Nunca emitas <execute_trade> sin una confirmaci\xF3n afirmativa del usuario inmediatamente anterior en la conversaci\xF3n (salvo en cancelaciones directas u \xF3rdenes expl\xEDcitamente de emergencia).`;
+3. CAMBIO AG\xC9NTICO DE T\xCDTULO:
+   - Si el tema cambia sustancialmente, emite <update_title>Nuevo T\xEDtulo Sugerido</update_title> y pregunta si el usuario est\xE1 de acuerdo con el cambio de t\xEDtulo.`;
     const cleanedMessages = [];
     let lastContent = "";
     let lastRole = "";
@@ -2134,7 +1937,14 @@ Tu rol es DUAL:
     }
     const MAX_HISTORY_MESSAGES = 15;
     const recentMessages = cleanedMessages.slice(-MAX_HISTORY_MESSAGES);
-    const genericSystemInstruction = `Eres Walter, asistente clínico de apoyo psicológico para un usuario nuevo en ÁNCORA. Tu prioridad actual es guiar un triaje clínico inicial de forma conversacional y empática.
+    const genericSystemInstruction = `Eres IA Áncora, asistente clínico conversacional de apoyo psicológico. Actúas como un psicólogo junior/asistente experto: escuchas, regulas, ordenas información y preparas material útil para el psicólogo humano. No diagnosticas, no prescribes y no sustituyes una sesión clínica.
+
+MEMORIA Y CONTEXTO:
+- Tienes acceso a la memoria clínica inyectada en este prompt: documentos subidos, resúmenes de extracción, propuestas pendientes, hechos aceptados, riesgos, citas y conversaciones previas.
+- Si el usuario pregunta si ves su historial, responde con precisión: sí puedes ver el material persistido que aparece en la memoria inyectada. Menciona brevemente qué tipo de material hay, sin volcar datos sensibles completos de golpe.
+- No digas "no tengo acceso a historial/documentos" si la sección MEMORIA CLINICA PERSISTENTE contiene datos.
+- Si un dato está en propuestas pendientes, dilo como "dato pendiente de revisión", no como verdad clínica consolidada.
+- Usa citas literales solo en fragmentos breves cuando ayuden a preparar la revisión con el psicólogo.
 
 REGLAS DE TRIAJE CLÍNICO (PHQ-9 y GAD-7) - MANDATORIO:
 - **Investigación Emocional Camuflada:** Debes evaluar el nivel de depresión (PHQ-9, escala de 0 a 27) y ansiedad (GAD-7, escala de 0 a 21) a través de preguntas naturales en el chat. No menciones explícitamente "PHQ-9" o "GAD-7" ni enumeres reactivos de manera fría. Pregunta de forma progresiva sobre placer en las cosas, dificultades para dormir, nerviosismo, preocupación constante, etc., integrándolo de manera cálida en la conversación.
@@ -2152,7 +1962,9 @@ REGLAS DE TRIAJE CLÍNICO (PHQ-9 y GAD-7) - MANDATORIO:
 REGLAS GENERALES:
 - Usa únicamente los datos de la conversación, el diario y la memoria privada inyectada para este usuario.
 - No asumas deudas, trading ni datos privados del usuario propietario (Josfer/Emilio). Concéntrate en el usuario nuevo.
-- Mantén un tono empático, seguro, asertivo y paso a paso.`;
+- Mantén un tono empático, seguro, asertivo y paso a paso.
+- Tu objetivo principal no es dar sermones: es sostener el momento, sacar información clínicamente útil y dejar 1-2 preguntas claras para revisión o seguimiento.
+- Si detectas mal momento, empieza por regulación breve: respiración, orientación, bajar activación, contacto con apoyo o crisis si procede.`;
     const systemInstruction = isOwner ? personalSystemInstruction : genericSystemInstruction;
     let replyText = "";
     const openrouterPayload = {
@@ -2210,6 +2022,16 @@ ${auditPrompt}` },
     }
     const json = await response.json();
     replyText = json.choices?.[0]?.message?.content || "";
+    
+    const promptTokens = json.usage?.prompt_tokens || 0;
+    const completionTokens = json.usage?.completion_tokens || 0;
+    const cacheTokens = json.usage?.prompt_tokens_details?.cached || json.usage?.cache_read_input_tokens || 0;
+
+    // Descontar tokens del crédito del paciente
+    let tokensUsed = json.usage?.total_tokens || (Math.ceil(replyText.length / 4) + Math.ceil(messages.reduce((acc, m) => acc + (m.content || "").length, 0) / 4));
+    tokensUsed = Math.ceil(tokensUsed);
+    updatedCredits = await updateUserTextCredits(supabaseUrl, supabaseServiceKey, userId, tokensUsed);
+
     if (!replyText) {
       replyText = "No he podido generar una respuesta en este momento. Conc\xE9ntrate en tu respiraci\xF3n y cu\xEDdate.";
     }
@@ -2225,51 +2047,6 @@ ${auditPrompt}` },
       }
     }
     let cleanReply = replyText.replace(actionRegex, "").trim();
-    const tradeRegex = /<execute_trade>([\s\S]*?)<\/execute_trade>/i;
-    const tradeMatch = cleanReply.match(tradeRegex);
-    let tradeResult = null;
-    if (tradeMatch) {
-      try {
-        if (!isOwner) {
-          throw new Error("M\xF3dulo de trading no disponible para este usuario.");
-        }
-        const tradeParams = JSON.parse(tradeMatch[1].trim());
-        const apiKey = profile?.bingx_api_key;
-        const apiSecret = profile?.bingx_api_secret;
-        if (!apiKey || !apiSecret) {
-          tradeResult = "Error: Las credenciales de la API de BingX no est\xE1n configuradas en Ajustes.";
-        } else {
-          if (tradeParams.action === "CANCEL_ALL") {
-            tradeResult = await cancelBingXOpenOrders(
-              apiKey,
-              apiSecret,
-              tradeParams.symbol
-            );
-          } else {
-            tradeResult = await executeBingXOrder(
-              apiKey,
-              apiSecret,
-              tradeParams.symbol,
-              tradeParams.side,
-              tradeParams.positionSide,
-              tradeParams.quantity,
-              tradeParams.type || "MARKET",
-              tradeParams.price,
-              tradeParams.stopPrice,
-              tradeParams.reduceOnly !== false
-            );
-          }
-        }
-      } catch (err) {
-        console.error("Error executing trade action:", err.message);
-        tradeResult = `Error al procesar la orden: ${err.message}`;
-      }
-      cleanReply = cleanReply.replace(tradeRegex, "").trim();
-      cleanReply += `
-
-**[Ejecuci\xF3n de Orden BingX]**
-${tradeResult}`;
-    }
     const contextRegex = /<update_context>([\s\S]*?)<\/update_context>/i;
     const match = cleanReply.match(contextRegex);
     let mergedCtx = null;
@@ -2317,9 +2094,8 @@ ${tradeResult}`;
       }
       cleanReply = cleanReply.replace(titleRegex, "").trim();
     }
-    const replyWithModel = `${cleanReply}
-
-[model:deepseek]`;
+    const cachePercent = promptTokens > 0 ? Math.round((cacheTokens / promptTokens) * 100) : 0;
+    const replyWithModel = `${cleanReply}\n\n[model:${TEXT_MODEL}][usage:${promptTokens}|${completionTokens}|${cachePercent}%]`;
     if (conversationId) {
       await saveMessageToDb(supabaseUrl, supabaseServiceKey, conversationId, "assistant", replyWithModel);
       await updateConversationTimestamp(supabaseUrl, supabaseServiceKey, conversationId);
@@ -2339,7 +2115,18 @@ ${tradeResult}`;
       reply: replyWithModel,
       actions: isOwner ? actions : [],
       updatedContext: mergedCtx || userCtx,
-      generatedTitle
+      generatedTitle,
+      tokensUsed,
+      credits: updatedCredits ? {
+        text_credits_total: updatedCredits.text_credits_total,
+        text_credits_used: updatedCredits.text_credits_used,
+        live_credits_total: updatedCredits.live_credits_total,
+        live_credits_used: updatedCredits.live_credits_used,
+        document_credits_total: updatedCredits.document_credits_total,
+        document_credits_used: updatedCredits.document_credits_used,
+        cycle_start_date: updatedCredits.cycle_start_date,
+        cycle_end_date: updatedCredits.cycle_end_date
+      } : null
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" }
     });

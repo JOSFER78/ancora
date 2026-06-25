@@ -36,14 +36,19 @@ export const PERSONAL_NAV_ITEMS = [
   { id: 'dashboard', label: 'Panel' },
   { id: 'mente', label: 'Mente' },
   { id: 'escudo', label: 'INSS' },
-  { id: 'deudas', label: 'Deudas' },
   { id: 'agentes', label: 'Agentes' },
-  { id: 'chat', label: 'Walter' },
+  { id: 'chat', label: 'Chat' },
   { id: 'ajustes', label: 'Ajustes' }
 ];
 
 export const PSICOLOGO_NAV_ITEMS = [
-  { id: 'dashboard', label: 'Portal Clínico' }
+  { id: 'dashboard', label: 'General' },
+  { id: 'perfil', label: 'Pacientes' },
+  { id: 'soap', label: 'Notas SOAP' },
+  { id: 'briefing', label: 'Preparación' },
+  { id: 'agenda', label: 'Agenda' },
+  { id: 'ajustes', label: 'Facturas' },
+  { id: 'perfil_usuario', label: 'Mi Perfil' }
 ];
 
 export const SUPERVISOR_NAV_ITEMS = [
@@ -51,5 +56,4 @@ export const SUPERVISOR_NAV_ITEMS = [
   { id: 'chat', label: 'Incidencias' },
   { id: 'ajustes', label: 'Configuración' }
 ];
-
 

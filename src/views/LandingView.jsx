@@ -132,11 +132,12 @@ export default function LandingView({ onAuthSuccess, onEnterDemo }) {
         background: 'rgba(5, 33, 58, 0.95)',
         boxShadow: '0 4px 20px rgba(0,0,0,0.15)'
       }}>
-        <div style={{ display: 'flex', justifyItems: 'space-between', alignItems: 'center', maxWidth: '1180px', margin: '0 auto', width: '100%' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', maxWidth: '1180px', margin: '0 auto', width: '100%' }}>
+          <div className="landing-logo-container" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <img src="/ancora_logo.png" alt="ÁNCORA" style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover', border: '1.5px solid rgba(6, 182, 212, 0.4)', boxShadow: '0 0 10px rgba(6, 182, 212, 0.25)' }} />
             <span style={{ 
               fontWeight: 'bold', 
-              fontSize: '1.45rem', 
+              fontSize: '1.55rem', 
               letterSpacing: '-0.01em', 
               color: '#ffffff',
               fontFamily: serifFont
@@ -145,7 +146,7 @@ export default function LandingView({ onAuthSuccess, onEnterDemo }) {
             </span>
           </div>
 
-          <nav style={{ display: 'flex', gap: '28px', fontSize: '0.8rem', fontWeight: 600, color: '#9AA6AB', marginLeft: 'auto', marginRight: 'auto' }}>
+          <nav className="landing-nav" style={{ display: 'flex', gap: '28px', fontSize: '0.8rem', fontWeight: 600, color: '#9AA6AB', marginLeft: 'auto', marginRight: 'auto' }}>
             <span style={{ cursor: 'pointer', transition: 'color 0.2s' }} onClick={() => scrollToAccess('paciente')} onMouseEnter={e => e.target.style.color = '#ffffff'} onMouseLeave={e => e.target.style.color = '#9AA6AB'}>Para pacientes</span>
             <span style={{ cursor: 'pointer', transition: 'color 0.2s' }} onClick={() => scrollToAccess('psicologo')} onMouseEnter={e => e.target.style.color = '#ffffff'} onMouseLeave={e => e.target.style.color = '#9AA6AB'}>Para psicólogos</span>
             <span style={{ cursor: 'pointer', transition: 'color 0.2s' }} onClick={scrollToMarketplace} onMouseEnter={e => e.target.style.color = '#ffffff'} onMouseLeave={e => e.target.style.color = '#9AA6AB'}>Cómo funciona</span>
@@ -154,25 +155,7 @@ export default function LandingView({ onAuthSuccess, onEnterDemo }) {
             <span style={{ cursor: 'pointer', transition: 'color 0.2s' }} onClick={scrollToMarketplace} onMouseEnter={e => e.target.style.color = '#ffffff'} onMouseLeave={e => e.target.style.color = '#9AA6AB'}>Sobre nosotros</span>
           </nav>
 
-          <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
-            <button 
-              onClick={() => onEnterDemo('tisute@gmail.com', 'dashboard')} 
-              className="btn btn-outline" 
-              style={{ 
-                height: '34px', 
-                fontSize: '0.72rem', 
-                borderRadius: '999px', 
-                borderColor: 'var(--color-cyan)',
-                color: 'var(--color-cyan)',
-                paddingInline: '16px',
-                fontWeight: 'bold',
-                background: 'rgba(6, 182, 212, 0.05)',
-                marginRight: '8px',
-                cursor: 'pointer'
-              }}
-            >
-              🚀 Acceso Demo
-            </button>
+          <div className="landing-actions" style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
             <span 
               onClick={() => scrollToAccess('paciente')} 
               style={{ cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600, color: '#9AA6AB', transition: 'color 0.2s' }}
@@ -216,7 +199,7 @@ export default function LandingView({ onAuthSuccess, onEnterDemo }) {
         
         <div style={{ maxWidth: '1180px', margin: '0 auto', display: 'grid', gridTemplateColumns: '1.25fr 1fr', gap: '40px' }} className="grid-responsive-dashboard">
           
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '28px', textAlign: 'left' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '24px', textAlign: 'left' }}>
             <span style={{ 
               display: 'inline-flex', 
               gap: '6px', 
@@ -230,7 +213,7 @@ export default function LandingView({ onAuthSuccess, onEnterDemo }) {
               borderRadius: '999px',
               color: '#F8F6F1'
             }}>
-              PLATAFORMA DE SALUD MENTAL
+              PLATAFORMA DE SALUD MENTAL INTEGRAL
             </span>
 
             <h1 style={{ 
@@ -259,9 +242,6 @@ export default function LandingView({ onAuthSuccess, onEnterDemo }) {
               <button className="btn" onClick={() => scrollToAccess('paciente')} style={{ height: '48px', paddingInline: '26px', fontWeight: 'bold', background: '#7F9F88', color: '#ffffff', borderRadius: '999px', textTransform: 'none', letterSpacing: 'normal', fontSize: '0.82rem', transition: 'all 0.2s' }} onMouseEnter={e => e.target.style.background = '#6B8A74'} onMouseLeave={e => e.target.style.background = '#7F9F88'}>
                 <span>Empezar</span>
                 <ArrowRight size={16} />
-              </button>
-              <button className="btn" onClick={() => onEnterDemo('tisute@gmail.com', 'dashboard')} style={{ height: '48px', paddingInline: '26px', fontWeight: 'bold', background: 'linear-gradient(135deg, #06B6D4, #10B981)', color: '#ffffff', borderRadius: '999px', textTransform: 'none', letterSpacing: 'normal', fontSize: '0.82rem', border: 'none', transition: 'all 0.2s', boxShadow: '0 4px 15px rgba(6,182,212,0.3)', cursor: 'pointer' }} onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.03)'} onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}>
-                <span>🚀 Probar Demo Instantánea</span>
               </button>
               <button className="btn btn-outline" onClick={() => scrollToAccess('psicologo')} style={{ height: '48px', paddingInline: '26px', fontWeight: 'bold', borderRadius: '999px', color: '#ffffff', borderColor: 'rgba(255,255,255,0.4)', textTransform: 'none', letterSpacing: 'normal', fontSize: '0.82rem', background: 'transparent' }} onMouseEnter={e => e.target.style.background = 'rgba(255,255,255,0.08)'} onMouseLeave={e => e.target.style.background = 'transparent'}>
                 <span>Soy psicólogo</span>
@@ -1349,8 +1329,8 @@ export default function LandingView({ onAuthSuccess, onEnterDemo }) {
           <div className="footer-main-grid">
             
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', textAlign: 'left' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Brain size={22} color="#7F9F88" />
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <img src="/ancora_logo.png" alt="ÁNCORA" style={{ width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover', border: '1.5px solid rgba(127, 159, 136, 0.4)', boxShadow: '0 0 8px rgba(127, 159, 136, 0.2)' }} />
                 <span style={{ fontWeight: 'bold', fontSize: '1.35rem', color: '#ffffff', fontFamily: serifFont }}>Áncora</span>
               </div>
               <p style={{ lineHeight: 1.6, maxWidth: '280px', margin: 0 }}>
@@ -1735,28 +1715,35 @@ export default function LandingView({ onAuthSuccess, onEnterDemo }) {
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   <button 
-                    onClick={() => { setShowDemoConsole(false); onEnterDemo('tisutet@hormail.com', 'dashboard'); }}
+                    onClick={() => { setShowDemoConsole(false); onEnterDemo('usajosefernan@gmail.com', 'dashboard'); }}
                     className="btn btn-outline"
                     style={{ fontSize: '0.74rem', width: '100%', justifyContent: 'flex-start', padding: '10px 12px', height: 'auto', borderColor: 'rgba(255,255,255,0.06)', color: '#ffffff', textAlign: 'left', cursor: 'pointer' }}
                   >
-                    🩺 Portal Clínico & Pacientes
+                    🩺 Portal Clínico (Métricas)
                   </button>
                   <button 
-                    onClick={() => { setShowDemoConsole(false); onEnterDemo('tisutet@hormail.com', 'chat'); }}
+                    onClick={() => { setShowDemoConsole(false); onEnterDemo('usajosefernan@gmail.com', 'perfil'); }}
                     className="btn btn-outline"
                     style={{ fontSize: '0.74rem', width: '100%', justifyContent: 'flex-start', padding: '10px 12px', height: 'auto', borderColor: 'rgba(255,255,255,0.06)', color: '#ffffff', textAlign: 'left', cursor: 'pointer' }}
                   >
-                    💬 Buzón de Pacientes (Chat)
+                    📂 Ficha e Historial de Pacientes
                   </button>
                   <button 
-                    onClick={() => { setShowDemoConsole(false); onEnterDemo('tisutet@hormail.com', 'dashboard', 'view_agenda'); }}
+                    onClick={() => { setShowDemoConsole(false); onEnterDemo('usajosefernan@gmail.com', 'soap'); }}
                     className="btn btn-outline"
                     style={{ fontSize: '0.74rem', width: '100%', justifyContent: 'flex-start', padding: '10px 12px', height: 'auto', borderColor: 'rgba(255,255,255,0.06)', color: '#ffffff', textAlign: 'left', cursor: 'pointer' }}
                   >
-                    📅 Agenda y Google Calendar
+                    ✍️ Notas SOAP y Copiloto IA
                   </button>
                   <button 
-                    onClick={() => { setShowDemoConsole(false); onEnterDemo('tisutet@hormail.com', 'ajustes'); }}
+                    onClick={() => { setShowDemoConsole(false); onEnterDemo('usajosefernan@gmail.com', 'agenda'); }}
+                    className="btn btn-outline"
+                    style={{ fontSize: '0.74rem', width: '100%', justifyContent: 'flex-start', padding: '10px 12px', height: 'auto', borderColor: 'rgba(255,255,255,0.06)', color: '#ffffff', textAlign: 'left', cursor: 'pointer' }}
+                  >
+                    📅 Agenda de Citas
+                  </button>
+                  <button 
+                    onClick={() => { setShowDemoConsole(false); onEnterDemo('usajosefernan@gmail.com', 'ajustes'); }}
                     className="btn btn-outline"
                     style={{ fontSize: '0.74rem', width: '100%', justifyContent: 'flex-start', padding: '10px 12px', height: 'auto', borderColor: 'rgba(255,255,255,0.06)', color: '#ffffff', textAlign: 'left', cursor: 'pointer' }}
                   >

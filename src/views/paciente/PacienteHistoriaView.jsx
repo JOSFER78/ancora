@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { supabase } from '../../supabaseClient';
 import { 
   FileText, Activity, Heart, Moon, Upload, Plus, 
@@ -8,89 +8,11 @@ import {
 import { 
   getMedications, addMedication, 
   getTimelineEvents, addTimelineEvent, 
-  simulateDocumentIngestion, getPendingProposals, acceptProposal, rejectProposal,
+  getClinicalDocuments, getClinicalProfile, uploadClinicalDocument,
+  getClinicalLifeTree, getClinicalTimelineIndex, getPatientContextSnapshot,
+  getPendingProposals, acceptProposal, rejectProposal,
   AuthorityLevels, AuthorityLabels 
 } from '../../lib/clinicalEngine';
-
-// Helpers para carga dinámica de scripts y parsing de archivos clínicos (DOCX y PDF) en el cliente
-const loadJSZip = () => {
-  return new Promise((resolve, reject) => {
-    if (window.JSZip) {
-      resolve(window.JSZip);
-      return;
-    }
-    const script = document.createElement('script');
-    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
-    script.onload = () => resolve(window.JSZip);
-    script.onerror = () => reject(new Error('No se pudo cargar JSZip desde CDN'));
-    document.head.appendChild(script);
-  });
-};
-
-const readDocxFile = async (file) => {
-  try {
-    const JSZip = await loadJSZip();
-    const zip = await JSZip.loadAsync(file);
-    const docXmlFile = zip.file("word/document.xml");
-    if (!docXmlFile) return null;
-    const docXmlText = await docXmlFile.async("text");
-    
-    const parser = new DOMParser();
-    const xmlDoc = parser.parseFromString(docXmlText, "text/xml");
-    const paragraphs = xmlDoc.getElementsByTagName("w:p");
-    let text = "";
-    for (let i = 0; i < paragraphs.length; i++) {
-      const texts = paragraphs[i].getElementsByTagName("w:t");
-      let paragraphText = "";
-      for (let j = 0; j < texts.length; j++) {
-        paragraphText += texts[j].textContent;
-      }
-      if (paragraphText) {
-        text += paragraphText + "\n";
-      }
-    }
-    return text;
-  } catch (err) {
-    console.error("Error al extraer texto de DOCX:", err);
-    return null;
-  }
-};
-
-const loadPdfJs = () => {
-  return new Promise((resolve, reject) => {
-    if (window.pdfjsLib) {
-      resolve(window.pdfjsLib);
-      return;
-    }
-    const script = document.createElement('script');
-    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
-    script.onload = () => {
-      window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-      resolve(window.pdfjsLib);
-    };
-    script.onerror = () => reject(new Error('No se pudo cargar PDF.js desde CDN'));
-    document.head.appendChild(script);
-  });
-};
-
-const readPdfFile = async (file) => {
-  try {
-    const pdfjsLib = await loadPdfJs();
-    const arrayBuffer = await file.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-    let fullText = "";
-    for (let i = 1; i <= pdf.numPages; i++) {
-      const page = await pdf.getPage(i);
-      const textContent = await page.getTextContent();
-      const pageText = textContent.items.map(item => item.str).join(" ");
-      fullText += pageText + "\n";
-    }
-    return fullText;
-  } catch (err) {
-    console.error("Error al extraer texto de PDF:", err);
-    return null;
-  }
-};
 
 export default function PacienteHistoriaView({ profile, onProfileUpdated, user, isVirtualDemo }) {
   const [activeTab, setActiveTab] = useState('resumen'); 
@@ -101,24 +23,25 @@ export default function PacienteHistoriaView({ profile, onProfileUpdated, user, 
   const [batchQueue, setBatchQueue] = useState([]); // Array de objetos { id, name, size, progress, status }
   const [isDragging, setIsDragging] = useState(false);
 
-  // Cargar contexto clínico con fallbacks seguros
+  // Cargar contexto clÃ­nico con fallbacks seguros
   const context = profile?.contexto_terapeutico || {};
-  const clinicalHistory = context.historial_clinico || {
-    resumen_vital: 'Paciente manifiesta deseo de iniciar proceso de acompañamiento psicológico regular para tratar problemas asociados con ansiedad, autoexigencia y control emocional.',
-    antecedentes_psicologicos: 'Previamente realizó terapia cognitivo-conductual durante 6 meses en 2024 debido a ansiedad laboral. Decidió suspenderla por falta de seguimiento diario y sensación de desconexión entre sesiones.',
-    antecedentes_medicos: 'Hipotiroidismo leve diagnosticado en 2021. Estilo de vida sedentario con periodos de insomnio por rumiación.',
-    relaciones_contexto: 'Familia cercana en el extranjero. Convive con su pareja. Trabaja como analista de comunicación con alta presión horaria.',
-    patrones_comunes: 'Detonantes: plazos de entrega cortos, reuniones de evaluación semanales. Respuestas habituales: rumiación obsesiva nocturna, evitación activa de opiniones divergentes.'
-  };
+  const demoClinicalHistory = isVirtualDemo ? {
+    resumen_vital: 'Paciente manifiesta deseo de iniciar proceso de acompaÃ±amiento psicolÃ³gico regular para tratar problemas asociados con ansiedad, autoexigencia y control emocional.',
+    antecedentes_psicologicos: 'Previamente realizÃ³ terapia cognitivo-conductual durante 6 meses en 2024 debido a ansiedad laboral. DecidiÃ³ suspenderla por falta de seguimiento diario y sensaciÃ³n de desconexiÃ³n entre sesiones.',
+    antecedentes_medicos: 'Hipotiroidismo leve diagnosticado en 2021. Estilo de vida sedentario con periodos de insomnio por rumiaciÃ³n.',
+    relaciones_contexto: 'Familia cercana en el extranjero. Convive con su pareja. Trabaja como analista de comunicaciÃ³n con alta presiÃ³n horaria.',
+    patrones_comunes: 'Detonantes: plazos de entrega cortos, reuniones de evaluaciÃ³n semanales. Respuestas habituales: rumiaciÃ³n obsesiva nocturna, evitaciÃ³n activa de opiniones divergentes.'
+  } : {};
+  const clinicalHistory = context.historial_clinico || demoClinicalHistory;
 
-  // Estados locales para edición de narrativa
+  // Estados locales para ediciÃ³n de narrativa
   const [resumenVital, setResumenVital] = useState(clinicalHistory.resumen_vital || '');
   const [antecedentesPsic, setAntecedentesPsic] = useState(clinicalHistory.antecedentes_psicologicos || '');
   const [antecedentesMed, setAntecedentesMed] = useState(clinicalHistory.antecedentes_medicos || '');
   const [relacionesCtx, setRelacionesCtx] = useState(clinicalHistory.relaciones_contexto || '');
   const [patronesComunes, setPatronesComunes] = useState(clinicalHistory.patrones_comunes || '');
   
-  // Nuevos campos para el Formulario Clínico Profundo
+  // Nuevos campos para el Formulario ClÃ­nico Profundo
   const [historiaFamiliar, setHistoriaFamiliar] = useState(clinicalHistory.historia_familiar || '');
   const [antecedentesFamSalud, setAntecedentesFamSalud] = useState(clinicalHistory.antecedentes_familiares_salud || '');
   const [redApoyo, setRedApoyo] = useState(clinicalHistory.red_apoyo_social || '');
@@ -132,16 +55,20 @@ export default function PacienteHistoriaView({ profile, onProfileUpdated, user, 
   // Estado para alternar la vista del formulario manual profundo
   const [showManualForm, setShowManualForm] = useState(false);
   
-  // Medicación y Cronología Reales de clinicalEngine
+  // MedicaciÃ³n y CronologÃ­a Reales de clinicalEngine
   const [meds, setMeds] = useState([]);
   const [events, setEvents] = useState([]);
-  const [proposals, setProposals] = useState([]); // Propuestas pendientes de Walter IA
+  const [proposals, setProposals] = useState([]); // Propuestas pendientes de IA Ãncora
+  const [clinicalProfile, setClinicalProfile] = useState(null);
+  const [lifeTree, setLifeTree] = useState(null);
+  const [timelineIndex, setTimelineIndex] = useState([]);
+  const [contextSnapshot, setContextSnapshot] = useState(null);
   const [loadingClinicalData, setLoadingClinicalData] = useState(false);
   
   const [newMed, setNewMed] = useState({ name: '', dose: '', frequency: '', prescriber: '' });
   const [newEvent, setNewEvent] = useState({ date: '', event: '', event_type: 'other' });
 
-  // Estados de edición para medicación y cronología
+  // Estados de ediciÃ³n para medicaciÃ³n y cronologÃ­a
   const [editingMedId, setEditingMedId] = useState(null);
   const [editedMedData, setEditedMedData] = useState({ name: '', dose: '', frequency: '', prescriber: '', authority_level: 3 });
 
@@ -149,42 +76,42 @@ export default function PacienteHistoriaView({ profile, onProfileUpdated, user, 
   const [editedEventData, setEditedEventData] = useState({ date: '', event: '', event_type: 'other', associated_emotion: '', intensity: 5, authority_level: 3 });
 
   // Documentos
-  const [uploadedFiles, setUploadedFiles] = useState(() => {
-    if (profile?.id) {
-      const local = localStorage.getItem(`uploaded_files_${profile.id}`);
-      if (local) return JSON.parse(local);
-    }
-    if (profile?.id === 'p-1' || profile?.id === 'tisute-id') {
-      return [
-        { name: 'Informe_Psicologico_Mayo_2026.pdf', size: '2.4 MB', date: '12/05/2026' },
-        { name: 'Analisis_Sangre_Tiroides.pdf', size: '1.1 MB', date: '08/05/2026' }
-      ];
-    }
-    return [];
-  });
+  const [uploadedFiles, setUploadedFiles] = useState([]);
   const [fileNameInput, setFileNameInput] = useState('');
 
-  const conclusiones = context.conclusiones || [
+  const conclusiones = context.conclusiones || (isVirtualDemo ? [
     'El paciente muestra resistencia a delegar responsabilidades laborales por miedo al error.',
-    'La rumiación se activa principalmente a partir de las 20:00h al revisar correos pendientes.'
-  ];
-  const pautasAccion = context.pautas_accion || [
-    'Limitar el acceso al correo corporativo después de las 19:00h.',
-    'Realizar registro guiado en el diario de Walter ante picos de ansiedad.',
-    'Practicar respiración diafragmática 4-7-8 durante 5 minutos en momentos de tensión.'
-  ];
+    'La rumiaciÃ³n se activa principalmente a partir de las 20:00h al revisar correos pendientes.'
+  ] : []);
+  const pautasAccion = context.pautas_accion || (isVirtualDemo ? [
+    'Limitar el acceso al correo corporativo despuÃ©s de las 19:00h.',
+    'Realizar registro guiado en el diario de Ãncora ante picos de ansiedad.',
+    'Practicar respiraciÃ³n diafragmÃ¡tica 4-7-8 durante 5 minutos en momentos de tensiÃ³n.'
+  ] : []);
 
-  // Cargar medicación, timeline y propuestas pendientes de clinicalEngine
+  // Cargar medicaciÃ³n, timeline y propuestas pendientes de clinicalEngine
   const loadClinicalData = async () => {
     if (!profile?.id) return;
     setLoadingClinicalData(true);
     try {
-      const dbMeds = await getMedications(profile.id);
-      const dbEvents = await getTimelineEvents(profile.id);
-      const dbProps = await getPendingProposals(profile.id);
+      const [dbMeds, dbEvents, dbProps, dbDocs, dbProfile, dbLifeTree, dbTimelineIndex, dbSnapshot] = await Promise.all([
+        getMedications(profile.id),
+        getTimelineEvents(profile.id),
+        getPendingProposals(profile.id),
+        getClinicalDocuments(profile.id),
+        getClinicalProfile(profile.id),
+        getClinicalLifeTree(profile.id),
+        getClinicalTimelineIndex(profile.id),
+        getPatientContextSnapshot(profile.id)
+      ]);
       setMeds(dbMeds);
       setEvents(dbEvents);
       setProposals(dbProps);
+      setUploadedFiles(dbDocs);
+      setClinicalProfile(dbProfile);
+      setLifeTree(dbLifeTree);
+      setTimelineIndex(dbTimelineIndex);
+      setContextSnapshot(dbSnapshot);
     } catch (err) {
       console.error("Error loading clinical data from engine:", err);
     } finally {
@@ -195,6 +122,71 @@ export default function PacienteHistoriaView({ profile, onProfileUpdated, user, 
   useEffect(() => {
     loadClinicalData();
   }, [profile?.id]);
+
+  const formatFileSize = (value) => {
+    if (typeof value === 'number') {
+      if (value >= 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(2)} MB`;
+      if (value >= 1024) return `${(value / 1024).toFixed(1)} KB`;
+      return `${value} B`;
+    }
+    return value || 'No indicado';
+  };
+
+  const formatDateTime = (value) => {
+    if (!value) return 'No indicado';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleString();
+  };
+
+  const getDocumentStatusInfo = (status) => {
+    const map = {
+      pending: { label: 'Pendiente', color: 'var(--text-secondary)' },
+      processing: { label: 'Procesando', color: 'var(--color-cyan)' },
+      ready: { label: 'Listo', color: 'var(--color-emerald)' },
+      error: { label: 'Error', color: 'var(--color-rose)' }
+    };
+    return map[status] || { label: status || 'Pendiente', color: 'var(--text-secondary)' };
+  };
+
+  const getProposalTypeInfo = (type) => {
+    const map = {
+      medication: { label: 'Medicacion', color: 'var(--color-cyan)' },
+      timeline_event: { label: 'Evento', color: 'var(--color-emerald)' },
+      clinical_fact: { label: 'Hecho clinico', color: 'var(--color-cyan)' },
+      risk_event: { label: 'Riesgo', color: 'var(--color-rose)' },
+      profile_patch: { label: 'Perfil clinico', color: 'var(--color-emerald)' },
+      question: { label: 'Pregunta', color: 'var(--color-cyan)' }
+    };
+    return map[type] || { label: type || 'Propuesta', color: 'var(--color-cyan)' };
+  };
+
+  const getProposalBody = (prop) => {
+    const data = prop.proposal_data || {};
+    return data.claim || data.event || data.name || data.question || data.summary_vital || data.risk_summary || 'Propuesta pendiente de revision.';
+  };
+
+  const pendingProfilePatches = proposals.filter(p => p.proposal_type === 'profile_patch' && p.status === 'pending');
+  const lifeTreeData = lifeTree?.tree_data || {};
+  const lifeTreeSections = [
+    ['family_origin', 'Familia de origen'],
+    ['childhood', 'Infancia'],
+    ['adolescence', 'Adolescencia'],
+    ['relationships', 'Relaciones'],
+    ['ruptures_losses', 'Rupturas y pÃ©rdidas'],
+    ['work_studies', 'Trabajo y estudios'],
+    ['health', 'Salud'],
+    ['supports_resources', 'Apoyos y recursos'],
+    ['current_situation', 'SituaciÃ³n actual'],
+    ['protective_factors', 'Factores protectores'],
+    ['open_questions', 'Preguntas abiertas']
+  ];
+  const renderTreeValue = (value) => {
+    if (!value) return [];
+    if (Array.isArray(value)) return value.map(item => typeof item === 'string' ? item : JSON.stringify(item));
+    if (typeof value === 'object') return [JSON.stringify(value)];
+    return [String(value)];
+  };
 
   // Guardar cambios narrativos en Supabase
   const handleSaveChanges = async () => {
@@ -207,7 +199,7 @@ export default function PacienteHistoriaView({ profile, onProfileUpdated, user, 
         antecedentes_medicos: antecedentesMed,
         relaciones_contexto: relacionesCtx,
         patrones_comunes: patronesComunes,
-        // Campos de la ficha clínica profunda
+        // Campos de la ficha clÃ­nica profunda
         historia_familiar: historiaFamiliar,
         antecedentes_familiares_salud: antecedentesFamSalud,
         red_apoyo_social: redApoyo,
@@ -246,7 +238,7 @@ export default function PacienteHistoriaView({ profile, onProfileUpdated, user, 
     }
   };
 
-  // Agregar medicación real
+  // Agregar medicaciÃ³n real
   const addMed = async () => {
     if (!newMed.name.trim() || !profile?.id) return;
     try {
@@ -258,7 +250,7 @@ export default function PacienteHistoriaView({ profile, onProfileUpdated, user, 
     }
   };
 
-  // Quitar medicación
+  // Quitar medicaciÃ³n
   const removeMed = async (medId) => {
     try {
       // Para simplificar, si es local o DB, filtramos localmente y actualizamos en localStorage/DB
@@ -274,7 +266,7 @@ export default function PacienteHistoriaView({ profile, onProfileUpdated, user, 
     }
   };
 
-  // Agregar evento de cronología real
+  // Agregar evento de cronologÃ­a real
   const addEvent = async () => {
     if (!newEvent.event.trim() || !newEvent.date || !profile?.id) return;
     try {
@@ -300,7 +292,7 @@ export default function PacienteHistoriaView({ profile, onProfileUpdated, user, 
     }
   };
 
-  // Actualizar medicación
+  // Actualizar medicaciÃ³n
   const handleUpdateMed = async (medId) => {
     if (!editedMedData.name.trim()) return;
     try {
@@ -379,61 +371,23 @@ export default function PacienteHistoriaView({ profile, onProfileUpdated, user, 
   };
 
   const processSingleFile = async (item) => {
-    // Establecer estado de lectura y análisis clínico real
-    setBatchQueue(prev => prev.map(q => q.id === item.id ? { ...q, status: 'ocr', progress: 40 } : q));
-
-    // Leer texto real según el tipo de archivo (plano, DOCX o PDF)
-    let contentText = null;
-    const file = item.fileObject;
     try {
-      if (file) {
-        if (file.type.startsWith('text/') || file.name.endsWith('.txt') || file.name.endsWith('.md') || file.name.endsWith('.json') || file.name.endsWith('.csv')) {
-          contentText = await new Promise((resolve) => {
-            const reader = new FileReader();
-            reader.onload = (e) => resolve(e.target.result);
-            reader.onerror = () => resolve(null);
-            reader.readAsText(file);
-          });
-        } else if (file.name.endsWith('.docx')) {
-          contentText = await readDocxFile(file);
-        } else if (file.name.endsWith('.pdf')) {
-          contentText = await readPdfFile(file);
-        }
-      }
-    } catch (err) {
-      console.error("Error al leer el archivo en ingesta caliente:", err);
-    }
-
-    // Análisis clínico dinámico de Walter IA
-    setBatchQueue(prev => prev.map(q => q.id === item.id ? { ...q, status: 'inferring', progress: 75 } : q));
-
-    try {
-      await simulateDocumentIngestion(profile.id, item.name, item.size, contentText);
-      
-      // Completado
+      setBatchQueue(prev => prev.map(q => q.id === item.id ? { ...q, status: 'uploading', progress: 35 } : q));
+      await uploadClinicalDocument(item.fileObject, profile.id);
+      setBatchQueue(prev => prev.map(q => q.id === item.id ? { ...q, status: 'processing', progress: 85 } : q));
       setBatchQueue(prev => prev.map(q => q.id === item.id ? { ...q, status: 'completed', progress: 100 } : q));
-
-      const newFileObj = { name: item.name, size: item.size, date: new Date().toLocaleDateString() };
-      setUploadedFiles(prev => {
-        const updated = [...prev, newFileObj];
-        localStorage.setItem(`uploaded_files_${profile.id}`, JSON.stringify(updated));
-        return updated;
-      });
-
-      // Refrescar reactivamente propuestas y datos consolidados al instante
       await loadClinicalData();
     } catch (err) {
       console.error("Error al procesar archivo en pipeline:", err);
-      setBatchQueue(prev => prev.map(q => q.id === item.id ? { ...q, status: 'error', progress: 100 } : q));
+      setBatchQueue(prev => prev.map(q => q.id === item.id ? { ...q, status: 'error', progress: 100, error: err.message } : q));
     }
 
-    // Auto-remover de la cola activa tras un retraso corto (solo para animación visual breve)
     setTimeout(() => {
       setBatchQueue(prev => prev.filter(q => q.id !== item.id));
-    }, 600);
+    }, 1800);
   };
 
-  // Aceptar y consolidar propuestas de Walter IA en caliente desde el portal del paciente
+  // Aceptar y consolidar propuestas de IA Ãncora desde el portal del paciente
   const handleAcceptProposal = async (proposal) => {
     try {
       await acceptProposal(proposal);
@@ -457,10 +411,11 @@ export default function PacienteHistoriaView({ profile, onProfileUpdated, user, 
     e.preventDefault();
     if (!fileNameInput.trim() || !profile?.id) return;
     
-    const originalFileName = fileNameInput.endsWith('.pdf') ? fileNameInput : `${fileNameInput}.pdf`;
+    const typedNote = fileNameInput.trim();
+    const originalFileName = `nota_manual_${new Date().toISOString().substring(0, 10)}.txt`;
     setFileNameInput('');
 
-    const virtualFile = new File(["Ficha clínica creada manualmente."], originalFileName, { type: 'text/plain' });
+    const virtualFile = new File([typedNote], originalFileName, { type: 'text/plain' });
     await processBatchQueue([virtualFile]);
   };
 
@@ -542,17 +497,17 @@ export default function PacienteHistoriaView({ profile, onProfileUpdated, user, 
       mimeType = 'application/json';
       fileName += '.json';
     } else if (format === 'markdown') {
-      fileContent = `# Expediente Clínico Vivo - Áncora
+      fileContent = `# Expediente ClÃ­nico Vivo - Ãncora
 **Usuario ID:** ${user.id}
 **Email:** ${user.email}
 
 ## 1. Resumen Vital
 ${resumenVital}
 
-## 2. Antecedentes Psicológicos
+## 2. Antecedentes PsicolÃ³gicos
 ${antecedentesPsic}
 
-## 3. Antecedentes Médicos
+## 3. Antecedentes MÃ©dicos
 ${antecedentesMed}
 
 ## 4. Relaciones y Contexto
@@ -561,16 +516,16 @@ ${relacionesCtx}
 ## 5. Patrones y Desencadenantes
 ${patronesComunes}
 
-## 6. Pautas de Acción
+## 6. Pautas de AcciÃ³n
 ${pautasAccion.map(p => `- ${p}`).join('\n')}
 
-## 7. Conclusiones IA/Psicólogo
+## 7. Conclusiones IA/PsicÃ³logo
 ${conclusiones.map(c => `- ${c}`).join('\n')}
 
-## 8. Pauta de Medicación Declarada
+## 8. Pauta de MedicaciÃ³n Declarada
 ${meds.map(m => `- **${m.name}** (${m.dose}): ${m.frequency} prescrito por ${m.prescriber}`).join('\n')}
 
-## 9. Cronología
+## 9. CronologÃ­a
 ${events.map(ev => `- *${ev.date}*: ${ev.event}`).join('\n')}
 `;
       mimeType = 'text/markdown';
@@ -594,17 +549,17 @@ ${events.map(ev => `- *${ev.date}*: ${ev.event}`).join('\n')}
       {/* Cabecera de Expediente */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
         <div>
-          <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0 }}>Mi Historial Clínico</h2>
+          <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0 }}>Mi Historial ClÃ­nico</h2>
           <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
-            Expediente vivo estructurado y verificado por tu psicólogo asignado.
+            Expediente vivo estructurado y verificado por tu psicÃ³logo asignado.
           </p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           {saveStatus === 'success' && (
-            <span style={{ fontSize: '0.72rem', color: 'var(--color-emerald)', fontWeight: 600 }}>✓ Cambios guardados correctamente</span>
+            <span style={{ fontSize: '0.72rem', color: 'var(--color-emerald)', fontWeight: 600 }}>âœ“ Cambios guardados correctamente</span>
           )}
           {saveStatus === 'error' && (
-            <span style={{ fontSize: '0.72rem', color: 'var(--color-rose)', fontWeight: 600 }}>✗ Error al guardar</span>
+            <span style={{ fontSize: '0.72rem', color: 'var(--color-rose)', fontWeight: 600 }}>âœ— Error al guardar</span>
           )}
           <button
             onClick={handleSaveChanges}
@@ -627,19 +582,21 @@ ${events.map(ev => `- *${ev.date}*: ${ev.event}`).join('\n')}
         </div>
       </div>
 
-      {/* Selector de Pestañas de Historial */}
+      {/* Selector de PestaÃ±as de Historial */}
       <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', gap: '4px', overflowX: 'auto', paddingBottom: '2px' }}>
         {[
-          { id: 'resumen', label: '📖 Resumen Vital', icon: BookOpen },
-          { id: 'cronologia', label: '📅 Cronología', icon: Clock },
-          { id: 'psicologico', label: '🧠 Antecedentes Psicológicos', icon: Heart },
-          { id: 'medico', label: '🩺 Antecedentes Médicos', icon: Activity },
-          { id: 'medicacion', label: '💊 Medicación', icon: Moon },
-          { id: 'relaciones', label: '👥 Relaciones y Contexto', icon: Users },
-          { id: 'patrones', label: '🧩 Patrones y Detonantes', icon: Layers },
-          { id: 'objetivos', label: '🎯 Objetivos y Pautas', icon: Target },
-          { id: 'documentos', label: '📁 Documentos', icon: FileText },
-          { id: 'exportacion', label: '📥 Exportar', icon: Download }
+          { id: 'resumen', label: 'Resumen Vital', icon: BookOpen },
+          { id: 'sintesis_ia', label: 'Sintesis IA', icon: ShieldCheck },
+          { id: 'arbol_vital', label: 'Arbol vital', icon: Layers },
+          { id: 'cronologia', label: 'Cronologia', icon: Clock },
+          { id: 'psicologico', label: 'ðŸ§  Antecedentes PsicolÃ³gicos', icon: Heart },
+          { id: 'medico', label: 'ðŸ©º Antecedentes MÃ©dicos', icon: Activity },
+          { id: 'medicacion', label: 'ðŸ’Š MedicaciÃ³n', icon: Moon },
+          { id: 'relaciones', label: 'ðŸ‘¥ Relaciones y Contexto', icon: Users },
+          { id: 'patrones', label: 'ðŸ§© Patrones y Detonantes', icon: Layers },
+          { id: 'objetivos', label: 'ðŸŽ¯ Objetivos y Pautas', icon: Target },
+          { id: 'documentos', label: 'ðŸ“ Documentos', icon: FileText },
+          { id: 'exportacion', label: 'ðŸ“¥ Exportar', icon: Download }
         ].map(tab => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -670,49 +627,80 @@ ${events.map(ev => `- *${ev.date}*: ${ev.event}`).join('\n')}
         })}
       </div>
 
-      {/* Contenido de las Pestañas */}
+      {/* Contenido de las PestaÃ±as */}
       <div className="glass-panel" style={{ padding: '24px', minHeight: '340px', background: 'rgba(5, 33, 58, 0.15)' }}>
         
-        {/* PESTAÑA 1: RESUMEN VITAL */}
+        {/* PESTAÃ‘A 1: RESUMEN VITAL */}
         {activeTab === 'resumen' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', textAlign: 'left' }}>
             
-            {/* GUÍA DE BIENVENIDA DE WALTER IA (EXPEDIENTE CLÍNICO VIVO) */}
+            {/* GUÃA DE BIENVENIDA DE WALTER IA (EXPEDIENTE CLÃNICO VIVO) */}
             <div className="glass-panel" style={{ padding: '20px', border: '1px solid rgba(6,182,212,0.15)', background: 'rgba(6,182,212,0.01)', borderRadius: '10px' }}>
               <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '12px' }}>
                 <Layers size={20} color="var(--color-cyan)" className="animate-pulse-soft" />
                 <h3 style={{ fontSize: '0.95rem', fontWeight: 900, color: '#ffffff', margin: 0 }}>
-                  🚀 Tu Expediente Clínico Vivo en Áncora
+                  ðŸš€ Tu Expediente ClÃ­nico Vivo en Ãncora
                 </h3>
               </div>
               <p style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', lineHeight: 1.45, margin: '0 0 16px 0' }}>
-                Prepara tu expediente antes de las sesiones de forma flexible y segura. Walter IA analizará de forma inmutable la información que aportes y redactará propuestas que tu psicólogo revisará contigo. Puedes ir aportando datos continuamente.
+                Prepara tu expediente antes de las sesiones de forma flexible y segura. IA Ãncora analizarÃ¡ de forma inmutable la informaciÃ³n que aportes y redactarÃ¡ propuestas que tu psicÃ³logo revisarÃ¡ contigo. Puedes ir aportando datos continuamente.
               </p>
               
-              {/* Tarjetas de características */}
+              {/* Tarjetas de caracterÃ­sticas */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
                 <div style={{ background: 'rgba(0,0,0,0.15)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.03)' }}>
-                  <strong style={{ fontSize: '0.74rem', color: 'var(--color-cyan)', display: 'block', marginBottom: '4px' }}>📂 1. Todo tipo de Archivos</strong>
+                  <strong style={{ fontSize: '0.74rem', color: 'var(--color-cyan)', display: 'block', marginBottom: '4px' }}>ðŸ“‚ 1. Todo tipo de Archivos</strong>
                   <span style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)', lineHeight: 1.35, display: 'block' }}>
-                    Sube informes PDF, analíticas de sangre, fotos de tus recetas/cajas de medicamentos o notas escritas de texto.
+                    Sube informes PDF, analÃ­ticas de sangre, fotos de tus recetas/cajas de medicamentos o notas escritas de texto.
                   </span>
                 </div>
                 <div style={{ background: 'rgba(0,0,0,0.15)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.03)' }}>
-                  <strong style={{ fontSize: '0.74rem', color: 'var(--color-cyan)', display: 'block', marginBottom: '4px' }}>🎤 2. Diarios y Audios</strong>
+                  <strong style={{ fontSize: '0.74rem', color: 'var(--color-cyan)', display: 'block', marginBottom: '4px' }}>ðŸŽ¤ 2. Diarios y Audios</strong>
                   <span style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)', lineHeight: 1.35, display: 'block' }}>
-                    Graba diarios de voz o audios de sesiones. Walter los transcribirá de forma privada para extraer la cronología de hitos vitales.
+                    Graba diarios de voz o audios de sesiones. IA Ãncora los transcribirÃ¡ de forma privada para extraer la cronologÃ­a de hitos vitales.
                   </span>
                 </div>
                 <div style={{ background: 'rgba(0,0,0,0.15)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.03)' }}>
-                  <strong style={{ fontSize: '0.74rem', color: 'var(--color-cyan)', display: 'block', marginBottom: '4px' }}>🔄 3. Control Clínico</strong>
+                  <strong style={{ fontSize: '0.74rem', color: 'var(--color-cyan)', display: 'block', marginBottom: '4px' }}>ðŸ”„ 3. Control ClÃ­nico</strong>
                   <span style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)', lineHeight: 1.35, display: 'block' }}>
-                    La IA no decide tu tratamiento. Cada dato extraído queda en revisión hasta que tu psicólogo lo valide en el panel clínico.
+                    La IA no decide tu tratamiento. Cada dato extraÃ­do queda en revisiÃ³n hasta que tu psicÃ³logo lo valide en el panel clÃ­nico.
                   </span>
                 </div>
               </div>
             </div>
 
-            {/* ZONA DE ACCIÓN: MÉTODOS DE APORTACIÓN */}
+            {(clinicalProfile || pendingProfilePatches.length > 0) && (
+              <div className="glass-panel" style={{ padding: '16px', border: '1px solid rgba(16,185,129,0.18)', background: 'rgba(16,185,129,0.03)', borderRadius: '10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                  <ShieldCheck size={16} color="var(--color-emerald)" />
+                  <strong style={{ fontSize: '0.82rem', color: '#ffffff' }}>
+                    {clinicalProfile ? 'Perfil clinico consolidado' : 'Borrador IA pendiente de revision'}
+                  </strong>
+                </div>
+                {clinicalProfile ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.74rem', color: 'var(--text-secondary)', lineHeight: 1.45 }}>
+                    {clinicalProfile.summary_vital && <p style={{ margin: 0 }}><strong style={{ color: 'var(--color-emerald)' }}>Resumen:</strong> {clinicalProfile.summary_vital}</p>}
+                    {clinicalProfile.psychological_history && <p style={{ margin: 0 }}><strong style={{ color: 'var(--color-emerald)' }}>Antecedentes:</strong> {clinicalProfile.psychological_history}</p>}
+                    {clinicalProfile.patterns && <p style={{ margin: 0 }}><strong style={{ color: 'var(--color-emerald)' }}>Patrones:</strong> {clinicalProfile.patterns}</p>}
+                    {clinicalProfile.goals && <p style={{ margin: 0 }}><strong style={{ color: 'var(--color-emerald)' }}>Objetivos:</strong> {clinicalProfile.goals}</p>}
+                    {clinicalProfile.risk_summary && <p style={{ margin: 0 }}><strong style={{ color: 'var(--color-rose)' }}>Riesgo:</strong> {clinicalProfile.risk_summary}</p>}
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {pendingProfilePatches.map(prop => (
+                      <div key={prop.id} style={{ padding: '10px 12px', background: 'rgba(0,0,0,0.18)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.03)' }}>
+                        <p style={{ margin: '0 0 6px 0', color: '#fff', fontSize: '0.76rem', lineHeight: 1.4 }}>{getProposalBody(prop)}</p>
+                        {(prop.source_quote || prop.source_metadata?.quote) && (
+                          <span style={{ fontSize: '0.64rem', color: 'var(--text-secondary)' }}>Cita: {prop.source_quote || prop.source_metadata?.quote}</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ZONA DE ACCIÃ“N: MÃ‰TODOS DE APORTACIÃ“N */}
             <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', borderBottom: '1px solid rgba(255,255,255,0.04)', paddingBottom: '16px' }}>
               <button 
                 onClick={() => setActiveTab('documentos')}
@@ -732,17 +720,17 @@ ${events.map(ev => `- *${ev.date}*: ${ev.event}`).join('\n')}
               </button>
             </div>
 
-            {/* FORMULARIO CLÍNICO MANUAL (ONBOARDING PROFUNDO) */}
+            {/* FORMULARIO CLÃNICO MANUAL (ONBOARDING PROFUNDO) */}
             {showManualForm ? (
               <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                 <div style={{ borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
                   <h4 style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--color-cyan)', textTransform: 'uppercase', margin: 0 }}>
-                    Formulario Clínico Profundo (Ficha del Paciente)
+                    Formulario ClÃ­nico Profundo (Ficha del Paciente)
                   </h4>
-                  <span style={{ fontSize: '0.62rem', color: 'var(--text-tertiary)' }}>Completa esta información para dar contexto estructural a tu psicólogo.</span>
+                  <span style={{ fontSize: '0.62rem', color: 'var(--text-tertiary)' }}>Completa esta informaciÃ³n para dar contexto estructural a tu psicÃ³logo.</span>
                 </div>
 
-                {/* Narrativa Básica */}
+                {/* Narrativa BÃ¡sica */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                   <label style={{ fontSize: '0.7rem', fontWeight: 'bold', color: 'var(--text-secondary)' }}>Narrativa General y Motivo de Consulta</label>
                   <textarea
@@ -751,53 +739,53 @@ ${events.map(ev => `- *${ev.date}*: ${ev.event}`).join('\n')}
                     className="form-input"
                     rows={4}
                     style={{ width: '100%', background: 'var(--background-tertiary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '10px', color: '#ffffff', fontSize: '0.76rem', lineHeight: 1.4, resize: 'vertical' }}
-                    placeholder="Resume brevemente por qué decides iniciar este proceso psicológico ahora..."
+                    placeholder="Resume brevemente por quÃ© decides iniciar este proceso psicolÃ³gico ahora..."
                   />
                 </div>
 
-                {/* SECCIÓN 1: FAMILIA Y PASADO */}
+                {/* SECCIÃ“N 1: FAMILIA Y PASADO */}
                 <div style={{ padding: '16px', background: 'rgba(0,0,0,0.12)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.02)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--color-cyan)', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.03)', paddingBottom: '4px' }}>
-                    👪 Familia y Pasado
+                    ðŸ‘ª Familia y Pasado
                   </span>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <label style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>Dinámicas Familiares y Relaciones en tu infancia</label>
+                    <label style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>DinÃ¡micas Familiares y Relaciones en tu infancia</label>
                     <textarea
                       value={historiaFamiliar}
                       onChange={(e) => setHistoriaFamiliar(e.target.value)}
                       className="form-input"
                       rows={3}
                       style={{ width: '100%', background: 'var(--background-tertiary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '8px', color: '#ffffff', fontSize: '0.74rem', resize: 'vertical' }}
-                      placeholder="¿Cómo describirías la relación con tus padres y hermanos durante tu infancia?..."
+                      placeholder="Â¿CÃ³mo describirÃ­as la relaciÃ³n con tus padres y hermanos durante tu infancia?..."
                     />
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <label style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>Antecedentes Familiares de Salud Mental o Física</label>
+                    <label style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>Antecedentes Familiares de Salud Mental o FÃ­sica</label>
                     <textarea
                       value={antecedentesFamSalud}
                       onChange={(e) => setAntecedentesFamSalud(e.target.value)}
                       className="form-input"
                       rows={2}
                       style={{ width: '100%', background: 'var(--background-tertiary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '8px', color: '#ffffff', fontSize: '0.74rem', resize: 'vertical' }}
-                      placeholder="¿Hay antecedentes en tu familia de depresión, ansiedad, adicciones u otras patologías médicas?..."
+                      placeholder="Â¿Hay antecedentes en tu familia de depresiÃ³n, ansiedad, adicciones u otras patologÃ­as mÃ©dicas?..."
                     />
                   </div>
                 </div>
 
-                {/* SECCIÓN 2: RELACIONES Y RED DE APOYO */}
+                {/* SECCIÃ“N 2: RELACIONES Y RED DE APOYO */}
                 <div style={{ padding: '16px', background: 'rgba(0,0,0,0.12)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.02)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--color-cyan)', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.03)', paddingBottom: '4px' }}>
-                    👥 Relaciones y Red de Apoyo Social
+                    ðŸ‘¥ Relaciones y Red de Apoyo Social
                   </span>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <label style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>Situación de Pareja actual y Convivencia</label>
+                    <label style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>SituaciÃ³n de Pareja actual y Convivencia</label>
                     <textarea
                       value={redApoyo}
                       onChange={(e) => setRedApoyo(e.target.value)}
                       className="form-input"
                       rows={2}
                       style={{ width: '100%', background: 'var(--background-tertiary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '8px', color: '#ffffff', fontSize: '0.74rem', resize: 'vertical' }}
-                      placeholder="¿Con quién convives? ¿Cómo calificarías tu relación de pareja actual o de soporte familiar?..."
+                      placeholder="Â¿Con quiÃ©n convives? Â¿CÃ³mo calificarÃ­as tu relaciÃ³n de pareja actual o de soporte familiar?..."
                     />
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -808,15 +796,15 @@ ${events.map(ev => `- *${ev.date}*: ${ev.event}`).join('\n')}
                       className="form-input"
                       rows={2}
                       style={{ width: '100%', background: 'var(--background-tertiary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '8px', color: '#ffffff', fontSize: '0.74rem', resize: 'vertical' }}
-                      placeholder="¿Cuentas con una red de amigos activa? ¿Sueles experimentar sentimientos de soledad o aislamiento?..."
+                      placeholder="Â¿Cuentas con una red de amigos activa? Â¿Sueles experimentar sentimientos de soledad o aislamiento?..."
                     />
                   </div>
                 </div>
 
-                {/* SECCIÓN 3: TERAPIAS Y ANTECEDENTES TERAPÉUTICOS */}
+                {/* SECCIÃ“N 3: TERAPIAS Y ANTECEDENTES TERAPÃ‰UTICOS */}
                 <div style={{ padding: '16px', background: 'rgba(0,0,0,0.12)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.02)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--color-cyan)', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.03)', paddingBottom: '4px' }}>
-                    🧠 Procesos Terapéuticos Anteriores
+                    ðŸ§  Procesos TerapÃ©uticos Anteriores
                   </span>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                     <label style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>Detalle de Terapias Anteriores y su utilidad</label>
@@ -826,58 +814,58 @@ ${events.map(ev => `- *${ev.date}*: ${ev.event}`).join('\n')}
                       className="form-input"
                       rows={2}
                       style={{ width: '100%', background: 'var(--background-tertiary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '8px', color: '#ffffff', fontSize: '0.74rem', resize: 'vertical' }}
-                      placeholder="¿Qué tipo de terapia realizaste anteriormente? ¿Qué herramientas te sirvieron o no?..."
+                      placeholder="Â¿QuÃ© tipo de terapia realizaste anteriormente? Â¿QuÃ© herramientas te sirvieron o no?..."
                     />
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <label style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>Razones de finalización o abandono de terapias previas</label>
+                    <label style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>Razones de finalizaciÃ³n o abandono de terapias previas</label>
                     <textarea
                       value={razonAbandono}
                       onChange={(e) => setRazonAbandono(e.target.value)}
                       className="form-input"
                       rows={2}
                       style={{ width: '100%', background: 'var(--background-tertiary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '8px', color: '#ffffff', fontSize: '0.74rem', resize: 'vertical' }}
-                      placeholder="¿Por qué finalizó tu último proceso de terapia? (Abandono por falta de seguimiento, alta médica, etc.)..."
+                      placeholder="Â¿Por quÃ© finalizÃ³ tu Ãºltimo proceso de terapia? (Abandono por falta de seguimiento, alta mÃ©dica, etc.)..."
                     />
                   </div>
                 </div>
 
-                {/* SECCIÓN 4: HÁBITOS Y ESTILO DE VIDA */}
+                {/* SECCIÃ“N 4: HÃBITOS Y ESTILO DE VIDA */}
                 <div style={{ padding: '16px', background: 'rgba(0,0,0,0.12)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.02)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--color-emerald)', textTransform: 'uppercase', borderBottom: '1px solid rgba(255,255,255,0.03)', paddingBottom: '4px' }}>
-                    🩺 Hábitos de Vida, Sueño y Estrés
+                    ðŸ©º HÃ¡bitos de Vida, SueÃ±o y EstrÃ©s
                   </span>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <label style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>Calidad del Sueño y Descanso nocturno</label>
+                    <label style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>Calidad del SueÃ±o y Descanso nocturno</label>
                     <textarea
                       value={habitosSueno}
                       onChange={(e) => setHabitosSueno(e.target.value)}
                       className="form-input"
                       rows={2}
                       style={{ width: '100%', background: 'var(--background-tertiary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '8px', color: '#ffffff', fontSize: '0.74rem', resize: 'vertical' }}
-                      placeholder="¿Sufres de insomnio de conciliación o rumiación nocturna? ¿Cuántas horas sueles dormir?..."
+                      placeholder="Â¿Sufres de insomnio de conciliaciÃ³n o rumiaciÃ³n nocturna? Â¿CuÃ¡ntas horas sueles dormir?..."
                     />
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <label style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>Alimentación, Ejercicio y Consumo de estimulantes</label>
+                    <label style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>AlimentaciÃ³n, Ejercicio y Consumo de estimulantes</label>
                     <textarea
                       value={habitosVida}
                       onChange={(e) => setHabitosVida(e.target.value)}
                       className="form-input"
                       rows={2}
                       style={{ width: '100%', background: 'var(--background-tertiary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '8px', color: '#ffffff', fontSize: '0.74rem', resize: 'vertical' }}
-                      placeholder="Hábitos generales de alimentación, actividad física y consumo de cafeína/alcohol/tabaco..."
+                      placeholder="HÃ¡bitos generales de alimentaciÃ³n, actividad fÃ­sica y consumo de cafeÃ­na/alcohol/tabaco..."
                     />
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <label style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>Nivel de Estrés laboral o financiero percibido</label>
+                    <label style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>Nivel de EstrÃ©s laboral o financiero percibido</label>
                     <textarea
                       value={estresPercibido}
                       onChange={(e) => setEstresPercibido(e.target.value)}
                       className="form-input"
                       rows={2}
                       style={{ width: '100%', background: 'var(--background-tertiary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '8px', color: '#ffffff', fontSize: '0.74rem', resize: 'vertical' }}
-                      placeholder="¿Cómo calificarías tu nivel actual de estrés derivado del trabajo, finanzas u otras obligaciones?..."
+                      placeholder="Â¿CÃ³mo calificarÃ­as tu nivel actual de estrÃ©s derivado del trabajo, finanzas u otras obligaciones?..."
                     />
                   </div>
                 </div>
@@ -901,17 +889,109 @@ ${events.map(ev => `- *${ev.date}*: ${ev.event}`).join('\n')}
                   className="form-input"
                   rows={8}
                   style={{ width: '100%', background: 'var(--background-tertiary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '12px', color: '#ffffff', fontSize: '0.8rem', lineHeight: 1.45, resize: 'vertical' }}
-                  placeholder="Escribe un resumen general de tu situación vital actual..."
+                  placeholder="Escribe un resumen general de tu situaciÃ³n vital actual..."
                 />
               </div>
             )}
           </div>
         )}
 
-        {/* PESTAÑA 2: CRONOLOGÍA */}
+        {/* PESTAÃ‘A 2: CRONOLOGÃA */}
+        {activeTab === 'sintesis_ia' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '18px', textAlign: 'left' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <div>
+                <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--color-cyan)', textTransform: 'uppercase' }}>Memoria compacta para el chat</span>
+                <p style={{ margin: '6px 0 0', fontSize: '0.72rem', color: 'var(--text-secondary)', lineHeight: 1.45 }}>
+                  Esta es la sintesis que consume la IA en conversacion. No incluye documentos completos ni extracciones largas.
+                </p>
+              </div>
+              {contextSnapshot?.created_at && (
+                <span style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)' }}>
+                  Actualizada: {formatDateTime(contextSnapshot.created_at)}
+                </span>
+              )}
+            </div>
+
+            <div className="glass-panel" style={{ padding: '16px', borderRadius: '8px', border: '1px solid rgba(6,182,212,0.18)', background: 'rgba(6,182,212,0.025)' }}>
+              {contextSnapshot?.content ? (
+                <p style={{ whiteSpace: 'pre-wrap', margin: 0, fontSize: '0.76rem', color: 'var(--text-primary)', lineHeight: 1.55 }}>
+                  {contextSnapshot.content}
+                </p>
+              ) : (
+                <p style={{ margin: 0, fontSize: '0.76rem', color: 'var(--text-secondary)' }}>
+                  Todavia no hay snapshot clinico. Sube documentos o cierra una sesion de chat para que el motor genere la primera sintesis.
+                </p>
+              )}
+            </div>
+
+            {contextSnapshot?.summary?.for_next_session && (
+              <div className="glass-panel" style={{ padding: '16px', borderRadius: '8px', border: '1px solid rgba(16,185,129,0.16)', background: 'rgba(16,185,129,0.025)' }}>
+                <strong style={{ fontSize: '0.78rem', color: 'var(--color-emerald)', display: 'block', marginBottom: '10px' }}>Para proxima sesion</strong>
+                <p style={{ margin: '0 0 10px', fontSize: '0.74rem', color: 'var(--text-secondary)', lineHeight: 1.45 }}>
+                  {contextSnapshot.summary.for_next_session.briefing || 'Sin briefing generado.'}
+                </p>
+                {(contextSnapshot.summary.for_next_session.questions || []).map((question, idx) => (
+                  <div key={idx} style={{ fontSize: '0.72rem', color: '#fff', padding: '8px 10px', borderRadius: '6px', background: 'rgba(0,0,0,0.18)', marginBottom: '6px' }}>
+                    {question}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'arbol_vital' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '18px', textAlign: 'left' }}>
+            <div>
+              <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--color-cyan)', textTransform: 'uppercase' }}>Arbol vital sintetizado</span>
+              <p style={{ margin: '6px 0 0', fontSize: '0.72rem', color: 'var(--text-secondary)', lineHeight: 1.45 }}>
+                Organizacion por areas vitales. Todo lo generado por IA debe revisarse antes de tratarlo como dato estable.
+              </p>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px' }}>
+              {lifeTreeSections.map(([key, label]) => {
+                const values = renderTreeValue(lifeTreeData[key]);
+                return (
+                  <div key={key} className="glass-panel" style={{ padding: '14px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.06)', background: 'rgba(0,0,0,0.12)' }}>
+                    <strong style={{ display: 'block', color: '#fff', fontSize: '0.76rem', marginBottom: '8px' }}>{label}</strong>
+                    {values.length > 0 ? values.map((item, idx) => (
+                      <p key={idx} style={{ margin: '0 0 6px', color: 'var(--text-secondary)', fontSize: '0.72rem', lineHeight: 1.4 }}>
+                        {item}
+                      </p>
+                    )) : (
+                      <span style={{ color: 'var(--text-tertiary)', fontSize: '0.7rem' }}>Sin datos sintetizados.</span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
         {activeTab === 'cronologia' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', textAlign: 'left' }}>
-            <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--color-cyan)', textTransform: 'uppercase' }}>Línea Temporal de Hitos y Eventos</span>
+            <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--color-cyan)', textTransform: 'uppercase' }}>LÃ­nea Temporal de Hitos y Eventos</span>
+            {timelineIndex.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '14px', borderRadius: '8px', border: '1px solid rgba(6,182,212,0.14)', background: 'rgba(6,182,212,0.025)' }}>
+                <strong style={{ fontSize: '0.76rem', color: '#fff' }}>Eje cronologico sintetizado por la IA</strong>
+                {timelineIndex.map((item) => (
+                  <div key={item.id} style={{ padding: '10px 12px', borderRadius: '6px', background: 'rgba(0,0,0,0.16)', border: '1px solid rgba(255,255,255,0.04)' }}>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '4px' }}>
+                      <strong style={{ fontSize: '0.72rem', color: 'var(--color-cyan)' }}>{item.event_date || 'Sin fecha clinica'}</strong>
+                      <span style={{ fontSize: '0.6rem', color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>{item.date_precision || 'unknown'} · {item.life_stage || 'unknown'} · {item.domain || 'other'}</span>
+                    </div>
+                    <p style={{ margin: '0 0 4px', fontSize: '0.75rem', color: '#fff', lineHeight: 1.4 }}>{item.title || item.description}</p>
+                    {item.description && item.description !== item.title && (
+                      <p style={{ margin: 0, fontSize: '0.7rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>{item.description}</p>
+                    )}
+                    {Array.isArray(item.evidence_quotes) && item.evidence_quotes[0] && (
+                      <p style={{ margin: '6px 0 0', fontSize: '0.66rem', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>Cita: {item.evidence_quotes[0]}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
             
             {/* Agregar evento */}
             <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -935,7 +1015,7 @@ ${events.map(ev => `- *${ev.date}*: ${ev.event}`).join('\n')}
                 style={{ height: '36px', padding: '0 16px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '6px' }}
               >
                 <Plus size={14} />
-                <span>Añadir</span>
+                <span>AÃ±adir</span>
               </button>
             </div>
 
@@ -976,14 +1056,14 @@ ${events.map(ev => `- *${ev.date}*: ${ev.event}`).join('\n')}
                               style={{ height: '32px', fontSize: '0.75rem', background: 'var(--background-tertiary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '0 8px', color: '#ffffff' }}
                             >
                               <option value="vital_event">Suceso Vital</option>
-                              <option value="symptom_start">Inicio de Síntomas</option>
-                              <option value="therapy_session">Sesión de Terapia</option>
+                              <option value="symptom_start">Inicio de SÃ­ntomas</option>
+                              <option value="therapy_session">SesiÃ³n de Terapia</option>
                               <option value="crisis">Crisis/Malestar Agudo</option>
                               <option value="other">Otro</option>
                             </select>
                           </div>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                            <label style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>Emoción Asociada</label>
+                            <label style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>EmociÃ³n Asociada</label>
                             <input 
                               type="text"
                               value={editedEventData.associated_emotion}
@@ -1004,21 +1084,21 @@ ${events.map(ev => `- *${ev.date}*: ${ev.event}`).join('\n')}
                             />
                           </div>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                            <label style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>Autoridad Clínica</label>
+                            <label style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>Autoridad ClÃ­nica</label>
                             <select 
                               value={editedEventData.authority_level}
                               onChange={(e) => setEditedEventData(prev => ({ ...prev, authority_level: parseInt(e.target.value) }))}
                               style={{ height: '32px', fontSize: '0.75rem', background: 'var(--background-tertiary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '0 8px', color: '#ffffff' }}
                             >
-                              <option value={1}>Validado por Psicólogo</option>
+                              <option value={1}>Validado por PsicÃ³logo</option>
                               <option value={2}>Documentado en Informe</option>
                               <option value={3}>Declarado por Paciente</option>
-                              <option value={4}>Inferencia de Walter IA</option>
+                              <option value={4}>Inferencia IA Ãncora</option>
                             </select>
                           </div>
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                          <label style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>Descripción del Evento</label>
+                          <label style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>DescripciÃ³n del Evento</label>
                           <textarea 
                             value={editedEventData.event}
                             onChange={(e) => setEditedEventData(prev => ({ ...prev, event: e.target.value }))}
@@ -1068,14 +1148,14 @@ ${events.map(ev => `- *${ev.date}*: ${ev.event}`).join('\n')}
                                 color: ev.authority_level === 1 ? 'var(--color-emerald)' : (ev.authority_level === 2 ? 'var(--color-cyan)' : 'var(--color-amber)') 
                               }}
                             >
-                              {ev.authority_level === 1 ? 'Validado por Psicólogo' : (ev.authority_level === 2 ? 'Documentado' : 'Declarado')}
+                              {ev.authority_level === 1 ? 'Validado por PsicÃ³logo' : (ev.authority_level === 2 ? 'Documentado' : 'Declarado')}
                             </span>
                           )}
                         </div>
                         <span style={{ fontSize: '0.78rem', color: '#ffffff' }}>{ev.description || ev.event}</span>
                         {ev.associated_emotion && (
                           <span style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', display: 'block', marginTop: '2px' }}>
-                            Emoción: {ev.associated_emotion} (Intensidad: {ev.intensity}/10)
+                            EmociÃ³n: {ev.associated_emotion} (Intensidad: {ev.intensity}/10)
                           </span>
                         )}
                       </div>
@@ -1111,7 +1191,7 @@ ${events.map(ev => `- *${ev.date}*: ${ev.event}`).join('\n')}
               })}
             </div>
 
-            {/* Propuestas pendientes para Cronología */}
+            {/* Propuestas pendientes para CronologÃ­a */}
             {(() => {
               const pendingTimelineProps = proposals.filter(p => p.proposal_type === 'timeline_event' && p.status === 'pending');
               if (pendingTimelineProps.length === 0) return null;
@@ -1120,7 +1200,7 @@ ${events.map(ev => `- *${ev.date}*: ${ev.event}`).join('\n')}
                   <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '12px' }}>
                     <RefreshCw size={14} className="animate-spin-slow" color="var(--color-cyan)" />
                     <span style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--color-cyan)', textTransform: 'uppercase' }}>
-                      Propuestas de Walter IA para tu Cronología ({pendingTimelineProps.length})
+                      Propuestas de IA Ãncora para tu CronologÃ­a ({pendingTimelineProps.length})
                     </span>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -1141,7 +1221,7 @@ ${events.map(ev => `- *${ev.date}*: ${ev.event}`).join('\n')}
                           <p style={{ fontSize: '0.76rem', color: '#ffffff', margin: 0, lineHeight: 1.4 }}>{prop.proposal_data.event}</p>
                           {prop.proposal_data.associated_emotion && (
                             <span style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', display: 'block', marginTop: '2px' }}>
-                              Emoción sugerida: <em>{prop.proposal_data.associated_emotion}</em> (Intensidad: {prop.proposal_data.intensity}/10)
+                              EmociÃ³n sugerida: <em>{prop.proposal_data.associated_emotion}</em> (Intensidad: {prop.proposal_data.intensity}/10)
                             </span>
                           )}
                         </div>
@@ -1172,42 +1252,42 @@ ${events.map(ev => `- *${ev.date}*: ${ev.event}`).join('\n')}
           </div>
         )}
 
-        {/* PESTAÑA 3: ANTECEDENTES PSICOLÓGICOS */}
+        {/* PESTAÃ‘A 3: ANTECEDENTES PSICOLÃ“GICOS */}
         {activeTab === 'psicologico' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', textAlign: 'left' }}>
-            <label style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--color-cyan)', textTransform: 'uppercase' }}>Procesos Terapéuticos Anteriores y Enfoques</label>
+            <label style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--color-cyan)', textTransform: 'uppercase' }}>Procesos TerapÃ©uticos Anteriores y Enfoques</label>
             <textarea
               value={antecedentesPsic}
               onChange={(e) => setAntecedentesPsic(e.target.value)}
               className="form-input"
               rows={8}
               style={{ width: '100%', background: 'var(--background-tertiary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '12px', color: '#ffffff', fontSize: '0.8rem', lineHeight: 1.45, resize: 'vertical' }}
-              placeholder="Describe terapias anteriores y lo que te ayudó o no te ayudó..."
+              placeholder="Describe terapias anteriores y lo que te ayudÃ³ o no te ayudÃ³..."
             />
           </div>
         )}
 
-        {/* PESTAÑA 4: ANTECEDENTES MÉDICOS */}
+        {/* PESTAÃ‘A 4: ANTECEDENTES MÃ‰DICOS */}
         {activeTab === 'medico' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', textAlign: 'left' }}>
-            <label style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--color-emerald)', textTransform: 'uppercase' }}>Condiciones Médicas Generales y Estilo de Vida</label>
+            <label style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--color-emerald)', textTransform: 'uppercase' }}>Condiciones MÃ©dicas Generales y Estilo de Vida</label>
             <textarea
               value={antecedentesMed}
               onChange={(e) => setAntecedentesMed(e.target.value)}
               className="form-input"
               rows={8}
               style={{ width: '100%', background: 'var(--background-tertiary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '12px', color: '#ffffff', fontSize: '0.8rem', lineHeight: 1.45, resize: 'vertical' }}
-              placeholder="Alergias relevantes, cirugías, analíticas, hábitos, etc..."
+              placeholder="Alergias relevantes, cirugÃ­as, analÃ­ticas, hÃ¡bitos, etc..."
             />
           </div>
         )}
 
-        {/* PESTAÑA 5: MEDICACIÓN */}
+        {/* PESTAÃ‘A 5: MEDICACIÃ“N */}
         {activeTab === 'medicacion' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', textAlign: 'left' }}>
-            <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--color-cyan)', textTransform: 'uppercase' }}>Pauta de Medicación Declarada</span>
+            <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--color-cyan)', textTransform: 'uppercase' }}>Pauta de MedicaciÃ³n Declarada</span>
             
-            {/* Formulario medicación */}
+            {/* Formulario medicaciÃ³n */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px' }}>
               <input 
                 type="text"
@@ -1234,7 +1314,7 @@ ${events.map(ev => `- *${ev.date}*: ${ev.event}`).join('\n')}
                 type="text"
                 value={newMed.prescriber}
                 onChange={(e) => setNewMed(prev => ({ ...prev, prescriber: e.target.value }))}
-                placeholder="Médico Prescriptor"
+                placeholder="MÃ©dico Prescriptor"
                 style={{ height: '36px', fontSize: '0.75rem', background: 'var(--background-tertiary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '0 10px', color: '#ffffff' }}
               />
               <button 
@@ -1268,7 +1348,7 @@ ${events.map(ev => `- *${ev.date}*: ${ev.event}`).join('\n')}
                     >
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px' }}>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                          <label style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>Fármaco</label>
+                          <label style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>FÃ¡rmaco</label>
                           <input 
                             type="text"
                             value={editedMedData.name}
@@ -1304,16 +1384,16 @@ ${events.map(ev => `- *${ev.date}*: ${ev.event}`).join('\n')}
                           />
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                          <label style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>Autoridad Clínica</label>
+                          <label style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>Autoridad ClÃ­nica</label>
                           <select 
                             value={editedMedData.authority_level}
                             onChange={(e) => setEditedMedData(prev => ({ ...prev, authority_level: parseInt(e.target.value) }))}
                             style={{ height: '32px', fontSize: '0.75rem', background: 'var(--background-tertiary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '0 8px', color: '#ffffff' }}
                           >
-                            <option value={1}>Validado por Psicólogo</option>
+                            <option value={1}>Validado por PsicÃ³logo</option>
                             <option value={2}>Documentado en Informe</option>
                             <option value={3}>Declarado por Paciente</option>
-                            <option value={4}>Inferencia de Walter IA</option>
+                            <option value={4}>Inferencia IA Ãncora</option>
                           </select>
                         </div>
                       </div>
@@ -1368,11 +1448,11 @@ ${events.map(ev => `- *${ev.date}*: ${ev.event}`).join('\n')}
                               color: med.authority_level === 1 ? 'var(--color-emerald)' : (med.authority_level === 2 ? 'var(--color-cyan)' : 'var(--color-amber)') 
                             }}
                           >
-                            {med.authority_level === 1 ? 'Validado por Psicólogo' : (med.authority_level === 2 ? 'Documentado' : 'Declarado')}
+                            {med.authority_level === 1 ? 'Validado por PsicÃ³logo' : (med.authority_level === 2 ? 'Documentado' : 'Declarado')}
                           </span>
                         )}
                       </div>
-                      <span>{med.frequency} · Prescriptor: {med.prescriber}</span>
+                      <span>{med.frequency} Â· Prescriptor: {med.prescriber}</span>
                     </div>
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                       <button 
@@ -1404,7 +1484,7 @@ ${events.map(ev => `- *${ev.date}*: ${ev.event}`).join('\n')}
               })}
             </div>
 
-            {/* Propuestas pendientes para Medicación */}
+            {/* Propuestas pendientes para MedicaciÃ³n */}
             {(() => {
               const pendingMedProps = proposals.filter(p => p.proposal_type === 'medication' && p.status === 'pending');
               if (pendingMedProps.length === 0) return null;
@@ -1413,7 +1493,7 @@ ${events.map(ev => `- *${ev.date}*: ${ev.event}`).join('\n')}
                   <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '12px' }}>
                     <RefreshCw size={14} className="animate-spin-slow" color="var(--color-cyan)" />
                     <span style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--color-cyan)', textTransform: 'uppercase' }}>
-                      Propuestas de Medicación detectadas por Walter IA ({pendingMedProps.length})
+                      Propuestas de MedicaciÃ³n detectadas por IA Ãncora ({pendingMedProps.length})
                     </span>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -1432,11 +1512,11 @@ ${events.map(ev => `- *${ev.date}*: ${ev.event}`).join('\n')}
                             )}
                           </div>
                           <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', margin: 0 }}>
-                            Frecuencia sugerida: {prop.proposal_data.frequency} · Prescriptor sugerido: {prop.proposal_data.prescriber}
+                            Frecuencia sugerida: {prop.proposal_data.frequency} Â· Prescriptor sugerido: {prop.proposal_data.prescriber}
                           </p>
                           {prop.source_metadata?.textMessage && (
                             <span style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)', display: 'block', marginTop: '4px', fontStyle: 'italic' }}>
-                              Mención: "{prop.source_metadata.textMessage}"
+                              MenciÃ³n: "{prop.source_metadata.textMessage}"
                             </span>
                           )}
                         </div>
@@ -1469,13 +1549,13 @@ ${events.map(ev => `- *${ev.date}*: ${ev.event}`).join('\n')}
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center', background: 'rgba(245,158,11,0.02)', border: '1px solid rgba(245,158,11,0.12)', padding: '12px', borderRadius: '6px', fontSize: '0.68rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
               <AlertTriangle size={16} color="var(--color-amber)" style={{ flexShrink: 0 }} />
               <span>
-                <strong>Nota de seguridad:</strong> El equipo de psicólogos de ÁNCORA no prescribe ni modifica pautas farmacológicas. Esta sección recopila la medicación voluntariamente declarada por el paciente para fines de encuadre clínico multidisciplinar.
+                <strong>Nota de seguridad:</strong> El equipo de psicÃ³logos de ÃNCORA no prescribe ni modifica pautas farmacolÃ³gicas. Esta secciÃ³n recopila la medicaciÃ³n voluntariamente declarada por el paciente para fines de encuadre clÃ­nico multidisciplinar.
               </span>
             </div>
           </div>
         )}
 
-        {/* PESTAÑA 6: RELACIONES Y CONTEXTO */}
+        {/* PESTAÃ‘A 6: RELACIONES Y CONTEXTO */}
         {activeTab === 'relaciones' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', textAlign: 'left' }}>
             <label style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--color-cyan)', textTransform: 'uppercase' }}>Familia, Apoyo Social, Trabajo y Vivienda</label>
@@ -1485,12 +1565,12 @@ ${events.map(ev => `- *${ev.date}*: ${ev.event}`).join('\n')}
               className="form-input"
               rows={8}
               style={{ width: '100%', background: 'var(--background-tertiary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '12px', color: '#ffffff', fontSize: '0.8rem', lineHeight: 1.45, resize: 'vertical' }}
-              placeholder="Describe tus relaciones interpersonales, tu entorno familiar y situación económica..."
+              placeholder="Describe tus relaciones interpersonales, tu entorno familiar y situaciÃ³n econÃ³mica..."
             />
           </div>
         )}
 
-        {/* PESTAÑA 7: PATRONES Y DETONANTES */}
+        {/* PESTAÃ‘A 7: PATRONES Y DETONANTES */}
         {activeTab === 'patrones' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', textAlign: 'left' }}>
             <label style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--color-cyan)', textTransform: 'uppercase' }}>Pensamientos recurrentes, evitaciones y detonadores habituales</label>
@@ -1500,18 +1580,18 @@ ${events.map(ev => `- *${ev.date}*: ${ev.event}`).join('\n')}
               className="form-input"
               rows={8}
               style={{ width: '100%', background: 'var(--background-tertiary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '12px', color: '#ffffff', fontSize: '0.8rem', lineHeight: 1.45, resize: 'vertical' }}
-              placeholder="Identifica qué activa tu malestar y qué sueles hacer ante ello..."
+              placeholder="Identifica quÃ© activa tu malestar y quÃ© sueles hacer ante ello..."
             />
           </div>
         )}
 
-        {/* PESTAÑA 8: OBJETIVOS Y PAUTAS */}
+        {/* PESTAÃ‘A 8: OBJETIVOS Y PAUTAS */}
         {activeTab === 'objetivos' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', textAlign: 'left' }}>
             
-            {/* Pautas de acción */}
+            {/* Pautas de acciÃ³n */}
             <div>
-              <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--color-cyan)', textTransform: 'uppercase', display: 'block', marginBottom: '8px' }}>Pautas clínicas y compromisos acordados</span>
+              <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--color-cyan)', textTransform: 'uppercase', display: 'block', marginBottom: '8px' }}>Pautas clÃ­nicas y compromisos acordados</span>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {pautasAccion.map((pauta, idx) => (
                   <div key={idx} style={{ display: 'flex', gap: '8px', alignItems: 'center', background: 'rgba(255,255,255,0.01)', border: '1px solid var(--border)', padding: '10px 14px', borderRadius: '6px', fontSize: '0.76rem', color: '#ffffff' }}>
@@ -1524,11 +1604,11 @@ ${events.map(ev => `- *${ev.date}*: ${ev.event}`).join('\n')}
 
             {/* Conclusiones IA/Terapeuta */}
             <div>
-              <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--color-emerald)', textTransform: 'uppercase', display: 'block', marginBottom: '8px' }}>Conclusiones de análisis evolutivo</span>
+              <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--color-emerald)', textTransform: 'uppercase', display: 'block', marginBottom: '8px' }}>Conclusiones de anÃ¡lisis evolutivo</span>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {conclusiones.map((concl, idx) => (
                   <div key={idx} style={{ display: 'flex', gap: '8px', alignItems: 'center', background: 'rgba(255,255,255,0.01)', border: '1px solid var(--border)', padding: '10px 14px', borderRadius: '6px', fontSize: '0.76rem', color: '#ffffff' }}>
-                    <span style={{ color: 'var(--color-emerald)', fontWeight: 700 }}>✓</span>
+                    <span style={{ color: 'var(--color-emerald)', fontWeight: 700 }}>âœ“</span>
                     <span>{concl}</span>
                   </div>
                 ))}
@@ -1538,7 +1618,7 @@ ${events.map(ev => `- *${ev.date}*: ${ev.event}`).join('\n')}
           </div>
         )}
 
-        {/* PESTAÑA 9: DOCUMENTOS */}
+        {/* PESTAÃ‘A 9: DOCUMENTOS */}
         {activeTab === 'documentos' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', textAlign: 'left' }}>
             
@@ -1592,10 +1672,10 @@ ${events.map(ev => `- *${ev.date}*: ${ev.event}`).join('\n')}
               
               <div>
                 <strong style={{ fontSize: '0.82rem', color: '#ffffff', display: 'block', marginBottom: '4px' }}>
-                  {isDragging ? '¡Suelta tus archivos aquí!' : 'Arrastra y suelta tus archivos clínicos aquí'}
+                  {isDragging ? 'Â¡Suelta tus archivos aquÃ­!' : 'Arrastra y suelta tus archivos clÃ­nicos aquÃ­'}
                 </strong>
                 <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>
-                  O copia y pega (Ctrl+V) texto o imágenes. Soporta subidas en lote.
+                  O copia y pega (Ctrl+V) texto o imÃ¡genes. Soporta subidas en lote.
                 </span>
               </div>
               
@@ -1617,24 +1697,24 @@ ${events.map(ev => `- *${ev.date}*: ${ev.event}`).join('\n')}
               </label>
             </div>
 
-            {/* Formulario Manual Alternativo */}
+            {/* Nota manual persistida como documento real */}
             <form onSubmit={handleFileUpload} style={{ display: 'flex', gap: '10px', alignItems: 'center', padding: '10px 14px', background: 'rgba(0,0,0,0.12)', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.02)' }}>
-              <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', fontWeight: 'bold', whiteSpace: 'nowrap' }}>Agregar por Nombre:</span>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', fontWeight: 'bold', whiteSpace: 'nowrap' }}>Nota rapida:</span>
               <input 
                 type="text" 
                 className="form-input" 
                 value={fileNameInput} 
                 onChange={(e) => setFileNameInput(e.target.value)}
-                placeholder="Escribe el nombre del archivo (ej: receta_sertralina_50mg.jpg)..."
+                placeholder="Escribe una nota breve para procesarla como documento clinico..."
                 style={{ height: '32px', fontSize: '0.74rem', border: '1px solid var(--border)', borderRadius: '6px', flex: 1, background: 'var(--background-tertiary)', color: '#fff', padding: '0 10px' }}
               />
               <button type="submit" disabled={batchQueue.length > 0} className="btn btn-cyan" style={{ height: '32px', fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: '4px', padding: '0 12px', background: 'var(--color-cyan)', color: '#000', fontWeight: 'bold' }}>
                 <Plus size={12} />
-                <span>Analizar Nombre</span>
+                <span>Procesar Nota</span>
               </button>
             </form>
 
-            {/* Bandeja Rápida de Propuestas Walter IA */}
+            {/* Bandeja rÃ¡pida de propuestas de IA Ãncora */}
             {(() => {
               const pendingAllProps = proposals.filter(p => p.status === 'pending');
               if (pendingAllProps.length === 0) return null;
@@ -1644,7 +1724,7 @@ ${events.map(ev => `- *${ev.date}*: ${ev.event}`).join('\n')}
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                       <RefreshCw size={16} className="animate-spin-slow" color="var(--color-cyan)" />
                       <strong style={{ fontSize: '0.85rem', color: '#ffffff' }}>
-                        Bandeja de Extracción en Caliente (Walter IA)
+                        Bandeja de ExtracciÃ³n ClÃ­nica (IA Ãncora)
                       </strong>
                     </div>
                     <span style={{ fontSize: '0.68rem', background: 'rgba(6, 182, 212, 0.2)', color: 'var(--color-cyan)', padding: '2px 8px', borderRadius: '10px', fontWeight: 'bold' }}>
@@ -1670,7 +1750,7 @@ ${events.map(ev => `- *${ev.date}*: ${ev.event}`).join('\n')}
                         <div style={{ flex: 1, marginRight: '16px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', flexWrap: 'wrap' }}>
                             <span style={{ fontSize: '0.62rem', background: prop.proposal_type === 'medication' ? 'rgba(6,182,212,0.15)' : 'rgba(16,185,129,0.15)', color: prop.proposal_type === 'medication' ? 'var(--color-cyan)' : 'var(--color-emerald)', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>
-                              {prop.proposal_type === 'medication' ? '💊 Medicación' : '📅 Evento'}
+                              {getProposalTypeInfo(prop.proposal_type).label}
                             </span>
                             <span style={{ fontSize: '0.62rem', color: 'var(--text-secondary)' }}>
                               Confianza: {Math.round(prop.confidence * 100)}%
@@ -1685,15 +1765,22 @@ ${events.map(ev => `- *${ev.date}*: ${ev.event}`).join('\n')}
                           {prop.proposal_type === 'medication' ? (
                             <div>
                               <strong style={{ fontSize: '0.78rem', color: '#ffffff' }}>{prop.proposal_data.name} {prop.proposal_data.dose}</strong>
-                              <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}> · Frecuencia: {prop.proposal_data.frequency}</span>
+                              <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}> Â· Frecuencia: {prop.proposal_data.frequency}</span>
                             </div>
                           ) : (
                             <div>
-                              <strong style={{ fontSize: '0.72rem', color: 'var(--color-cyan)', marginRight: '6px' }}>{prop.proposal_data.date}</strong>
-                              <span style={{ fontSize: '0.78rem', color: '#ffffff' }}>{prop.proposal_data.event}</span>
+                              {prop.proposal_data.date && (
+                                <strong style={{ fontSize: '0.72rem', color: 'var(--color-cyan)', marginRight: '6px' }}>{prop.proposal_data.date}</strong>
+                              )}
+                              <span style={{ fontSize: '0.78rem', color: '#ffffff' }}>{getProposalBody(prop)}</span>
+                              {(prop.source_quote || prop.source_metadata?.quote) && (
+                                <span style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', display: 'block', marginTop: '2px' }}>
+                                  Cita: <em>{prop.source_quote || prop.source_metadata?.quote}</em>
+                                </span>
+                              )}
                               {prop.proposal_data.associated_emotion && (
                                 <span style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', display: 'block', marginTop: '2px' }}>
-                                  Emoción: <em>{prop.proposal_data.associated_emotion}</em>
+                                  EmociÃ³n: <em>{prop.proposal_data.associated_emotion}</em>
                                 </span>
                               )}
                             </div>
@@ -1725,11 +1812,11 @@ ${events.map(ev => `- *${ev.date}*: ${ev.event}`).join('\n')}
               );
             })()}
 
-            {/* Cola de Procesamiento de Ingesta en Lote de Walter IA */}
+            {/* Cola de procesamiento de ingesta en lote */}
             {batchQueue.length > 0 && (
               <div className="glass-panel animate-fade-in" style={{ padding: '16px', border: '1px solid rgba(6,182,212,0.2)', background: 'rgba(6,182,212,0.01)', borderRadius: '8px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 <span style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--color-cyan)', textTransform: 'uppercase', display: 'block' }}>
-                  Procesando Archivos en Cola (Walter IA Copilot)
+                  Procesando archivos en el motor clÃ­nico
                 </span>
                 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -1737,20 +1824,22 @@ ${events.map(ev => `- *${ev.date}*: ${ev.event}`).join('\n')}
                     <div key={item.id} style={{ display: 'flex', flexDirection: 'column', gap: '6px', background: 'rgba(0,0,0,0.15)', padding: '10px 12px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.03)' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.72rem' }}>
                         <span style={{ fontWeight: 'bold', color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '240px' }}>
-                          📄 {item.name} <span style={{ fontSize: '0.6rem', color: 'var(--text-tertiary)', fontWeight: 'normal' }}>({item.size})</span>
+                          ðŸ“„ {item.name} <span style={{ fontSize: '0.6rem', color: 'var(--text-tertiary)', fontWeight: 'normal' }}>({item.size})</span>
                         </span>
                         <span style={{ fontSize: '0.68rem', fontWeight: 'bold', color: 'var(--color-cyan)', display: 'flex', alignItems: 'center', gap: '6px' }}>
                           {item.status !== 'completed' && item.status !== 'error' && <RefreshCw size={10} className="animate-spin" />}
                           <span>
                             {item.status === 'pending' && 'En cola...'}
-                            {item.status === 'encrypting' && 'Cifrando datos...'}
-                            {item.status === 'ocr' && 'Ejecutando OCR/OCR nombre...'}
-                            {item.status === 'inferring' && 'IA Deduciendo propuestas...'}
-                            {item.status === 'completed' && '✓ Completado'}
-                            {item.status === 'error' && '✗ Error'}
+                            {item.status === 'uploading' && 'Subiendo a Supabase...'}
+                            {item.status === 'processing' && 'Motor clinico procesando...'}
+                            {item.status === 'completed' && 'âœ“ Completado'}
+                            {item.status === 'error' && 'âœ— Error'}
                           </span>
                         </span>
                       </div>
+                      {item.error && (
+                        <span style={{ fontSize: '0.62rem', color: 'var(--color-rose)' }}>{item.error}</span>
+                      )}
                       
                       {/* Barra de progreso individual */}
                       <div style={{ width: '100%', height: '4px', background: 'rgba(255,255,255,0.05)', borderRadius: '2px', overflow: 'hidden' }}>
@@ -1774,27 +1863,22 @@ ${events.map(ev => `- *${ev.date}*: ${ev.event}`).join('\n')}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.04)', paddingBottom: '6px' }}>
                 <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Archivos Registrados ({uploadedFiles.length})</span>
-                {uploadedFiles.length > 0 && (
-                  <button 
-                    onClick={() => {
-                      setUploadedFiles([]);
-                      localStorage.removeItem(`uploaded_files_${profile.id}`);
-                    }}
-                    style={{ background: 'none', border: 'none', color: 'var(--color-rose)', fontSize: '0.65rem', fontWeight: 'bold', cursor: 'pointer' }}
-                  >
-                    Limpiar Todo
-                  </button>
-                )}
+                <button 
+                  onClick={loadClinicalData}
+                  style={{ background: 'none', border: 'none', color: 'var(--color-cyan)', fontSize: '0.65rem', fontWeight: 'bold', cursor: 'pointer' }}
+                >
+                  Refrescar
+                </button>
               </div>
               
               {uploadedFiles.length === 0 ? (
                 <div style={{ padding: '30px', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: '0.74rem', background: 'rgba(0,0,0,0.05)', borderRadius: '8px', border: '1px dashed rgba(255,255,255,0.03)' }}>
-                  No hay ningún archivo clínico en este expediente. Utiliza la zona de arriba para subir documentos.
+                  No hay ningÃºn archivo clÃ­nico en este expediente. Utiliza la zona de arriba para subir documentos.
                 </div>
               ) : (
                 uploadedFiles.map((file, idx) => (
                   <div 
-                    key={idx} 
+                    key={file.id || idx} 
                     style={{ 
                       padding: '12px 16px', 
                       borderRadius: '8px', 
@@ -1810,10 +1894,18 @@ ${events.map(ev => `- *${ev.date}*: ${ev.event}`).join('\n')}
                     <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
                       <FileText size={18} color="var(--color-cyan)" />
                       <div>
-                        <strong style={{ fontSize: '0.78rem', color: '#ffffff', display: 'block' }}>{file.name}</strong>
+                        <strong style={{ fontSize: '0.78rem', color: '#ffffff', display: 'block' }}>{file.file_name || file.name}</strong>
                         <span style={{ fontSize: '0.62rem', color: 'var(--text-secondary)' }}>
-                          Tamaño: {file.size} · Subido el: {file.date}
+                          TamaÃ±o: {formatFileSize(file.file_size ?? file.size)} Â· Subido el: {formatDateTime(file.created_at || file.date)}
                         </span>
+                        <span style={{ fontSize: '0.62rem', color: getDocumentStatusInfo(file.extraction_status).color, display: 'block', marginTop: '2px', fontWeight: 700 }}>
+                          Estado: {getDocumentStatusInfo(file.extraction_status).label}
+                        </span>
+                        {file.extraction_error && (
+                          <span style={{ fontSize: '0.62rem', color: 'var(--color-rose)', display: 'block', marginTop: '2px' }}>
+                            Error: {file.extraction_error}
+                          </span>
+                        )}
                       </div>
                     </div>
                     
@@ -1821,7 +1913,7 @@ ${events.map(ev => `- *${ev.date}*: ${ev.event}`).join('\n')}
                       type="button"
                       className="btn btn-outline" 
                       style={{ height: '28px', fontSize: '0.68rem', padding: '0 12px' }}
-                      onClick={() => alert(`Vista previa: ${file.name}\n\nLos datos de este archivo se han estructurado mediante Walter IA y están listos para revisión en el panel del terapeuta.`)}
+                      onClick={() => alert(`Documento: ${file.file_name || file.name}\nEstado: ${getDocumentStatusInfo(file.extraction_status).label}\n\nLas extracciones quedan como propuestas pendientes hasta que se revisen.`)}
                     >
                       Ver Archivo
                     </button>
@@ -1833,12 +1925,12 @@ ${events.map(ev => `- *${ev.date}*: ${ev.event}`).join('\n')}
           </div>
         )}
 
-        {/* PESTAÑA 10: EXPORTACIÓN */}
+        {/* PESTAÃ‘A 10: EXPORTACIÃ“N */}
         {activeTab === 'exportacion' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', textAlign: 'left' }}>
             <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--color-cyan)', textTransform: 'uppercase' }}>Descargar Expediente Completo</span>
             <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.45 }}>
-              Puedes exportar en caliente todo tu expediente clínico de Áncora. Esto incluye tus pautas acordadas, historial de triaje, datos de diario consolidados y medicación declarada para compartirlo con tu médico de cabecera u otro profesional de la salud.
+              Puedes exportar en caliente todo tu expediente clÃ­nico de Ãncora. Esto incluye tus pautas acordadas, historial de triaje, datos de diario consolidados y medicaciÃ³n declarada para compartirlo con tu mÃ©dico de cabecera u otro profesional de la salud.
             </p>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginTop: '10px' }}>
@@ -1866,7 +1958,7 @@ ${events.map(ev => `- *${ev.date}*: ${ev.event}`).join('\n')}
                 style={{ height: '54px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px', background: 'var(--color-cyan)' }}
               >
                 <strong>Descargar en PDF</strong>
-                <span style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.7)' }}>Diseño formal clínico estructurado</span>
+                <span style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.7)' }}>DiseÃ±o formal clÃ­nico estructurado</span>
               </button>
             </div>
           </div>

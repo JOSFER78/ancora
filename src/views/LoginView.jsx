@@ -325,11 +325,12 @@ export default function LoginView({ onAuthSuccess, initialRole = 'paciente' }) {
             width: '56px', 
             height: '56px', 
             margin: '0 auto 16px',
-            background: 'linear-gradient(135deg, #447D82, #7F9F88)',
-            borderRadius: '16px',
-            boxShadow: '0 4px 15px rgba(68, 125, 130, 0.2)'
+            borderRadius: '50%',
+            overflow: 'hidden',
+            border: '2px solid rgba(6, 182, 212, 0.4)',
+            boxShadow: '0 4px 15px rgba(6, 182, 212, 0.25)'
           }}>
-            <Shield size={26} color="#ffffff" />
+            <img src="/ancora_logo.png" alt="ÁNCORA" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           </div>
           
           <h2 style={{ fontSize: '1.45rem', fontWeight: 'bold', fontFamily: serifFont, color: '#05213A', margin: 0 }}>

@@ -1,13 +1,31 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '../../supabaseClient';
 import { 
   User, Mail, CreditCard, Clock, FileText, 
-  Download, ShieldCheck, Heart, Sparkles, CheckCircle2, ArrowRight
+  Download, ShieldCheck, Heart, Sparkles, CheckCircle2, ArrowRight, LogOut,
+  Calendar
 } from 'lucide-react';
 
-export default function PacientePerfilView({ profile, onProfileUpdated, user, isVirtualDemo }) {
+export default function PacientePerfilView({ profile, onProfileUpdated, user, isVirtualDemo, onLogout }) {
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState('');
+
+  const [googleConnected, setGoogleConnected] = useState(false);
+  const [deviceConnected, setDeviceConnected] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(null);
+
+  const appConfig = profile?.app_config || {};
+
+  useEffect(() => {
+    if (profile?.app_config) {
+      if (profile.app_config.calendar_sync_google !== undefined) {
+        setGoogleConnected(profile.app_config.calendar_sync_google);
+      }
+      if (profile.app_config.calendar_sync_device !== undefined) {
+        setDeviceConnected(profile.app_config.calendar_sync_device);
+      }
+    }
+  }, [profile]);
   
   // Datos del perfil y contexto
   const context = profile?.contexto_terapeutico || {};
@@ -34,6 +52,58 @@ export default function PacientePerfilView({ profile, onProfileUpdated, user, is
   ] : [
     { id: 'ch_2Kd9u2P1x8p9', date: 'Hoy', concept: 'Suscripción Demo - Licencia de Enclave Temporal Activada', method: 'Gratuito (Demo)', amount: '0.00 €', status: 'completed' }
   ];
+
+  const handleToggleSync = async (type) => {
+    const nextState = type === 'google' ? !googleConnected : !deviceConnected;
+    setIsSyncing(type);
+    try {
+      const appConfigObj = {
+        ...appConfig,
+        calendar_sync_google: type === 'google' ? nextState : googleConnected,
+        calendar_sync_device: type === 'device' ? nextState : deviceConnected
+      };
+
+      if (isVirtualDemo) {
+        if (type === 'google') {
+          setGoogleConnected(nextState);
+          localStorage.setItem(`calendar_sync_google_${user?.id}`, String(nextState));
+        } else {
+          setDeviceConnected(nextState);
+          localStorage.setItem(`calendar_sync_device_${user?.id}`, String(nextState));
+        }
+        return;
+      }
+      
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          app_config: appConfigObj
+        })
+        .eq('id', user.id);
+      
+      if (error) throw error;
+      
+      if (type === 'google') {
+        setGoogleConnected(nextState);
+        localStorage.setItem(`calendar_sync_google_${user?.id}`, String(nextState));
+      } else {
+        setDeviceConnected(nextState);
+        localStorage.setItem(`calendar_sync_device_${user?.id}`, String(nextState));
+      }
+
+      if (onProfileUpdated) {
+        onProfileUpdated({
+          ...profile,
+          app_config: appConfigObj
+        });
+      }
+    } catch (err) {
+      console.error("Error updating patient calendar sync in Supabase:", err.message);
+      alert("Error al guardar la sincronización: " + err.message);
+    } finally {
+      setIsSyncing(null);
+    }
+  };
 
   const handleSaveChanges = async () => {
     setIsSaving(true);
@@ -211,6 +281,79 @@ export default function PacientePerfilView({ profile, onProfileUpdated, user, is
               <span>{isSaving ? 'Guardando...' : 'Guardar Datos del Perfil'}</span>
             </button>
           </div>
+
+          {/* Sincronización de Calendario */}
+          <div className="glass-panel" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '18px', marginTop: '20px', marginBottom: '20px' }}>
+            <h3 style={{ fontSize: '0.9rem', fontWeight: 800, color: '#ffffff', borderBottom: '1px solid var(--border)', paddingBottom: '8px', margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <Calendar size={16} color="var(--color-cyan)" />
+              Sincronización de Calendario
+            </h3>
+
+            <p style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.4, textAlign: 'left' }}>
+              Vincula tus sesiones clínicas síncronas confirmadas con tus cuentas personales de Google, Apple o Android.
+            </p>
+            <div style={{ background: 'rgba(6,182,212,0.02)', padding: '10px', borderRadius: '6px', border: '1px solid rgba(6,182,212,0.1)', fontSize: '0.68rem', color: 'var(--text-secondary)', textAlign: 'left', lineHeight: 1.35 }}>
+              ⚠️ <strong>Nota clínica:</strong> Las revisiones semanales terapéuticas son actividades de diario asíncronas internas y no se sincronizan a tu calendario externo. Únicamente se sincronizan tus sesiones síncronas virtuales de terapia.
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {/* Google Calendar */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', borderRadius: '8px', background: 'rgba(255,255,255,0.01)', border: '1px solid var(--border)' }}>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: googleConnected ? 'var(--color-emerald)' : 'rgba(255,255,255,0.1)' }} />
+                  <span style={{ fontSize: '0.78rem', color: '#ffffff', fontWeight: 600 }}>Google Calendar</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleToggleSync('google')}
+                  className={`btn ${googleConnected ? 'btn-outline' : 'btn-cyan'}`}
+                  style={{ height: '28px', fontSize: '0.68rem', paddingInline: '12px' }}
+                  disabled={isSyncing !== null}
+                >
+                  {isSyncing === 'google' ? 'Sincronizando...' : (googleConnected ? 'Desconectar' : 'Sincronizar')}
+                </button>
+              </div>
+
+              {/* Apple / Android Calendar */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', borderRadius: '8px', background: 'rgba(255,255,255,0.01)', border: '1px solid var(--border)' }}>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: deviceConnected ? 'var(--color-emerald)' : 'rgba(255,255,255,0.1)' }} />
+                  <span style={{ fontSize: '0.78rem', color: '#ffffff', fontWeight: 600 }}>Dispositivo (iOS / Android)</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleToggleSync('device')}
+                  className={`btn ${deviceConnected ? 'btn-outline' : 'btn-cyan'}`}
+                  style={{ height: '28px', fontSize: '0.68rem', paddingInline: '12px' }}
+                  disabled={isSyncing !== null}
+                >
+                  {isSyncing === 'device' ? 'Sincronizando...' : (deviceConnected ? 'Desconectar' : 'Sincronizar')}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Botón de Cerrar Sesión */}
+          <button
+            type="button"
+            className="btn btn-outline"
+            onClick={onLogout}
+            style={{
+              borderColor: 'hsla(var(--rose), 0.3)',
+              color: 'var(--color-rose)',
+              height: '38px',
+              fontSize: '0.78rem',
+              width: '100%',
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+              gap: '6px',
+              background: 'rgba(244, 63, 94, 0.02)'
+            }}
+          >
+            <LogOut size={14} />
+            <span>Cerrar Sesión</span>
+          </button>
 
         </div>
 

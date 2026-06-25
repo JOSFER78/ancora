@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { 
-  Calendar, TrendingUp, TrendingDown, Clock, 
-  AlertTriangle, Heart, MessageSquare, Star, Sparkles
+  Calendar, TrendingUp, TrendingDown
 } from 'lucide-react';
 
 export default function PacienteTimelineView({ isVirtualDemo }) {

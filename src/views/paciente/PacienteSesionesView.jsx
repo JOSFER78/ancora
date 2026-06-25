@@ -9,6 +9,13 @@ export default function PacienteSesionesView({ profile, user, isVirtualDemo }) {
   const [selectedDate, setSelectedDate] = useState(null);
   const [selectedSlot, setSelectedSlot] = useState(null);
   const [bookingSuccess, setBookingSuccess] = useState(false);
+  const [currentYear, setCurrentYear] = useState(() => new Date().getFullYear());
+  const [currentMonth, setCurrentMonth] = useState(() => new Date().getMonth()); // 0-11
+  
+  const monthNames = [
+    'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 
+    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+  ];
   const [sessionType, setSessionType] = useState('individual'); // 'individual' | 'seguimiento' | 'pareja'
   
   // Checkout States
@@ -22,6 +29,10 @@ export default function PacienteSesionesView({ profile, user, isVirtualDemo }) {
   // Sincronización Real de Sesiones
   const [scheduledSessions, setScheduledSessions] = useState([]);
   const [loadingSessions, setLoadingSessions] = useState(true);
+
+  // Perfil del psicólogo desde Supabase
+  const [psychoProfile, setPsychoProfile] = useState(null);
+  const [loadingPsycho, setLoadingPsycho] = useState(true);
 
   // Catálogo de psicólogos
   const mockPsychologists = [
@@ -167,29 +178,81 @@ export default function PacienteSesionesView({ profile, user, isVirtualDemo }) {
   };
 
   useEffect(() => {
+    const loadAssignedPsychologist = async () => {
+      if (!assignedPsychoId || isVirtualDemo) {
+        setLoadingPsycho(false);
+        return;
+      }
+      try {
+        setLoadingPsycho(true);
+        const { data, error } = await supabase
+          .from('psychologist_profiles')
+          .select('*')
+          .eq('id', assignedPsychoId)
+          .single();
+        
+        if (!error && data) {
+          setPsychoProfile(data);
+        }
+      } catch (err) {
+        console.error("Error loading assigned psychologist profile from Supabase:", err.message);
+      } finally {
+        setLoadingPsycho(false);
+      }
+    };
+    loadAssignedPsychologist();
     fetchSessions();
   }, [user?.id, assignedPsychoId]);
 
+  // Parsear la disponibilidad desde Supabase
+  let availability = null;
+  if (psychoProfile?.availability) {
+    try {
+      availability = typeof psychoProfile.availability === 'string' 
+        ? JSON.parse(psychoProfile.availability) 
+        : psychoProfile.availability;
+    } catch (e) {
+      console.error("Error parsing availability JSON:", e);
+    }
+  }
+
   // Obtener slots dinámicos según el día seleccionado y disponibilidad del terapeuta
   const getAvailableSlotsForDate = () => {
-    if (!selectedDate || !assignedPsycho) return [];
+    if (!selectedDate || !assignedPsychoId) return [];
     
     const dayNames = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
-    const dateObj = new Date(2026, 5, selectedDate); // Junio 2026
+    const dateObj = new Date(currentYear, currentMonth, selectedDate);
     const dayName = dayNames[dateObj.getDay()];
-    
-    const psychoEmail = assignedPsycho.email;
-    const slotsStr = localStorage.getItem('availability_slots_' + psychoEmail);
-    
-    if (slotsStr) {
-      const slots = JSON.parse(slotsStr);
-      return slots
-        .filter(s => s.day === dayName && s.status === 'available')
-        .map(s => s.hour)
+    const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${selectedDate < 10 ? '0' + selectedDate : selectedDate}`;
+
+    // Si la fecha está bloqueada por el psicólogo (vacaciones/excepción), no hay slots
+    if (availability && availability.blocked_dates && availability.blocked_dates.includes(dateStr)) {
+      return [];
+    }
+
+    // Si no es un día laborable, tampoco hay slots
+    if (availability && availability.working_days && !availability.working_days.includes(dayName)) {
+      return [];
+    }
+
+    // Si hay slots personalizados en Supabase para ese día de la semana
+    if (availability && availability.custom_available_slots && availability.custom_available_slots[dayName]) {
+      // Filtrar slots que ya estén reservados para este terapeuta
+      const reservedHours = scheduledSessions
+        .filter(s => {
+          const parts = s.date.split(' — ');
+          const sDate = parts[0]?.trim();
+          return sDate === dateStr && s.status === 'upcoming';
+        })
+        .map(s => s.date.split(' — ')[1]?.replace('h', '')?.trim());
+
+      return availability.custom_available_slots[dayName]
+        .filter(h => !reservedHours.includes(h))
         .sort();
     }
     
-    // Slots por defecto si no hay localStorage
+    // Slots por defecto de fallback
+    const psychoEmail = assignedPsycho?.email;
     if (psychoEmail === 'tisutet@hormail.com') {
       // Ana Ramos
       if (dayName === 'Lunes') return ['10:00', '11:00'];
@@ -204,12 +267,27 @@ export default function PacienteSesionesView({ profile, user, isVirtualDemo }) {
       if (dayName === 'Jueves') return ['17:00'];
     }
     
-    // Slots genéricos para otros terapeutas
     if (dayName === 'Sábado' || dayName === 'Domingo') return [];
     return ['09:00', '11:00', '16:00', '17:30'];
   };
 
-  const currentAvailableSlots = getAvailableSlotsForDate();
+  const getTherapistWorkingDays = () => {
+    if (availability && availability.working_days) return availability.working_days;
+    return ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
+  };
+
+  const getTherapistShowHours = () => {
+    if (availability && availability.show_detailed_hours !== undefined) return availability.show_detailed_hours;
+    return true;
+  };
+
+  const workingDaysList = getTherapistWorkingDays();
+  const showHours = getTherapistShowHours();
+  const rawSlots = getAvailableSlotsForDate();
+  
+  const currentAvailableSlots = showHours ? rawSlots : (
+    rawSlots.length > 0 ? ['Bloque Mañana (09:00 - 13:00)', 'Bloque Tarde (15:00 - 19:00)'] : []
+  );
 
   const handleDaySelect = (day) => {
     setSelectedDate(day);
@@ -225,7 +303,7 @@ export default function PacienteSesionesView({ profile, user, isVirtualDemo }) {
     e.preventDefault();
     setCheckoutLoading(true);
     
-    const dateStr = `2026-06-${selectedDate < 10 ? '0' + selectedDate : selectedDate}`;
+    const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${selectedDate < 10 ? '0' + selectedDate : selectedDate}`;
     
     if (isVirtualDemo) {
       try {
@@ -295,12 +373,120 @@ export default function PacienteSesionesView({ profile, user, isVirtualDemo }) {
     setCardCvc('123');
   };
 
+  const getGoogleCalendarUrl = (sess) => {
+    try {
+      const parts = Math.max(0, sess.date.indexOf('—')) > 0 ? sess.date.split(' — ') : [sess.date];
+      const rawDate = parts[0]?.trim(); 
+      const rawTime = parts[1]?.replace('h', '')?.trim(); 
+      
+      if (!rawDate || !rawTime) return '#';
+
+      const dateStr = rawDate.replace(/-/g, ''); 
+      const timeParts = rawTime.split(':');
+      const hour = Number(timeParts[0]);
+      const minute = Number(timeParts[1]);
+      
+      // Formato YYYYMMDDTHHMMSS
+      const timeStr = `${hour < 10 ? '0' + hour : hour}${minute < 10 ? '0' + minute : minute}00`;
+      
+      // Fin 50 minutos después
+      let endHour = hour;
+      let endMinute = minute + 50;
+      if (endMinute >= 60) {
+        endHour += 1;
+        endMinute -= 60;
+      }
+      const timeStrEnd = `${endHour < 10 ? '0' + endHour : endHour}${endMinute < 10 ? '0' + endMinute : endMinute}00`;
+
+      const title = encodeURIComponent(`Sesión de Terapia con ${sess.psychologist}`);
+      const details = encodeURIComponent(`Sesión síncrona virtual de terapia (${sess.type}) en la plataforma Áncora.`);
+      const location = encodeURIComponent('Videollamada de Áncora');
+      
+      return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${dateStr}T${timeStr}/${dateStr}T${timeStrEnd}&details=${details}&location=${location}`;
+    } catch (e) {
+      console.error(e);
+      return '#';
+    }
+  };
+
+  const handleExportICS = (sess) => {
+    try {
+      const parts = sess.date.split(' — ');
+      const rawDate = parts[0]?.trim(); 
+      const rawTime = parts[1]?.replace('h', '')?.trim(); 
+      
+      if (!rawDate || !rawTime) {
+        alert("No se pudo extraer la fecha/hora de la sesión.");
+        return;
+      }
+
+      const dateStr = rawDate.replace(/-/g, ''); 
+      const timeStr = rawTime.replace(/:/g, '') + '00'; 
+      
+      const icsContent = [
+        'BEGIN:VCALENDAR',
+        'VERSION:2.0',
+        'PRODID:-//Ancora Clinic//Session//ES',
+        'CALSCALE:GREGORIAN',
+        'METHOD:PUBLISH',
+        'BEGIN:VEVENT',
+        `UID:${sess.id}@ancora.clinic`,
+        `DTSTAMP:${dateStr}T${timeStr}Z`,
+        `DTSTART:${dateStr}T${timeStr}`,
+        'DURATION:PT50M',
+        `SUMMARY:Sesión de Terapia con ${sess.psychologist}`,
+        `DESCRIPTION:Sesión síncrona virtual de terapia (${sess.type}) con ${sess.psychologist} en la plataforma Áncora.`,
+        'LOCATION:Videollamada de Áncora',
+        'STATUS:CONFIRMED',
+        'END:VEVENT',
+        'END:VCALENDAR'
+      ].join('\n');
+
+      const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", `sesion_ancora_${rawDate}_${rawTime.replace(':', '')}.ics`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err) {
+      console.error("Error generating ICS file:", err);
+      alert("Error al exportar el archivo de calendario.");
+    }
+  };
+
   const getDaysInMonth = () => {
+    const numDays = new Date(currentYear, currentMonth + 1, 0).getDate();
     const days = [];
-    for (let i = 1; i <= 30; i++) {
+    for (let i = 1; i <= numDays; i++) {
       days.push(i);
     }
     return days;
+  };
+
+  const handlePrevMonth = () => {
+    setCurrentMonth(prev => {
+      if (prev === 0) {
+        setCurrentYear(y => y - 1);
+        return 11;
+      }
+      return prev - 1;
+    });
+    setSelectedDate(null);
+    setSelectedSlot(null);
+  };
+
+  const handleNextMonth = () => {
+    setCurrentMonth(prev => {
+      if (prev === 11) {
+        setCurrentYear(y => y + 1);
+        return 0;
+      }
+      return prev + 1;
+    });
+    setSelectedDate(null);
+    setSelectedSlot(null);
   };
 
   const psychoPrice = assignedPsycho?.price || 49;
@@ -376,9 +562,61 @@ export default function PacienteSesionesView({ profile, user, isVirtualDemo }) {
                   </div>
                 </div>
 
-                <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   {sess.status === 'upcoming' ? (
-                    <span className="badge badge-cyan" style={{ fontSize: '0.62rem' }}>Programada (Pago OK)</span>
+                    <>
+                      <span className="badge badge-cyan" style={{ fontSize: '0.62rem' }}>Programada (Pago OK)</span>
+                      
+                      {profile?.app_config?.calendar_sync_device && (
+                        <button
+                          type="button"
+                          onClick={() => handleExportICS(sess)}
+                          className="btn btn-outline"
+                          style={{ 
+                            height: '26px', 
+                            fontSize: '0.65rem', 
+                            paddingInline: '8px', 
+                            borderColor: 'rgba(6, 182, 212, 0.4)', 
+                            color: 'var(--color-cyan)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            borderRadius: '6px',
+                            background: 'rgba(6, 182, 212, 0.02)'
+                          }}
+                          title="Descargar evento .ics para sincronizar con el móvil (iOS / Android)"
+                        >
+                          <Calendar size={12} />
+                          <span>Sincronizar .ics</span>
+                        </button>
+                      )}
+
+                      {profile?.app_config?.calendar_sync_google && (
+                        <a
+                          href={getGoogleCalendarUrl(sess)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="btn btn-outline"
+                          style={{ 
+                            height: '26px', 
+                            fontSize: '0.65rem', 
+                            paddingInline: '8px', 
+                            borderColor: 'rgba(16, 185, 129, 0.4)', 
+                            color: 'var(--color-emerald)',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            borderRadius: '6px',
+                            background: 'rgba(16, 185, 129, 0.02)',
+                            textDecoration: 'none'
+                          }}
+                          title="Añadir esta cita directamente a tu Google Calendar"
+                        >
+                          <Calendar size={12} />
+                          <span>Google Calendar</span>
+                        </a>
+                      )}
+                    </>
                   ) : (
                     <span className="badge" style={{ fontSize: '0.62rem', background: 'rgba(255,255,255,0.02)', borderColor: 'var(--border)' }}>Realizada</span>
                   )}
@@ -402,7 +640,7 @@ export default function PacienteSesionesView({ profile, user, isVirtualDemo }) {
             </div>
             <h4 style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--color-emerald)' }}>¡Reserva Guardada en Supabase!</h4>
             <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-              Tu consulta para el día <strong>{selectedDate} de Junio de 2026</strong> a las <strong>{selectedSlot}h</strong> ha quedado reservada y cobrada con éxito en Stripe Demo.
+              Tu consulta para el día <strong>{selectedDate} de {monthNames[currentMonth]} de {currentYear}</strong> a las <strong>{selectedSlot}h</strong> ha quedado reservada y cobrada con éxito en Stripe Demo.
             </p>
             <div style={{ display: 'flex', gap: '10px', marginTop: '14px' }}>
               <button 
@@ -589,10 +827,10 @@ export default function PacienteSesionesView({ profile, user, isVirtualDemo }) {
               {/* Calendario Mensual */}
               <div style={{ background: 'var(--background-secondary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-                  <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#ffffff' }}>Junio 2026</span>
+                  <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#ffffff' }}>{monthNames[currentMonth]} {currentYear}</span>
                   <div style={{ display: 'flex', gap: '6px' }}>
-                    <button style={{ color: 'var(--text-tertiary)' }} disabled><ChevronLeft size={16} /></button>
-                    <button style={{ color: 'var(--text-tertiary)' }} disabled><ChevronRight size={16} /></button>
+                    <button type="button" onClick={handlePrevMonth} style={{ color: '#ffffff', cursor: 'pointer', background: 'transparent', border: 'none' }}><ChevronLeft size={16} /></button>
+                    <button type="button" onClick={handleNextMonth} style={{ color: '#ffffff', cursor: 'pointer', background: 'transparent', border: 'none' }}><ChevronRight size={16} /></button>
                   </div>
                 </div>
 
@@ -603,36 +841,49 @@ export default function PacienteSesionesView({ profile, user, isVirtualDemo }) {
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '6px' }}>
+                  {/* Celdas vacías de desfase */}
+                  {Array.from({ length: (new Date(currentYear, currentMonth, 1).getDay() + 6) % 7 }).map((_, idx) => (
+                    <div key={`empty-${idx}`} />
+                  ))}
+                  
                   {getDaysInMonth().map(day => {
                     const isSelected = selectedDate === day;
-                    const isWeekend = [6, 7, 13, 14, 20, 21, 27, 28].includes(day);
+                    const dateObj = new Date(currentYear, currentMonth, day);
+                    const dayNames = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+                    const dayName = dayNames[dateObj.getDay()];
+                    
+                    const isWorkingDay = workingDaysList.includes(dayName);
+                    const isBlocked = !isWorkingDay;
                     
                     return (
                       <button
                         key={day}
                         type="button"
-                        onClick={() => !isWeekend && handleDaySelect(day)}
-                        disabled={isWeekend}
+                        onClick={() => !isBlocked && handleDaySelect(day)}
+                        disabled={isBlocked}
                         style={{
                           height: '32px',
                           borderRadius: '50%',
                           fontSize: '0.72rem',
                           fontWeight: 600,
-                          cursor: isWeekend ? 'default' : 'pointer',
-                          background: isSelected ? 'var(--color-cyan)' : 'transparent',
-                          color: isSelected ? '#ffffff' : (isWeekend ? 'var(--text-tertiary)' : 'var(--text-primary)'),
+                          cursor: isBlocked ? 'default' : 'pointer',
+                          background: isSelected ? 'var(--color-cyan)' : (isBlocked ? 'rgba(255,255,255,0.01)' : 'transparent'),
+                          color: isSelected ? '#ffffff' : (isBlocked ? 'rgba(255,255,255,0.12)' : 'var(--text-primary)'),
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
                           border: isSelected ? 'none' : '1px solid transparent',
-                          transition: 'all var(--transition-fast)'
+                          transition: 'all var(--transition-fast)',
+                          opacity: isBlocked ? 0.35 : 1,
+                          textDecoration: isBlocked ? 'line-through' : 'none'
                         }}
                         onMouseEnter={(e) => {
-                          if (!isWeekend && !isSelected) e.currentTarget.style.borderColor = 'var(--color-cyan)';
+                          if (!isBlocked && !isSelected) e.currentTarget.style.borderColor = 'var(--color-cyan)';
                         }}
                         onMouseLeave={(e) => {
-                          if (!isWeekend && !isSelected) e.currentTarget.style.borderColor = 'transparent';
+                          if (!isBlocked && !isSelected) e.currentTarget.style.borderColor = 'transparent';
                         }}
+                        title={isBlocked ? "Día Libre (No laborable)" : `Disponible (${dayName})`}
                       >
                         {day}
                       </button>
@@ -644,7 +895,7 @@ export default function PacienteSesionesView({ profile, user, isVirtualDemo }) {
               {/* Slots de Horas */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
-                  {selectedDate ? `Horarios disponibles para el ${selectedDate} de Junio:` : 'Selecciona un día en el calendario:'}
+                  {selectedDate ? `Horarios disponibles para el ${selectedDate} de ${monthNames[currentMonth]}:` : 'Selecciona un día en el calendario:'}
                 </span>
 
                 {selectedDate ? (

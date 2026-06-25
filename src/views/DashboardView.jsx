@@ -574,10 +574,10 @@ export default function DashboardView({ user, profile, dailyMoodToday, totalDebt
             </div>
             <div>
               <h2 style={{ fontSize: '1.2rem', fontWeight: 900, letterSpacing: '0.02em', color: '#ffffff', margin: 0 }}>
-                DASHBOARD CLÍNICO & FINANCIERO
+                DASHBOARD CLÍNICO DE SEGUIMIENTO
               </h2>
               <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', margin: '2px 0 0 0' }}>
-                Área central de control, supervisión de deudas y blindaje cognitivo.
+                Área central de control y blindaje cognitivo de ÁNCORA.
               </p>
             </div>
           </div>
@@ -659,48 +659,7 @@ export default function DashboardView({ user, profile, dailyMoodToday, totalDebt
           </div>
         </div>
 
-        {/* BLOQUE 2: FINANZAS & DEUDAS (ÁREA DE CAJA) */}
-        <div className="glass-panel" style={{ padding: '16px', borderTop: '4px solid var(--color-cyan)', background: 'rgba(6, 182, 212, 0.01)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-            <span style={{ fontSize: '0.62rem', fontWeight: 800, color: 'var(--color-cyan)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              💸 Área Financiera
-            </span>
-            <Landmark size={14} color="var(--color-cyan)" />
-          </div>
 
-          <h3 style={{ fontSize: '0.92rem', fontWeight: 800, margin: '0 0 4px 0', color: '#ffffff' }}>
-            Caja Libre & Deudas
-          </h3>
-          <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', margin: '0 0 12px 0', lineHeight: 1.35 }}>
-            Estado de deudas consolidadas y cálculo de excedente puro para amortización.
-          </p>
-
-          <div style={{ background: 'rgba(0,0,0,0.2)', padding: '10px', borderRadius: '6px', fontSize: '0.72rem', display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '10px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: 'var(--text-secondary)' }}>Deuda Pendiente:</span>
-              <strong style={{ color: 'var(--color-rose)' }}>{totalDebts.toLocaleString()} €</strong>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid rgba(255,255,255,0.04)', paddingTop: '4px' }}>
-              <span style={{ color: 'var(--text-secondary)' }}>Nómina EFE:</span>
-              <strong style={{ color: '#ffffff' }}>{cajaLibreData.efeSalary.toLocaleString()} €/mes</strong>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: 'var(--text-secondary)' }}>Gastos Fijos:</span>
-              <strong style={{ color: 'var(--color-rose)' }}>-{cajaLibreData.monthlyExpenses.toLocaleString()} €/mes</strong>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed rgba(255,255,255,0.08)', paddingTop: '4px', marginTop: '2px' }}>
-              <span style={{ color: '#ffffff', fontWeight: 700 }}>Caja Libre:</span>
-              <strong style={{ color: isCajaPositive ? 'var(--color-emerald)' : 'var(--color-rose)' }}>
-                {isCajaPositive ? '+' : ''}{cajaLibre.toLocaleString()} €/mes
-              </strong>
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.62rem', color: 'var(--text-tertiary)' }}>
-            <TrendingDown size={12} color="var(--color-cyan)" />
-            <span>Fase 1: Liquidación por Prioridad de Deudas</span>
-          </div>
-        </div>
 
         {/* BLOQUE 3: ESCUDO LABORAL (INSS) */}
         <div className="glass-panel" style={{ padding: '16px', borderTop: '4px solid var(--color-amber)', background: 'rgba(245, 158, 11, 0.01)' }}>

@@ -25,9 +25,14 @@
 }
 
 .sidebar.collapsed {
-  width: 0;
-  border-right-color: transparent;
+  width: 70px;
+  border-right-color: var(--border);
   overflow: hidden;
+}
+
+.sidebar.collapsed .sidebar-link {
+  justify-content: center;
+  padding: 12px 0;
 }
 
 .sidebar-header {
@@ -559,32 +564,49 @@
 /* Responsive adjust - Mobile First Bottom Nav & Layout Adjustments */
 @media (max-width: 768px) {
   .app-container {
-    flex-direction: column;
-    height: 100vh;
-    width: 100vw;
-    overflow: hidden;
+    flex-direction: column !important;
+    height: 100vh !important;
+    width: 100vw !important;
+    overflow: hidden !important;
+    display: flex !important;
   }
   
   .sidebar {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    width: 100vw;
-    height: 68px;
-    flex-direction: row;
-    background: rgba(10, 16, 32, 0.88);
+    position: relative !important;
+    bottom: auto !important;
+    left: auto !important;
+    right: auto !important;
+    width: 100vw !important;
+    height: 68px !important;
+    flex-direction: row !important;
+    background: rgba(10, 16, 32, 0.88) !important;
     backdrop-filter: blur(20px) saturate(180%);
     -webkit-backdrop-filter: blur(20px) saturate(180%);
-    border-right: none;
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
-    z-index: 1000;
-    padding: 0;
-    box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.4);
+    border-right: none !important;
+    border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
+    z-index: 1000 !important;
+    padding: 0 !important;
+    box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.4) !important;
+    order: 2 !important;
+    flex-shrink: 0 !important;
+  }
+
+  .sidebar.mobile-hidden {
+    display: none !important;
   }
 
   .sidebar-brand-section, 
   .sidebar-footer-section {
+    display: none !important;
+  }
+
+  .sidebar.collapsed {
+    width: 100vw !important;
+    height: 68px !important;
+    border-right-color: transparent !important;
+  }
+
+  .sidebar-collapse-section {
     display: none !important;
   }
 
@@ -641,8 +663,13 @@
   }
 
   .main-content {
-    height: calc(100vh - 68px) !important;
+    height: auto !important;
+    flex: 1 !important;
     width: 100vw !important;
+    order: 1 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
   }
 
   .topbar {
@@ -670,8 +697,9 @@
 
   .atomoxetina-status-text,
   .debt-indicator-label,
-  .profile-trigger-name {
-    display: none; /* Hide text inside buttons to keep only icons/badges clean on mobile */
+  .profile-trigger-name,
+  .diario-status-text {
+    display: none !important; /* Hide text inside buttons to keep only icons/badges clean on mobile */
   }
 
   .view-container {
@@ -682,6 +710,16 @@
     flex: 1;
     display: flex;
     flex-direction: column;
+  }
+
+  .view-container.chat-view-active {
+    height: 100% !important;
+    max-height: 100% !important;
+    overflow: hidden !important;
+    padding: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    flex: 1 !important;
   }
 
   /* Grid adaptations for mobile */
@@ -794,51 +832,314 @@
   box-shadow: 0 0 10px rgba(244, 63, 94, 0.2);
 }
 
+/* Estilos dinámicos para Psicólogo Activo sin padding del contenedor */
+.view-container.psicologo-view-active {
+  padding: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
 
-/* Responsive grid and nav for Psychologist Clinical Portal on Mobile */
+.clinical-dashboard-layout {
+  display: flex;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+.clinical-dashboard-content {
+  flex: 1;
+  padding: 24px;
+  overflow-y: auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* Footer de la sidebar del psicólogo en colapso */
+.sidebar.collapsed .sidebar-footer-collapsed-preview {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Responsivo para el portal clínico de psicólogo en móvil */
 @media (max-width: 768px) {
-  .grid-responsive-dashboard {
-    grid-template-columns: 1fr !important;
-    gap: 16px !important;
+  .clinical-dashboard-layout {
+    flex-direction: column !important;
+    height: 100vh !important;
+    width: 100vw !important;
+    overflow: hidden !important;
   }
 
-  .clinical-sidebar-nav-container {
-    width: 100% !important;
-    flex-direction: row !important;
-    overflow-x: auto !important;
-    white-space: nowrap !important;
-    gap: 10px !important;
-    padding-bottom: 8px !important;
-    scrollbar-width: none; /* Ocultar barra scroll en Firefox */
+  .clinical-dashboard-content {
+    flex: 1 !important;
+    padding: 16px !important;
+    overflow-y: auto !important;
+    order: 1 !important;
+  }
+  
+  .view-container {
+    padding-bottom: 100px !important;
   }
 
-  .clinical-sidebar-nav-container::-webkit-scrollbar {
-    display: none; /* Ocultar barra scroll en Webkit (Chrome/Safari) */
-  }
-
-  .clinical-sidebar-nav-container .glass-panel {
-    display: flex !important;
-    flex-direction: row !important;
-    width: auto !important;
-    padding: 6px !important;
-    gap: 8px !important;
-    align-items: center !important;
-  }
-
-  .clinical-sidebar-nav-container .sidebar-link {
-    width: auto !important;
-    padding: 6px 12px !important;
-    display: inline-flex !important;
-    align-items: center !important;
-    gap: 6px !important;
-  }
-
-  .clinical-sidebar-nav-container .sidebar-link span {
-    display: inline !important; /* Mantener la etiqueta compacta visible en el menú deslizable */
-    font-size: 0.68rem !important;
-  }
-
-  .clinical-sidebar-nav-title {
+  /* Ocultar barra lateral en móvil */
+  .sidebar {
     display: none !important;
   }
 }
+
+/* ==========================================================================
+   MOBILE BOTTOM BAR & FLOATING POPOVER SUBMENUS (DISRUPTIVE UX)
+   ========================================================================== */
+.mobile-bottom-bar {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .mobile-bottom-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 68px;
+    background: rgba(8, 16, 28, 0.82);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    z-index: 1000;
+    padding: 0 8px;
+    box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.5);
+  }
+
+  .mobile-nav-link {
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text-secondary);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 6px 2px;
+    font-size: 0.62rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    width: 100%;
+    height: 100%;
+  }
+
+  .mobile-nav-link svg {
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), color 0.25s ease;
+  }
+
+  .mobile-nav-link.active {
+    color: #ffffff !important;
+  }
+
+  .mobile-nav-link.active svg {
+    color: var(--color-cyan) !important;
+    transform: translateY(-2px);
+    filter: drop-shadow(0 0 8px hsla(var(--cyan), 0.6));
+  }
+
+  /* Para el paciente, si el rol no es psicólogo, podemos usar emerald de acento */
+  .app-container:not(.psicologo-view-active) .mobile-nav-link.active svg {
+    color: var(--color-emerald) !important;
+    filter: drop-shadow(0 0 8px hsla(var(--emerald), 0.6));
+  }
+
+  .mobile-nav-label {
+    font-size: 0.62rem;
+    text-transform: capitalize;
+    letter-spacing: 0.01em;
+  }
+
+  /* Popover flotante del submenú */
+  .mobile-popover-menu {
+    position: absolute;
+    bottom: 78px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 160px;
+    background: rgba(10, 22, 32, 0.94);
+    backdrop-filter: blur(28px) saturate(180%);
+    -webkit-backdrop-filter: blur(28px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    box-shadow: 0 12px 35px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255,255,255,0.02);
+    z-index: 1010;
+    padding: 6px;
+  }
+
+  .mobile-popover-arrow {
+    position: absolute;
+    bottom: -6px;
+    left: 50%;
+    transform: translateX(-50%) rotate(45deg);
+    width: 10px;
+    height: 10px;
+    background: rgba(10, 22, 32, 0.94);
+    border-right: 1px solid rgba(255, 255, 255, 0.1);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    z-index: -1;
+  }
+
+  .mobile-popover-inner {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .mobile-popover-item {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border-radius: 10px;
+    color: var(--text-secondary);
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    background: transparent;
+    border: none;
+  }
+
+  .mobile-popover-item:hover, 
+  .mobile-popover-item:active {
+    background: rgba(255, 255, 255, 0.05);
+    color: #ffffff;
+  }
+
+  .mobile-popover-item.active {
+    background: rgba(68, 125, 130, 0.12);
+    color: var(--color-cyan);
+  }
+
+  .app-container:not(.psicologo-view-active) .mobile-popover-item.active {
+    background: rgba(127, 159, 136, 0.12);
+    color: var(--color-emerald);
+  }
+
+  .popover-icon-wrapper {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.8;
+  }
+
+  .mobile-popover-item.active .popover-icon-wrapper {
+    opacity: 1;
+  }
+
+  /* Animación del Popover */
+  @keyframes popIn {
+    0% {
+      opacity: 0;
+      transform: translateX(-50%) translateY(10px) scale(0.92);
+    }
+    100% {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0) scale(1);
+    }
+  }
+
+  .animate-pop-in {
+    animation: popIn 0.22s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  }
+}
+
+/* Corrección para que el input del chat no quede tapado por la barra móvil */
+.chat-input-wrapper-container {
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--background-secondary);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  position: relative;
+}
+
+@media (max-width: 768px) {
+  .chat-input-wrapper-container {
+    padding-bottom: 74px !important; /* Altura de la barra móvil (68px) + holgura (6px) */
+    transition: padding-bottom 0.2s ease;
+  }
+  
+  .chat-input-wrapper-container.menu-hidden {
+    padding-bottom: 8px !important;
+  }
+}
+
+/* Cabecera responsiva de la Landing Page */
+.landing-logo-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+@media (max-width: 768px) {
+  .landing-nav {
+    display: none !important; /* Ocultar enlaces de navegación en móvil */
+  }
+
+  .landing-actions {
+    gap: 8px !important;
+  }
+
+  .landing-actions .btn-outline,
+  .landing-actions span {
+    display: none !important; /* Ocultar el botón demo y el texto "Iniciar sesión" en móvil para liberar espacio */
+  }
+
+  .landing-actions .btn {
+    height: 32px !important;
+    font-size: 0.7rem !important;
+    padding-inline: 14px !important;
+  }
+}
+
+/* Transiciones y comportamiento del menú inferior móvil colapsable */
+.mobile-bottom-bar {
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease !important;
+}
+.mobile-bottom-bar.collapsed {
+  transform: translateY(100%) !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+/* Efectos de hover para el widget del perfil en la barra lateral */
+.sidebar-profile-btn {
+  transition: background-color 0.2s ease, border-color 0.2s ease !important;
+}
+.sidebar-profile-btn:hover {
+  background-color: rgba(255, 255, 255, 0.04) !important;
+}
+.sidebar-profile-btn.active {
+  background-color: rgba(6, 182, 212, 0.12) !important;
+  border: 1px solid rgba(6, 182, 212, 0.3) !important;
+}
+
+/* Clases de utilidad de visibilidad responsiva */
+@media (min-width: 769px) {
+  .mobile-only {
+    display: none !important;
+  }
+}
+@media (max-width: 768px) {
+  .desktop-only {
+    display: none !important;
+  }
+}
+
+

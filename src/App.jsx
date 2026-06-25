@@ -8,13 +8,13 @@ import './index.css';
 import LandingView from './views/LandingView';
 import DashboardView from './views/DashboardView';
 import PsicologoDashboardView from './views/PsicologoDashboardView';
+import PsicologoPerfilView from './views/PsicologoPerfilView';
 import AdminDashboardView from './views/AdminDashboardView';
 import MenteView from './views/MenteView';
 import EscudoLegalView from './views/EscudoLegalView';
 import AjustesView from './views/AjustesView';
 import ChatView from './views/ChatView';
 import AgentesView from './views/AgentesView';
-import ViabilityWidget from './components/trading/ViabilityWidget';
 
 // Patient Modular Views
 import PacienteHoyView from './views/paciente/PacienteHoyView';
@@ -32,7 +32,6 @@ import { getUserAppMode, GENERIC_NAV_ITEMS, PERSONAL_NAV_ITEMS, PSICOLOGO_NAV_IT
 
 // Icons
 import {
-  ShieldAlert,
   Heart,
   LayoutDashboard,
   Brain,
@@ -42,13 +41,19 @@ import {
   MessageSquare,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
+  ChevronDown,
   User,
   LogOut,
   Activity,
   Bot,
   Calendar,
   Shield,
-  ShieldCheck
+  ShieldCheck,
+  Video,
+  Sparkles,
+  CreditCard,
+  Menu
 } from 'lucide-react';
 
 
@@ -149,6 +154,9 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
+  const [bottomMenuHidden, setBottomMenuHidden] = useState(false);
+  const [activeMobileMenu, setActiveMobileMenu] = useState(null);
+  const [bottomMenuCollapsed, setBottomMenuCollapsed] = useState(false);
 
   // Dynamic Global State
   const [dailyMoodToday, setDailyMoodToday] = useState(null);
@@ -207,7 +215,11 @@ export default function App() {
     historial: FileText,
     privacidad: Shield,
     perfil_usuario: User,
-    plan_terapeutico: Brain
+    plan_terapeutico: Brain,
+    perfil: User,
+    soap: Sparkles,
+    briefing: Video,
+    agenda: Calendar
   };
 
   const navTitle = {
@@ -222,16 +234,20 @@ export default function App() {
       ? 'Gestión de Incidencias Técnicas'
       : (appMode.isPsicologo 
           ? 'Gestión de Consultas y Pacientes' 
-          : 'Chat Diario con Walter'),
+          : 'Chat diario de apoyo'),
     diary: 'Diario Emocional',
     documents: 'Documentos y Fuentes',
-    ajustes: 'Configuración y Stripe',
+    ajustes: appMode.isPsicologo ? 'Facturas y Stripe' : 'Configuración y Stripe',
     timeline: 'Timeline de Progreso y Síntomas',
     sesiones: 'Tus Sesiones y Reservas',
     historial: 'Mi Historial Clínico Completo',
     privacidad: 'Configuración de Privacidad y Consentimiento',
     perfil_usuario: 'Mi Perfil y Facturas',
-    plan_terapeutico: 'Mi Plan Clínico y Objetivos'
+    plan_terapeutico: 'Mi Plan Clínico y Objetivos',
+    perfil: 'Ficha e Historial de Pacientes',
+    soap: 'Notas SOAP y Firma de Sesiones',
+    briefing: 'Preparación de Sesión Activa',
+    agenda: 'Agenda y Gestión de Citas'
   };
 
 
@@ -400,6 +416,10 @@ export default function App() {
     };
   }, [activeTab]);
 
+  useEffect(() => {
+    setBottomMenuHidden(false);
+  }, [activeTab]);
+
   const handleMoodSaved = (newMood) => {
     setDailyMoodToday(newMood);
   };
@@ -468,76 +488,110 @@ export default function App() {
     );
   }
 
+  // Mobile navigation helper items mapping with submenus
+  let bottomBarItems = [];
+
+  if (appMode.isSupervisor) {
+    bottomBarItems = [
+      { id: 'dashboard', label: 'Consola', icon: LayoutDashboard },
+      { id: 'chat', label: 'Incidencias', icon: MessageSquare },
+      { id: 'ajustes', label: 'Ajustes', icon: Settings, action: 'logout' }
+    ];
+  } else if (appMode.isPsicologo) {
+    bottomBarItems = [
+      {
+        id: 'general_menu',
+        label: 'General',
+        icon: Activity,
+        subItems: [
+          { id: 'dashboard', label: 'Métricas', icon: Activity },
+          { id: 'agenda', label: 'Agenda y Citas', icon: Calendar }
+        ]
+      },
+      {
+        id: 'fichas_menu',
+        label: 'Fichas',
+        icon: User,
+        subItems: [
+          { id: 'perfil', label: 'Expedientes', icon: User },
+          { id: 'soap', label: 'Notas SOAP', icon: Sparkles },
+          { id: 'briefing', label: 'Preparación', icon: Video }
+        ]
+      },
+      {
+        id: 'cuenta_menu',
+        label: 'Mi Cuenta',
+        icon: User,
+        subItems: [
+          { id: 'perfil_usuario', label: 'Mi Perfil', icon: User },
+          { id: 'ajustes', label: 'Facturas', icon: CreditCard },
+          { id: 'logout', label: 'Salir', icon: LogOut, action: 'logout' }
+        ]
+      }
+    ];
+  } else { // Paciente
+    bottomBarItems = [
+      {
+        id: 'hoy_menu',
+        label: 'Hoy',
+        icon: LayoutDashboard,
+        subItems: [
+          { id: 'dashboard', label: 'Mi Día', icon: LayoutDashboard },
+          { id: 'diary', label: 'Diario', icon: Heart },
+          { id: 'timeline', label: 'Progreso', icon: Activity }
+        ]
+      },
+      {
+        id: 'clinica_menu',
+        label: 'Clínica',
+        icon: Calendar,
+        subItems: [
+          { id: 'sesiones', label: 'Citas', icon: Calendar },
+          { id: 'plan_terapeutico', label: 'Plan Clínico', icon: Brain },
+          { id: 'historial', label: 'Mi Historial', icon: FileText }
+        ]
+      },
+      {
+        id: 'chat_menu',
+        label: 'Walter',
+        icon: MessageSquare,
+        subItems: [
+          { id: 'chat', label: 'Walter Chat', icon: MessageSquare },
+          { id: 'privacidad', label: 'Privacidad', icon: Shield }
+        ]
+      },
+      {
+        id: 'cuenta_menu',
+        label: 'Mi Cuenta',
+        icon: User,
+        subItems: [
+          { id: 'perfil_usuario', label: 'Mi Perfil', icon: User },
+          { id: 'logout', label: 'Salir', icon: LogOut, action: 'logout' }
+        ]
+      }
+    ];
+  }
+
   if (!session) {
     return <LandingView onAuthSuccess={(u) => setUser(u)} onEnterDemo={handleEnterDemoMode} />;
   }
 
   return (
-    <>
-      {isVirtualDemo && (
-        <div className="demo-control-bar">
-          <div className="demo-control-brand">
-            <div className="demo-pulse-indicator" />
-            <span>Vista Demo Virtual</span>
-          </div>
-                    <div className="demo-role-selector" style={{ display: 'flex', gap: '4px', overflowX: 'auto', maxWidth: '80%', padding: '2px 0' }}>
-            <button
-              onClick={() => handleEnterDemoMode('tisute@gmail.com')}
-              className={`demo-role-btn ${user?.email === 'tisute@gmail.com' ? 'active' : ''}`}
-              style={{ padding: '4px 10px', fontSize: '0.65rem', whiteSpace: 'nowrap' }}
-            >
-              👤 Pedro (Pac.)
-            </button>
-            <button
-              onClick={() => handleEnterDemoMode('davidsevilla10@gmail.com')}
-              className={`demo-role-btn ${user?.email === 'davidsevilla10@gmail.com' ? 'active' : ''}`}
-              style={{ padding: '4px 10px', fontSize: '0.65rem', whiteSpace: 'nowrap' }}
-            >
-              👤 David (Pac.)
-            </button>
-            <button
-              onClick={() => handleEnterDemoMode('tisutet@hormail.com')}
-              className={`demo-role-btn ${user?.email === 'tisutet@hormail.com' ? 'active' : ''}`}
-              style={{ padding: '4px 10px', fontSize: '0.65rem', whiteSpace: 'nowrap' }}
-            >
-              🩺 Dra. Ana (Psic.)
-            </button>
-            <button
-              onClick={() => handleEnterDemoMode('usajosefernan@gmail.com')}
-              className={`demo-role-btn ${user?.email === 'usajosefernan@gmail.com' ? 'active' : ''}`}
-              style={{ padding: '4px 10px', fontSize: '0.65rem', whiteSpace: 'nowrap' }}
-            >
-              🩺 Dr. José (Psic.)
-            </button>
-            <button
-              onClick={() => handleEnterDemoMode('josferestudio@gmail.com')}
-              className={`demo-role-btn ${user?.email === 'josferestudio@gmail.com' ? 'active' : ''}`}
-              style={{ padding: '4px 10px', fontSize: '0.65rem', whiteSpace: 'nowrap' }}
-            >
-              ⚙️ Admin
-            </button>
-          </div>
-          <button onClick={handleLogoutClick} className="demo-exit-btn">
-            🚪 Salir de la Demo
-          </button>
-        </div>
-      )}
-      <div className="app-container" style={isVirtualDemo ? { marginTop: '45px', height: 'calc(100vh - 45px)' } : undefined}>
+    <div className="app-container">
 
       {/* Sidebar Navigation */}
-      {!appMode.isPsicologo && (
-        <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
+      <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''} ${bottomMenuHidden ? 'mobile-hidden' : ''}`}>
         <div className="sidebar-brand-section">
           <div className="sidebar-header">
             <div className="sidebar-logo">
-              <ShieldAlert size={20} color="var(--color-rose)" />
-              <span>SISTEMA EN-78</span>
+              <img src="/ancora_logo.png" alt="ÁNCORA" style={{ width: '24px', height: '24px', borderRadius: '50%', objectFit: 'cover', border: '1px solid rgba(6, 182, 212, 0.4)', boxShadow: '0 0 6px rgba(6, 182, 212, 0.25)' }} />
+              <span>ÁNCORA</span>
             </div>
           </div>
         </div>
 
         <nav className="sidebar-nav">
-          {navItems.map(item => {
+          {navItems.filter(item => item.id !== 'perfil_usuario').map(item => {
             const Icon = navIcons[item.id] || LayoutDashboard;
             const isChat = item.id === 'chat';
             return (
@@ -569,207 +623,191 @@ export default function App() {
             </p>
           </div>
         </div>
+
+        {/* Widget del Perfil en la parte inferior del Sidebar (Desktop-only, solo abajo) */}
+        <div className="sidebar-profile-widget desktop-only" style={{
+          borderTop: '1px solid var(--border)',
+          padding: sidebarCollapsed ? '12px 0' : '12px 14px',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: sidebarCollapsed ? 'center' : 'stretch',
+          gap: '8px'
+        }}>
+          <button
+            onClick={() => setActiveTab('perfil_usuario')}
+            className={`flex-center sidebar-profile-btn ${activeTab === 'perfil_usuario' ? 'active' : ''}`}
+            style={{
+              width: '100%',
+              background: activeTab === 'perfil_usuario' ? 'rgba(6,182,212,0.08)' : 'transparent',
+              border: activeTab === 'perfil_usuario' ? '1px solid rgba(6,182,212,0.2)' : 'none',
+              borderRadius: '8px',
+              padding: sidebarCollapsed ? '6px' : '8px 10px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              cursor: 'pointer',
+              color: '#ffffff',
+              textAlign: 'left',
+              transition: 'all 0.2s ease'
+            }}
+            title="Mi Perfil de Usuario"
+          >
+            {profile?.avatar || profile?.contexto_terapeutico?.avatar ? (
+              <img 
+                src={profile.avatar || profile.contexto_terapeutico.avatar} 
+                alt="avatar" 
+                style={{ width: '28px', height: '28px', borderRadius: '50%', objectFit: 'cover', border: '1px solid var(--border)' }} 
+              />
+            ) : (
+              <div className="flex-center" style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'var(--background-tertiary)', border: '1px solid var(--border)' }}>
+                <User size={14} />
+              </div>
+            )}
+            {!sidebarCollapsed && (
+              <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
+                <strong style={{ fontSize: '0.74rem', color: '#ffffff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {profile?.contexto_terapeutico?.name || profile?.display_name || 'Mi Perfil'}
+                </strong>
+                <span style={{ fontSize: '0.58rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {profile?.role === 'supervisor' ? 'Supervisor' : (profile?.role === 'psicologo' ? 'Psicólogo Habilitado' : 'Paciente')}
+                </span>
+              </div>
+            )}
+          </button>
+        </div>
+
+        {/* Botón de colapso en Desktop */}
+        <div className="sidebar-collapse-section desktop-only" style={{ padding: '10px 14px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'center' }}>
+          <button
+            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--text-secondary)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
+              gap: '10px',
+              fontSize: '0.72rem',
+              fontWeight: 600,
+              padding: '8px 0',
+              width: '100%',
+              textAlign: 'left',
+              transition: 'color var(--transition-fast)'
+            }}
+            title={sidebarCollapsed ? "Expandir menú de navegación" : "Colapsar menú de navegación"}
+          >
+            {sidebarCollapsed ? <ChevronRight size={18} /> : <><ChevronLeft size={18} /> <span>Colapsar Menú</span></>}
+          </button>
+        </div>
       </aside>
-      )}
 
       {/* Main Content Pane */}
       <div className="main-content">
         {/* Topbar Header */}
+        {/* Topbar Header */}
         <header className="topbar">
-          <div className="topbar-title-section">
-            <h1 style={{ fontSize: '1.1rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          <div className="topbar-title-section" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '12px' }}>
+            {/* Cabecera para Móviles (Con Logo y Marca) */}
+            <div className="mobile-only" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <img src="/ancora_logo.png" alt="ÁNCORA" style={{ width: '26px', height: '26px', borderRadius: '50%', objectFit: 'cover', border: '1px solid rgba(6, 182, 212, 0.4)', boxShadow: '0 0 6px rgba(6, 182, 212, 0.25)' }} />
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <h1 style={{ fontSize: '0.95rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#ffffff', lineHeight: 1.1, fontWeight: 800, margin: 0 }}>
+                  ÁNCORA
+                </h1>
+                <span className="topbar-subtitle" style={{ fontSize: '0.55rem', color: 'var(--text-secondary)' }}>
+                  {appMode.isPsicologo ? 'Portal Clínico' : 'Acompañamiento'}
+                </span>
+              </div>
+              <div style={{ width: '1px', height: '16px', background: 'var(--border)', marginInline: '4px' }} />
+            </div>
+
+            {/* Título de la Sección Activa (Principal en Desktop, Secundario en Móvil) */}
+            <span className="topbar-section-title" style={{ 
+              fontSize: 'clamp(0.95rem, 2vw, 1.25rem)', 
+              fontWeight: 800, 
+              color: '#ffffff', 
+              fontFamily: "'Outfit', sans-serif",
+              letterSpacing: '-0.01em',
+              whiteSpace: 'nowrap' 
+            }}>
               {navTitle[activeTab] || 'Panel Principal'}
-            </h1>
-            <span className="topbar-subtitle">
-              {appMode.showPersonalModules ? 'Paciente: Usuario privado José Naranjo Fernández — Agencia EFE' : 'Espacio privado por usuario'}
             </span>
           </div>
 
           <div className="topbar-actions">
-            {isSuperAdmin && (
-              <div className="flex-center" style={{
-                background: 'rgba(68,125,130,0.08)',
-                border: '1px solid rgba(68,125,130,0.3)',
-                borderRadius: 'var(--radius-sm)',
-                padding: '6px 12px',
-                gap: '8px'
-              }}>
-                <span style={{ fontSize: '0.62rem', fontWeight: 800, color: 'var(--color-cyan)', textTransform: 'uppercase' }}>Super Admin CRM:</span>
-                <select
-                  value={adminViewRole || 'admin_crm'}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setAdminViewRole(val === 'admin_crm' ? null : val);
-                  }}
-                  style={{
-                    fontSize: '0.7rem',
-                    fontWeight: 700,
-                    background: 'transparent',
-                    color: '#ffffff',
-                    border: 'none',
-                    outline: 'none',
-                    cursor: 'pointer'
-                  }}
-                >
-                  <option value="admin_crm" style={{ background: 'var(--background-secondary)', color: '#ffffff' }}>CRM / Consola Admin</option>
-                  <option value="paciente" style={{ background: 'var(--background-secondary)', color: '#ffffff' }}>Vista Paciente</option>
-                  <option value="psicologo" style={{ background: 'var(--background-secondary)', color: '#ffffff' }}>Vista Psicólogo</option>
-                </select>
-              </div>
-            )}
-
-            {/* Diario de Sensaciones Status Indicator */}
-            <div className="flex-center" style={{
-              background: 'var(--background-tertiary)',
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--radius-sm)',
-              padding: '6px 12px',
-              gap: '8px',
-              cursor: 'pointer'
-            }} onClick={() => setActiveTab('mente')}>
-              <div style={{
-                width: '7px',
-                height: '7px',
-                borderRadius: '50%',
-                backgroundColor: dailyMoodToday ? 'var(--color-emerald)' : 'var(--color-rose)',
-                boxShadow: `0 0 6px ${dailyMoodToday ? 'var(--color-emerald)' : 'var(--color-rose)'}`
-              }} />
-              <span style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-                {dailyMoodToday ? 'Diario Completado Hoy' : 'Diario de Sensaciones Pendiente'}
-              </span>
-            </div>
-
-
-
-
-            {/* Profile Dropdown Trigger */}
-            <div style={{ position: 'relative' }}>
-              <button
-                onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
-                className="flex-center profile-dropdown-trigger"
-                style={{
-                  background: 'var(--background-tertiary)',
-                  border: '1px solid var(--border)',
-                  borderRadius: 'var(--radius-sm)',
-                  padding: '6px 12px',
-                  gap: '6px',
-                  fontSize: '0.7rem',
-                  fontWeight: 700,
-                  color: profile?.role === 'supervisor' ? 'var(--color-cyan)' : (profile?.role === 'psicologo' ? 'var(--color-cyan)' : 'var(--color-emerald)'),
-                  cursor: 'pointer',
-                  outline: 'none'
-                }}
-              >
-                {profile?.avatar || profile?.contexto_terapeutico?.avatar ? (
-                  <img 
-                    src={profile.avatar || profile.contexto_terapeutico.avatar} 
-                    alt="avatar" 
-                    style={{ width: '18px', height: '18px', borderRadius: '50%', objectFit: 'cover' }} 
-                  />
-                ) : (
-                  <User size={14} />
+                {isSuperAdmin && (
+                  <div className="flex-center" style={{
+                    background: 'rgba(68,125,130,0.08)',
+                    border: '1px solid rgba(68,125,130,0.3)',
+                    borderRadius: 'var(--radius-sm)',
+                    padding: '6px 12px',
+                    gap: '8px'
+                  }}>
+                    <span style={{ fontSize: '0.62rem', fontWeight: 800, color: 'var(--color-cyan)', textTransform: 'uppercase' }}>Super Admin CRM:</span>
+                    <select
+                      value={adminViewRole || 'admin_crm'}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setAdminViewRole(val === 'admin_crm' ? null : val);
+                      }}
+                      style={{
+                        fontSize: '0.7rem',
+                        fontWeight: 700,
+                        background: 'transparent',
+                        color: '#ffffff',
+                        border: 'none',
+                        outline: 'none',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <option value="admin_crm" style={{ background: 'var(--background-secondary)', color: '#ffffff' }}>CRM / Consola Admin</option>
+                      <option value="paciente" style={{ background: 'var(--background-secondary)', color: '#ffffff' }}>Vista Paciente</option>
+                      <option value="psicologo" style={{ background: 'var(--background-secondary)', color: '#ffffff' }}>Vista Psicólogo</option>
+                    </select>
+                  </div>
                 )}
-                <span className="profile-trigger-name">
-                  {profile?.display_name || profile?.contexto_terapeutico?.displayName || (profile?.role === 'supervisor' ? 'Supervisor' : (profile?.role === 'psicologo' ? 'Psicólogo' : 'Paciente'))}
-                </span>
-              </button>
 
-              {profileDropdownOpen && (
-                <div className="profile-dropdown-menu" style={{
-                  position: 'absolute',
-                  top: '100%',
-                  right: 0,
-                  marginTop: '8px',
-                  width: '240px',
-                  background: 'var(--background-secondary)',
-                  border: '1px solid var(--border)',
-                  borderRadius: 'var(--radius-md)',
-                  boxShadow: 'var(--shadow-lg)',
-                  padding: '12px',
-                  zIndex: 1050,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '10px'
-                }}>
-                  <div style={{ borderBottom: '1px solid var(--border)', paddingBottom: '8px', display: 'flex', gap: '10px', alignItems: 'center' }}>
-                    {(profile?.avatar || profile?.contexto_terapeutico?.avatar) && (
-                      <img 
-                        src={profile.avatar || profile.contexto_terapeutico.avatar} 
-                        alt="avatar" 
-                        style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover', border: '1px solid var(--border)' }} 
-                      />
-                    )}
-                    <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-                      <strong style={{ fontSize: '0.78rem', color: '#ffffff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {profile?.contexto_terapeutico?.name || profile?.display_name || 'Usuario Demo'}
-                      </strong>
-                      <span style={{ fontSize: '0.62rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {user?.email}
-                      </span>
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <span style={{ fontSize: '0.62rem', color: 'var(--text-secondary)' }}>Rol actual</span>
+                {/* Diario de Sensaciones Status Indicator (Solo Pacientes) */}
+                {appMode.isGeneric && (
+                  <div className="flex-center" style={{
+                    background: 'var(--background-tertiary)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 'var(--radius-sm)',
+                    padding: '6px 12px',
+                    gap: '8px',
+                    cursor: 'pointer'
+                  }} onClick={() => setActiveTab('mente')}>
                     <div style={{
-                      fontSize: '0.7rem',
-                      fontWeight: 600,
-                      padding: '4px 8px',
-                      borderRadius: '4px',
-                      background: profile?.role === 'supervisor' ? 'rgba(6,182,212,0.1)' : (profile?.role === 'psicologo' ? 'rgba(6,182,212,0.1)' : 'rgba(16,185,129,0.1)'),
-                      color: profile?.role === 'supervisor' ? 'var(--color-cyan)' : (profile?.role === 'psicologo' ? 'var(--color-cyan)' : 'var(--color-emerald)'),
-                      border: `1px solid ${profile?.role === 'supervisor' ? 'rgba(6,182,212,0.2)' : (profile?.role === 'psicologo' ? 'rgba(6,182,212,0.2)' : 'rgba(16,185,129,0.2)')}`
-                    }}>
-                      {profile?.role === 'supervisor' ? 'Supervisor' : (profile?.role === 'psicologo' ? 'Psicólogo Habilitado' : (appMode.showPersonalModules ? 'Paciente (Emilio)' : 'Paciente'))}
-                    </div>
+                      width: '7px',
+                      height: '7px',
+                      borderRadius: '50%',
+                      backgroundColor: dailyMoodToday ? 'var(--color-emerald)' : 'var(--color-rose)',
+                      boxShadow: `0 0 6px ${dailyMoodToday ? 'var(--color-emerald)' : 'var(--color-rose)'}`
+                    }} />
+                    <span className="diario-status-text" style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                      {dailyMoodToday ? 'Diario Completado Hoy' : 'Diario de Sensaciones Pendiente'}
+                    </span>
                   </div>
-                  <button
-                    onClick={handleLogoutClick}
-                    className="btn btn-outline"
-                    style={{
-                      width: '100%',
-                      borderColor: 'hsla(var(--rose), 0.3)',
-                      color: 'var(--color-rose)',
-                      height: '32px',
-                      fontSize: '0.72rem',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '6px'
-                    }}
-                  >
-                    <LogOut size={14} />
-                    <span>Cerrar Sesión</span>
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        </header>
+                )}                {/* Profile dropdown removed from topbar - consolidated in sidebar/bottombar */}
+              </div>
+            </header>
 
         {/* View content injection */}
         <main 
-          className={`view-container ${activeTab === 'chat' ? 'chat-view-active' : ''}`}
+          className={`view-container ${activeTab === 'chat' ? 'chat-view-active' : ''} ${appMode.isPsicologo ? 'psicologo-view-active' : ''}`}
           style={!isVerifiedPsicologo ? {
             filter: 'blur(6px)',
             pointerEvents: 'none',
             userSelect: 'none'
           } : {}}
         >
-          {activeTab === 'dashboard' && (
+          {activeTab === 'dashboard' && !appMode.isPsicologo && (
             appMode.isSupervisor ? (
               <AdminDashboardView
                 user={user}
                 profile={profile}
-              />
-            ) : appMode.isPsicologo ? (
-              <PsicologoDashboardView
-                user={user}
-                profile={profile}
-                isVirtualDemo={isVirtualDemo}
-                onLogout={handleLogout}
-                onProfileUpdated={(updatedProfile) => setProfile(updatedProfile)}
-                sidebarCollapsed={sidebarCollapsed}
-                setSidebarCollapsed={setSidebarCollapsed}
               />
             ) : appMode.isGeneric ? (
               <PacienteHoyView
@@ -853,6 +891,20 @@ export default function App() {
             )
           )}
 
+          {appMode.isPsicologo && ['dashboard', 'perfil', 'soap', 'briefing', 'agenda', 'ajustes'].includes(activeTab) && (
+            <PsicologoDashboardView
+              user={user}
+              profile={profile}
+              isVirtualDemo={isVirtualDemo}
+              onLogout={handleLogout}
+              onProfileUpdated={(updatedProfile) => setProfile(updatedProfile)}
+              sidebarCollapsed={sidebarCollapsed}
+              setSidebarCollapsed={setSidebarCollapsed}
+              activeSection={activeTab}
+              setActiveSection={setActiveTab}
+            />
+          )}
+
           {activeTab === 'mente' && (
             <MenteView
               user={user}
@@ -870,16 +922,6 @@ export default function App() {
               user={user}
               profile={profile}
             />
-          )}
-
-          {activeTab === 'deudas' && appMode.showPersonalModules && (
-            <div className="view-content-limit">
-              <ViabilityWidget
-                user={user}
-                totalDebts={totalDebts}
-                onDebtsUpdated={handleDebtsUpdated}
-              />
-            </div>
           )}
 
           {activeTab === 'agentes' && appMode.showPersonalModules && (
@@ -929,6 +971,10 @@ export default function App() {
                 profile={profile}
                 user={user}
                 onProfileUpdated={async (updatedProfile) => setProfile(updatedProfile)}
+                sidebarCollapsed={sidebarCollapsed}
+                setSidebarCollapsed={setSidebarCollapsed}
+                bottomMenuHidden={bottomMenuHidden || bottomMenuCollapsed}
+                setBottomMenuHidden={setBottomMenuHidden}
               />
             ) : (
               <ChatView
@@ -972,6 +1018,17 @@ export default function App() {
               onProfileUpdated={async (updatedProfile) => setProfile(updatedProfile)}
               user={user}
               isVirtualDemo={isVirtualDemo}
+              onLogout={handleLogoutClick}
+            />
+          )}
+
+          {activeTab === 'perfil_usuario' && appMode.isPsicologo && (
+            <PsicologoPerfilView
+              profile={profile}
+              onProfileUpdated={async (updatedProfile) => setProfile(updatedProfile)}
+              user={user}
+              isVirtualDemo={isVirtualDemo}
+              onLogout={handleLogoutClick}
             />
           )}
 
@@ -983,7 +1040,7 @@ export default function App() {
             />
           )}
 
-          {activeTab === 'ajustes' && (
+          {activeTab === 'ajustes' && !appMode.isPsicologo && (
             <AjustesView
               user={user}
               profile={profile}
@@ -1065,7 +1122,126 @@ export default function App() {
           </div>
         )}
       </div>
+
+      {/* Fondo invisible para cerrar submenús flotantes al pulsar fuera */}
+      {activeMobileMenu && (
+        <div 
+          className="popover-backdrop" 
+          onClick={() => setActiveMobileMenu(null)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 990,
+            background: 'transparent'
+          }}
+        />
+      )}
+
+      {/* Tirador para colapsar/expandir el menú inferior móvil */}
+      {!bottomMenuHidden && (
+        <div className="mobile-only" style={{
+          position: 'fixed',
+          bottom: bottomMenuCollapsed ? '16px' : '62px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 1005,
+          transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
+        }}>
+          <button
+            onClick={() => setBottomMenuCollapsed(!bottomMenuCollapsed)}
+            style={{
+              width: '36px',
+              height: '20px',
+              borderRadius: '10px 10px 0 0',
+              background: 'rgba(10, 22, 32, 0.94)',
+              backdropFilter: 'blur(20px)',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              borderBottom: 'none',
+              color: 'var(--text-secondary)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 -4px 10px rgba(0,0,0,0.2)'
+            }}
+            title={bottomMenuCollapsed ? "Expandir menú inferior" : "Plegar menú inferior"}
+          >
+            {bottomMenuCollapsed ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </button>
+        </div>
+      )}
+
+      {/* Barra de navegación inferior disruptiva en dispositivos móviles */}
+      <div className={`mobile-bottom-bar ${bottomMenuCollapsed ? 'collapsed' : ''}`} style={bottomMenuHidden ? { display: 'none' } : {}}>
+        {bottomBarItems.map(item => {
+          const Icon = item.icon || navIcons[item.id] || LayoutDashboard;
+          const hasSubItems = item.subItems && item.subItems.length > 0;
+          const isMenuOpen = activeMobileMenu === item.id;
+          
+          // Verificar si alguna subsección está activa
+          const isChildActive = hasSubItems && item.subItems.some(sub => activeTab === sub.id);
+          const isActive = isMenuOpen || (!hasSubItems && activeTab === item.id) || isChildActive;
+
+          return (
+            <div key={item.id} className="mobile-nav-item-container" style={{ position: 'relative', flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+              
+              {/* Submenú Flotante Contextual (Popover Glassmorphic) */}
+              {hasSubItems && isMenuOpen && (
+                <div className="mobile-popover-menu animate-pop-in">
+                  <div className="mobile-popover-arrow" />
+                  <div className="mobile-popover-inner">
+                    {item.subItems.map(sub => {
+                      const SubIcon = sub.icon || navIcons[sub.id] || LayoutDashboard;
+                      const isSubActive = activeTab === sub.id;
+                      
+                      return (
+                        <button
+                          key={sub.id}
+                          onClick={() => {
+                            if (sub.action === 'logout') {
+                              handleLogoutClick();
+                            } else {
+                              setActiveTab(sub.id);
+                            }
+                            setActiveMobileMenu(null);
+                          }}
+                          className={`mobile-popover-item ${isSubActive ? 'active' : ''}`}
+                        >
+                          <div className="popover-icon-wrapper">
+                            <SubIcon size={18} />
+                          </div>
+                          <span className="popover-item-label">{sub.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Botón Principal de la Barra Inferior */}
+              <button
+                onClick={() => {
+                  if (hasSubItems) {
+                    setActiveMobileMenu(isMenuOpen ? null : item.id);
+                  } else {
+                    if (item.action === 'logout') {
+                      handleLogoutClick();
+                    } else {
+                      setActiveTab(item.id);
+                    }
+                    setActiveMobileMenu(null);
+                  }
+                }}
+                className={`mobile-nav-link ${isActive ? 'active' : ''}`}
+              >
+                <Icon size={20} />
+                <span className="mobile-nav-label">{item.label}</span>
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
     </div>
-    </>
   );
 }

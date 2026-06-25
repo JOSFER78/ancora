@@ -24,7 +24,7 @@ La aplicación se compone de tres capas principales:
 *   **Core**: React 19 (Vite) + Javascript (ES Modules con `"type": "module"` en `package.json`).
 *   **Estilos**: Vanilla CSS con variables globales de diseño premium oscuras, efectos de cristal (glassmorphism), y luces de color cian/esmeralda.
 *   **Librerías**: `lucide-react` para iconos y `supabase-js` para base de datos.
-*   **Despliegue**: **Firebase Hosting** (`ayuda-emilio-83261.web.app`).
+*   **Despliegue**: **Firebase Hosting** (`ancora-portal.web.app`).
 
 ### Backend (Supabase Edge Functions)
 *   **Tecnología**: Deno (Typescript) alojado en Supabase Edge Functions.
@@ -91,7 +91,7 @@ Se ha refinado y simplificado el flujo de autenticación del portal en [LoginVie
 ### Configuración del OAuth de Google requerida en consolas web:
 *   **Google Cloud Console (`ayuda-497509`)**:
     - ID de cliente OAuth 2.0 de tipo Aplicación Web.
-    - **Orígenes autorizados**: `http://localhost:5180` y `https://ayuda-emilio-83261.web.app`.
+    - **Orígenes autorizados**: `http://localhost:5180` y `https://ancora-portal.web.app`.
     - **Redirección autorizada**: `https://ysnorelkaccaikvuqgnv.supabase.co/auth/v1/callback`.
 *   **Supabase Console (`ysnorelkaccaikvuqgnv`)**:
     - Proveedor Google habilitado en *Authentication > Providers > Google* con el *Client ID* y *Client Secret* de Google Cloud.

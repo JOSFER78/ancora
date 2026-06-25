@@ -6,6 +6,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
+import PlanConsumptionWidget from '../../components/PlanConsumptionWidget';
 
 export default function PacienteHoyView({ 
   user,
@@ -245,7 +246,7 @@ export default function PacienteHoyView({
         setLoadingStreak(true);
         const { data, error } = await supabase
           .from('daily_moods')
-          .select('date, anxiety_level, energy_level')
+          .select('date, anxiety_level')
           .eq('user_id', profile.id)
           .order('date', { ascending: false });
         if (error) throw error;
@@ -1537,6 +1538,11 @@ export default function PacienteHoyView({
         {/* Columna Derecha: Acciones, Resumen y Perfil Profesional */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           
+          {/* Widget de Consumo de Créditos de IA */}
+          {profile?.id && (
+            <PlanConsumptionWidget patientId={profile.id} />
+          )}
+
           {/* Acciones Rápidas */}
           <div className="glass-panel" style={{ padding: '20px' }}>
             <h4 style={{ fontSize: '0.9rem', fontWeight: 800, marginBottom: '14px', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-secondary)' }}>

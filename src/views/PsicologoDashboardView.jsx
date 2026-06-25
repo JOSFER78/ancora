@@ -60,10 +60,14 @@ export default function PsicologoDashboardView({
   onLogout,
   onProfileUpdated,
   sidebarCollapsed = false,
-  setSidebarCollapsed
+  setSidebarCollapsed,
+  activeSection: propsActiveSection,
+  setActiveSection: propsSetActiveSection
 }) {
   // Navigation internal to the clinical portal
-  const [activeSection, setActiveSection] = useState('dashboard'); // 'dashboard' | 'perfil' | 'soap' | 'briefing' | 'agenda'
+  const [localActiveSection, localSetActiveSection] = useState('dashboard');
+  const activeSection = propsActiveSection || localActiveSection;
+  const setActiveSection = propsSetActiveSection || localSetActiveSection;
   const [rawReviewed, setRawReviewed] = useState(false);
   const [patientSubTab, setPatientSubTab] = useState('resumen'); // 'resumen' | 'raw' | 'notas' | 'sesiones' | 'tareas' | 'medicacion' | 'consentimientos'
 
@@ -125,56 +129,223 @@ export default function PsicologoDashboardView({
   const [googleSynced, setGoogleSynced] = useState(false);
   const [sessionFee, setSessionFee] = useState(profile?.contexto_terapeutico?.sessionPrice || 49);
   const [asyncFee, setAsyncFee] = useState(29); // Tarifa mínima asíncrona
-  const [availabilitySlots, setAvailabilitySlots] = useState(() => {
-    const local = localStorage.getItem(`availability_slots_${profile?.email}`);
-    if (local) return JSON.parse(local);
-    return profile?.email === 'tisutet@hormail.com' ? [
-      { day: 'Lunes', hour: '10:00', status: 'available' },
-      { day: 'Lunes', hour: '11:00', status: 'available' },
-      { day: 'Martes', hour: '16:00', status: 'available' },
-      { day: 'Miércoles', hour: '17:00', status: 'available' },
-      { day: 'Jueves', hour: '11:00', status: 'available' },
-      { day: 'Viernes', hour: '15:00', status: 'available' }
-    ] : [
-      { day: 'Lunes', hour: '09:00', status: 'available' },
-      { day: 'Martes', hour: '15:00', status: 'available' },
-      { day: 'Jueves', hour: '17:00', status: 'available' }
-    ];
-  });
+  const [availabilitySlots, setAvailabilitySlots] = useState([]);
+  
+  const [currentYear, setCurrentYear] = useState(() => new Date().getFullYear());
+  const [currentMonth, setCurrentMonth] = useState(() => new Date().getMonth()); // 0-11
+  const [blockedDates, setBlockedDates] = useState([]);
+  const [workingDays, setWorkingDays] = useState(['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes']);
+  
+  // Google Calendar View States
+  const [calendarView, setCalendarView] = useState('month'); // 'month' | 'week' | 'day'
+  const [selectedDate, setSelectedDate] = useState(() => new Date());
+  const [selectedAppt, setSelectedAppt] = useState(null);
+  const [showQuickAddModal, setShowQuickAddModal] = useState(false);
+  const [quickAddDate, setQuickAddDate] = useState('');
+  const [quickAddHour, setQuickAddHour] = useState('09:00');
+  const [quickAddPatientId, setQuickAddPatientId] = useState('');
+  const [quickAddType, setQuickAddType] = useState('Sesión Individual');
+  
+  const monthNames = [
+    'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 
+    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+  ];
 
-  const handleSyncGoogleCalendar = async () => {
-    setIsSyncingGoogle(true);
-    await new Promise(resolve => setTimeout(resolve, 2200));
-    setGoogleSynced(true);
-    setIsSyncingGoogle(false);
-    
-    // Inyectar slots sincronizados desde Google
-    setAvailabilitySlots(prev => {
-      const filtered = prev.filter(s => s.status !== 'google_blocked');
-      const updated = [
-        ...filtered,
-        { day: 'Martes', hour: '09:00', status: 'google_blocked', label: 'Reunión de Agencia (Google)' },
-        { day: 'Miércoles', hour: '12:00', status: 'google_blocked', label: 'Consulta Médica (Google)' },
-        { day: 'Jueves', hour: '15:00', status: 'google_blocked', label: 'Buffer Almuerzo (Google)' }
-      ];
-      localStorage.setItem(`availability_slots_${profile?.email}`, JSON.stringify(updated));
-      return updated;
-    });
+  const loadPsychologistAvailability = async () => {
+    if (!profile?.id) return;
+    try {
+      const { data, error } = await supabase
+        .from('psychologist_profiles')
+        .select('*')
+        .eq('id', profile.id)
+        .single();
+      
+      if (!error && data) {
+        if (data.availability) {
+          try {
+            const avail = typeof data.availability === 'string' ? JSON.parse(data.availability) : data.availability;
+            setGoogleSynced(avail.google_connected || false);
+            if (avail.blocked_dates) setBlockedDates(avail.blocked_dates);
+            if (avail.working_days) setWorkingDays(avail.working_days);
+            
+            if (avail.custom_available_slots) {
+              const slots = [];
+              Object.entries(avail.custom_available_slots).forEach(([d, hours]) => {
+                hours.forEach(hour => {
+                  slots.push({ day: d, hour, status: 'available' });
+                });
+              });
+              setAvailabilitySlots(slots);
+            }
+          } catch (jsonErr) {
+            console.warn("Availability is not a structured JSON in Supabase:", data.availability);
+            setGoogleSynced(false);
+            setAvailabilitySlots([]);
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Error loading availability in dashboard:", err.message);
+    }
   };
 
-  const handleToggleSlot = (day, hour) => {
-    setAvailabilitySlots(prev => {
-      const exists = prev.find(s => s.day === day && s.hour === hour);
-      let updated;
-      if (exists) {
-        if (exists.status === 'google_blocked') return prev; // Bloqueado por Google
-        updated = prev.filter(s => !(s.day === day && s.hour === hour));
-      } else {
-        updated = [...prev, { day, hour, status: 'available' }];
+  useEffect(() => {
+    if (profile?.id) {
+      loadPsychologistAvailability();
+    }
+  }, [profile?.id]);
+
+  const handleSyncGoogleCalendar = async () => {
+    if (!profile?.id) return;
+    setIsSyncingGoogle(true);
+    try {
+      const { data, error } = await supabase
+        .from('psychologist_profiles')
+        .select('*')
+        .eq('id', profile.id)
+        .single();
+      
+      if (error) throw error;
+      
+      let avail = {};
+      if (data && data.availability) {
+        try {
+          avail = typeof data.availability === 'string' ? JSON.parse(data.availability) : data.availability;
+        } catch (e) {
+          console.warn("Availability was plain text, resetting to object:", data.availability);
+          avail = {};
+        }
       }
-      localStorage.setItem(`availability_slots_${profile?.email}`, JSON.stringify(updated));
-      return updated;
-    });
+      
+      const nextState = !googleSynced;
+      avail.google_connected = nextState;
+      
+      const { error: updateError } = await supabase
+        .from('psychologist_profiles')
+        .update({
+          availability: JSON.stringify(avail)
+        })
+        .eq('id', profile.id);
+      
+      if (updateError) throw updateError;
+      
+      setGoogleSynced(nextState);
+    } catch (err) {
+      console.error("Error updating google sync in Supabase:", err.message);
+      alert("Error al guardar la sincronización: " + err.message);
+    } finally {
+      setIsSyncingGoogle(false);
+    }
+  };
+
+  const handleToggleSlot = async (day, hour) => {
+    if (!profile?.id) return;
+    try {
+      const { data, error } = await supabase
+        .from('psychologist_profiles')
+        .select('*')
+        .eq('id', profile.id)
+        .single();
+      
+      if (error) throw error;
+      
+      let avail = {};
+      if (data && data.availability) {
+        try {
+          avail = typeof data.availability === 'string' ? JSON.parse(data.availability) : data.availability;
+        } catch (e) {
+          console.warn("Availability was plain text, resetting to object:", data.availability);
+          avail = {};
+        }
+      }
+      
+      if (!avail.custom_available_slots) {
+        avail.custom_available_slots = {};
+      }
+      if (!avail.custom_available_slots[day]) {
+        avail.custom_available_slots[day] = [];
+      }
+      
+      const exists = avail.custom_available_slots[day].includes(hour);
+      let updatedHours;
+      if (exists) {
+        updatedHours = avail.custom_available_slots[day].filter(h => h !== hour);
+      } else {
+        updatedHours = [...avail.custom_available_slots[day], hour];
+      }
+      
+      avail.custom_available_slots[day] = updatedHours;
+      
+      const { error: updateError } = await supabase
+        .from('psychologist_profiles')
+        .update({
+          availability: JSON.stringify(avail)
+        })
+        .eq('id', profile.id);
+      
+      if (updateError) throw updateError;
+      
+      // Actualizar estado local
+      const slots = [];
+      Object.entries(avail.custom_available_slots).forEach(([d, hours]) => {
+        hours.forEach(h => {
+          slots.push({ day: d, hour: h, status: 'available' });
+        });
+      });
+      setAvailabilitySlots(slots);
+    } catch (err) {
+      console.error("Error toggling slot in Supabase:", err.message);
+      alert("Error al guardar slot: " + err.message);
+    }
+  };
+
+  const handleToggleBlockDate = async (dateStr) => {
+    if (!profile?.id) return;
+    try {
+      const { data, error } = await supabase
+        .from('psychologist_profiles')
+        .select('*')
+        .eq('id', profile.id)
+        .single();
+      
+      if (error) throw error;
+      
+      let avail = {};
+      if (data && data.availability) {
+        try {
+          avail = typeof data.availability === 'string' ? JSON.parse(data.availability) : data.availability;
+        } catch (e) {
+          console.warn("Availability was plain text, resetting:", data.availability);
+          avail = {};
+        }
+      }
+      
+      if (!avail.blocked_dates) avail.blocked_dates = [];
+      
+      const exists = avail.blocked_dates.includes(dateStr);
+      let updatedBlocked;
+      if (exists) {
+        updatedBlocked = avail.blocked_dates.filter(d => d !== dateStr);
+      } else {
+        updatedBlocked = [...avail.blocked_dates, dateStr];
+      }
+      
+      avail.blocked_dates = updatedBlocked;
+      
+      const { error: updateError } = await supabase
+        .from('psychologist_profiles')
+        .update({
+          availability: JSON.stringify(avail)
+        })
+        .eq('id', profile.id);
+      
+      if (updateError) throw updateError;
+      
+      setBlockedDates(updatedBlocked);
+    } catch (err) {
+      console.error("Error toggling blocked date in Supabase:", err.message);
+      alert("Error al cambiar bloqueo de día: " + err.message);
+    }
   };
 
   // Selected patient
@@ -399,6 +570,31 @@ export default function PsicologoDashboardView({
     }
     return [];
   });
+
+  const updatePatientStartOfWeek = async (patientId, newDay) => {
+    localStorage.setItem(`patient_start_of_week_${patientId}`, newDay);
+    
+    // Actualizar estado patients
+    setPatients(prev => prev.map(p => p.id === patientId ? {
+      ...p,
+      startOfWeek: newDay,
+      contexto_terapeutico: {
+        ...p.contexto_terapeutico,
+        start_of_week: newDay
+      }
+    } : p));
+
+    // Guardar en Supabase si es modo real
+    if (!isVirtualDemo && patientId && !patientId.toString().startsWith('p-')) {
+      try {
+        const { data: currentP } = await supabase.from('profiles').select('contexto_terapeutico').eq('id', patientId).single();
+        const updatedCtx = { ...currentP?.contexto_terapeutico, start_of_week: newDay };
+        await supabase.from('profiles').update({ contexto_terapeutico: updatedCtx }).eq('id', patientId);
+      } catch (err) {
+        console.error("Error updating start of week in Supabase:", err);
+      }
+    }
+  };
 
   // Loading state
   const [loadingReal, setLoadingReal] = useState(true);
@@ -1001,278 +1197,62 @@ export default function PsicologoDashboardView({
           )}
         </div>
       )}
-
-      {/* CONTENEDOR PRINCIPAL DEL PORTAL CON ESTRUCTURA MOCKUP */}
-      <div 
-        style={{ 
-          display: 'grid', 
-          gridTemplateColumns: clinicalNavCollapsed ? '70px 1fr' : '220px 1fr', 
-          gap: '24px',
-          transition: 'grid-template-columns 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
-        }} 
-        className="grid-responsive-dashboard"
-      >
-        
-        {/* NAVEGACIÓN LATERAL INTERNA (Estructura Mockups) */}
-        <div className="clinical-sidebar-nav-container" style={{ display: 'flex', flexDirection: 'column', gap: '14px', width: clinicalNavCollapsed ? '70px' : '220px', transition: 'width 0.2s cubic-bezier(0.4, 0, 0.2, 1)', overflow: 'hidden' }}>
-          <div className="glass-panel" style={{ padding: '12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: clinicalNavCollapsed ? 'center' : 'flex-start', gap: '8px', paddingBottom: '6px', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingLeft: '4px', paddingRight: '4px' }}>
-              <button
-                onClick={() => setClinicalNavCollapsed(!clinicalNavCollapsed)}
-                style={{
-                  background: 'rgba(255, 255, 255, 0.03)',
-                  border: '1px solid rgba(255, 255, 255, 0.1)',
-                  color: 'var(--text-secondary)',
-                  cursor: 'pointer',
-                  width: '20px',
-                  height: '20px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  outline: 'none',
-                  borderRadius: '50%',
-                  transition: 'all 0.2s ease',
-                  padding: 0,
-                  flexShrink: 0
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
-                  e.currentTarget.style.color = '#ffffff';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)';
-                  e.currentTarget.style.color = 'var(--text-secondary)';
-                }}
-                title={clinicalNavCollapsed ? "Desplegar menú clínico" : "Plegar menú clínico"}
-              >
-                {clinicalNavCollapsed ? <ChevronRight size={10} /> : <ChevronLeft size={10} />}
-              </button>
-              {!clinicalNavCollapsed && (
-                <span className="clinical-sidebar-nav-title" style={{ fontSize: '0.58rem', color: 'var(--text-tertiary)', fontWeight: 800, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
-                  Navegación Clínica
-                </span>
-              )}
-            </div>
-            <button
-              onClick={() => { setActiveSection('dashboard'); }}
-              className={`sidebar-link ${activeSection === 'dashboard' ? 'active' : ''}`}
-              style={{ 
-                padding: clinicalNavCollapsed ? '8px 0' : '8px 12px', 
-                fontSize: '0.75rem', 
-                borderRadius: '6px', 
-                display: 'flex', 
-                alignItems: 'center', 
-                justifyContent: clinicalNavCollapsed ? 'center' : 'flex-start',
-                gap: clinicalNavCollapsed ? '0' : '8px', 
-                width: '100%', 
-                textAlign: 'left', 
-                cursor: 'pointer' 
-              }}
-              title={clinicalNavCollapsed ? "1. Vista General" : undefined}
-            >
-              <Activity size={15} style={{ flexShrink: 0 }} />
-              {!clinicalNavCollapsed && <span>1. Vista General</span>}
-            </button>
-
-            <button
-              onClick={() => { setActiveSection('perfil'); }}
-              className={`sidebar-link ${activeSection === 'perfil' ? 'active' : ''}`}
-              style={{ 
-                padding: clinicalNavCollapsed ? '8px 0' : '8px 12px', 
-                fontSize: '0.75rem', 
-                borderRadius: '6px', 
-                display: 'flex', 
-                alignItems: 'center', 
-                justifyContent: clinicalNavCollapsed ? 'center' : 'flex-start',
-                gap: clinicalNavCollapsed ? '0' : '8px', 
-                width: '100%', 
-                textAlign: 'left', 
-                cursor: 'pointer' 
-              }}
-              title={clinicalNavCollapsed ? "2. Perfil Clínico" : undefined}
-            >
-              <User size={15} style={{ flexShrink: 0 }} />
-              {!clinicalNavCollapsed && <span>2. Perfil Clínico</span>}
-            </button>
-
-            <button
-              onClick={() => { setActiveSection('soap'); }}
-              className={`sidebar-link ${activeSection === 'soap' ? 'active' : ''}`}
-              style={{ 
-                padding: clinicalNavCollapsed ? '8px 0' : '8px 12px', 
-                fontSize: '0.75rem', 
-                borderRadius: '6px', 
-                display: 'flex', 
-                alignItems: 'center', 
-                justifyContent: clinicalNavCollapsed ? 'center' : 'flex-start',
-                gap: clinicalNavCollapsed ? '0' : '8px', 
-                width: '100%', 
-                textAlign: 'left', 
-                cursor: 'pointer' 
-              }}
-              title={clinicalNavCollapsed ? "3. Notas SOAP" : undefined}
-            >
-              <Sparkles size={15} style={{ flexShrink: 0 }} />
-              {!clinicalNavCollapsed && <span>3. Notas SOAP</span>}
-            </button>
-
-            <button
-              onClick={() => { setActiveSection('briefing'); }}
-              className={`sidebar-link ${activeSection === 'briefing' ? 'active' : ''}`}
-              style={{ 
-                padding: clinicalNavCollapsed ? '8px 0' : '8px 12px', 
-                fontSize: '0.75rem', 
-                borderRadius: '6px', 
-                display: 'flex', 
-                alignItems: 'center', 
-                justifyContent: clinicalNavCollapsed ? 'center' : 'flex-start',
-                gap: clinicalNavCollapsed ? '0' : '8px', 
-                width: '100%', 
-                textAlign: 'left', 
-                cursor: 'pointer' 
-              }}
-              title={clinicalNavCollapsed ? "4. Preparación Sesión" : undefined}
-            >
-              <Video size={15} style={{ flexShrink: 0 }} />
-              {!clinicalNavCollapsed && <span>4. Preparación Sesión</span>}
-            </button>
-
-            <button
-              onClick={() => { setActiveSection('agenda'); }}
-              className={`sidebar-link ${activeSection === 'agenda' ? 'active' : ''}`}
-              style={{ 
-                padding: clinicalNavCollapsed ? '8px 0' : '8px 12px', 
-                fontSize: '0.75rem', 
-                borderRadius: '6px', 
-                display: 'flex', 
-                alignItems: 'center', 
-                justifyContent: clinicalNavCollapsed ? 'center' : 'flex-start',
-                gap: clinicalNavCollapsed ? '0' : '8px', 
-                width: '100%', 
-                textAlign: 'left', 
-                cursor: 'pointer' 
-              }}
-              title={clinicalNavCollapsed ? "5. Agenda y Calendario" : undefined}
-            >
-              <Calendar size={15} style={{ flexShrink: 0 }} />
-              {!clinicalNavCollapsed && <span>5. Agenda y Calendario</span>}
-            </button>
-
-            <button
-              onClick={() => { setActiveSection('chat'); }}
-              className={`sidebar-link ${activeSection === 'chat' ? 'active' : ''}`}
-              style={{ 
-                padding: clinicalNavCollapsed ? '8px 0' : '8px 12px', 
-                fontSize: '0.75rem', 
-                borderRadius: '6px', 
-                display: 'flex', 
-                alignItems: 'center', 
-                justifyContent: clinicalNavCollapsed ? 'center' : 'flex-start',
-                gap: clinicalNavCollapsed ? '0' : '8px', 
-                width: '100%', 
-                textAlign: 'left', 
-                cursor: 'pointer' 
-              }}
-              title={clinicalNavCollapsed ? "6. Consultas y Chat" : undefined}
-            >
-              <MessageSquare size={15} style={{ flexShrink: 0 }} />
-              {!clinicalNavCollapsed && <span>6. Consultas y Chat</span>}
-            </button>
-
-            <button
-              onClick={() => { setActiveSection('ajustes'); }}
-              className={`sidebar-link ${activeSection === 'ajustes' ? 'active' : ''}`}
-              style={{ 
-                padding: clinicalNavCollapsed ? '8px 0' : '8px 12px', 
-                fontSize: '0.75rem', 
-                borderRadius: '6px', 
-                display: 'flex', 
-                alignItems: 'center', 
-                justifyContent: clinicalNavCollapsed ? 'center' : 'flex-start',
-                gap: clinicalNavCollapsed ? '0' : '8px', 
-                width: '100%', 
-                textAlign: 'left', 
-                cursor: 'pointer' 
-              }}
-              title={clinicalNavCollapsed ? "7. Facturación y Stripe" : undefined}
-            >
-              <CreditCard size={15} style={{ flexShrink: 0 }} />
-              {!clinicalNavCollapsed && <span>7. Facturación y Stripe</span>}
-            </button>
-          </div>
-
-          {/* Ajuste de accesibilidad y zoom de texto */}
-          {!clinicalNavCollapsed && (
-            <div className="glass-panel" style={{ padding: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <span style={{ fontSize: '0.58rem', color: 'var(--text-tertiary)', fontWeight: 800, textTransform: 'uppercase' }}>
-                Accesibilidad AA/AAA
-              </span>
-              <div style={{ display: 'flex', gap: '4px' }}>
-                <button 
-                  onClick={() => setTextZoom(0.9)} 
-                  className="btn btn-outline" 
-                  style={{ flex: 1, height: '24px', fontSize: '0.6rem', padding: 0 }}
-                >
-                  A-
-                </button>
-                <button 
-                  onClick={() => setTextZoom(1.0)} 
-                  className="btn btn-outline" 
-                  style={{ flex: 1, height: '24px', fontSize: '0.6rem', padding: 0 }}
-                >
-                  Normal
-                </button>
-                <button 
-                  onClick={() => setTextZoom(1.15)} 
-                  className="btn btn-outline" 
-                  style={{ flex: 1, height: '24px', fontSize: '0.6rem', padding: 0 }}
-                >
-                  A+
-                </button>
-              </div>
+      {/* Cabecera / Selector de Paciente Activo (Mobile-friendly e Integrado) */}
+      <div className="clinical-header-toolbar glass-panel" style={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: '12px 20px',
+        borderRadius: 'var(--radius-md)',
+        flexWrap: 'wrap',
+        gap: '12px',
+        border: '1px solid var(--border)'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <Activity size={18} color="var(--color-cyan)" />
+          <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#ffffff', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+            Expediente Activo:
+          </span>
+          {patients.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <img src={selectedPatient.avatar} alt="" style={{ width: '22px', height: '22px', borderRadius: '50%', objectFit: 'cover', border: '1px solid var(--border)' }} />
+              <strong style={{ fontSize: '0.78rem', color: 'var(--color-cyan)' }}>{selectedPatient.name}</strong>
             </div>
           )}
-
-          {/* Sidebar Patient Quick Selection */}
-          <div className="glass-panel" style={{ padding: clinicalNavCollapsed ? '8px' : '12px', display: 'flex', flexDirection: 'column', gap: '8px', alignItems: clinicalNavCollapsed ? 'center' : 'stretch' }}>
-            {!clinicalNavCollapsed ? (
-              <>
-                <span style={{ fontSize: '0.58rem', color: 'var(--text-tertiary)', fontWeight: 800, textTransform: 'uppercase' }}>
-                  Paciente Activo
-                </span>
-                
-                {patients.length === 0 ? (
-                  <span style={{ fontSize: '0.68rem', color: 'var(--text-tertiary)', fontStyle: 'italic', padding: '4px 8px' }}>
-                    Sin pacientes asignados
-                  </span>
-                ) : (
-                  <select
-                    value={selectedPatientId}
-                    onChange={(e) => setSelectedPatientId(e.target.value)}
-                    className="form-input"
-                    style={{ height: '32px', fontSize: '0.7rem', padding: '0 6px', background: 'rgba(0,0,0,0.2)' }}
-                  >
-                    {patients.map(p => (
-                      <option key={p.id} value={p.id} style={{ background: 'var(--background-secondary)' }}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </>
-            ) : (
-              <img 
-                src={selectedPatient.avatar} 
-                alt={selectedPatient.name} 
-                title={`Paciente Activo: ${selectedPatient.name}`}
-                style={{ width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover', border: '1px solid rgba(255,255,255,0.1)' }} 
-              />
-            )}
-          </div>
         </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Cambiar Paciente:</span>
+          {patients.length === 0 ? (
+            <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>Sin asignar</span>
+          ) : (
+            <select
+              value={selectedPatientId}
+              onChange={(e) => setSelectedPatientId(e.target.value)}
+              className="form-input"
+              style={{
+                height: '30px',
+                fontSize: '0.74rem',
+                padding: '0 30px 0 10px',
+                background: 'rgba(0,0,0,0.25)',
+                border: '1px solid var(--border)',
+                borderRadius: '6px',
+                color: '#fff',
+                width: '180px',
+                cursor: 'pointer'
+              }}
+            >
+              {patients.map(p => (
+                <option key={p.id} value={p.id} style={{ background: 'var(--background-secondary)', color: '#fff' }}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+      </div>
 
-        {/* COLUMNA DERECHA: SECCIÓN ACTIVA */}
-        <div style={{ minWidth: 0 }}>
+      {/* Contenido Clínico de la Sección Activa */}
+      <div className="clinical-dashboard-content" style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '20px' }}>
           
           {/* ==================== VISTA 1: VISTA GENERAL (DASHBOARD RAW-FIRST) ==================== */}
           {activeSection === 'dashboard' && (
@@ -2321,57 +2301,99 @@ export default function PsicologoDashboardView({
                     </div>
                   </div>
 
-                  {/* Agendar Nueva Sesión */}
-                  <div className="glass-panel" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '14px', borderLeft: '4px solid var(--color-cyan)' }}>
-                    <h4 style={{ fontSize: '0.85rem', fontWeight: 800, color: '#ffffff', margin: 0 }}>
-                      Programar Cita Terapéutica
-                    </h4>
-                    <p style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', margin: 0, textAlign: 'left', lineHeight: 1.4 }}>
-                      Elige el slot y tipo de sesión. La reserva se sincronizará automáticamente con tu calendario de Google/Outlook y se reflejará en la app del paciente.
-                    </p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                    {/* Agendar Nueva Sesión */}
+                    <div className="glass-panel" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '14px', borderLeft: '4px solid var(--color-cyan)' }}>
+                      <h4 style={{ fontSize: '0.85rem', fontWeight: 800, color: '#ffffff', margin: 0 }}>
+                        Programar Cita Terapéutica
+                      </h4>
+                      <p style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', margin: 0, textAlign: 'left', lineHeight: 1.4 }}>
+                        Elige el slot y tipo de sesión. La reserva se sincronizará automáticamente con tu calendario de Google/Outlook y se reflejará en la app del paciente.
+                      </p>
 
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', textAlign: 'left', marginTop: '6px' }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                        <label style={{ fontSize: '0.62rem', fontWeight: 'bold', color: 'var(--text-secondary)' }}>Fecha de la Sesión</label>
-                        <input 
-                          type="date" 
-                          className="form-input" 
-                          value={newApptDate}
-                          onChange={(e) => setNewApptDate(e.target.value)}
-                          style={{ height: '32px', fontSize: '0.74rem', padding: '0 8px', background: 'var(--background-tertiary)', border: '1px solid var(--border)', borderRadius: '6px', color: '#ffffff' }}
-                        />
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', textAlign: 'left', marginTop: '6px' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <label style={{ fontSize: '0.62rem', fontWeight: 'bold', color: 'var(--text-secondary)' }}>Fecha de la Sesión</label>
+                          <input 
+                            type="date" 
+                            className="form-input" 
+                            value={newApptDate}
+                            onChange={(e) => setNewApptDate(e.target.value)}
+                            style={{ height: '32px', fontSize: '0.74rem', padding: '0 8px', background: 'var(--background-tertiary)', border: '1px solid var(--border)', borderRadius: '6px', color: '#ffffff' }}
+                          />
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <label style={{ fontSize: '0.62rem', fontWeight: 'bold', color: 'var(--text-secondary)' }}>Hora de la Sesión</label>
+                          <input 
+                            type="time" 
+                            className="form-input" 
+                            value={newApptTime}
+                            onChange={(e) => setNewApptTime(e.target.value)}
+                            style={{ height: '32px', fontSize: '0.74rem', padding: '0 8px', background: 'var(--background-tertiary)', border: '1px solid var(--border)', borderRadius: '6px', color: '#ffffff' }}
+                          />
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <label style={{ fontSize: '0.62rem', fontWeight: 'bold', color: 'var(--text-secondary)' }}>Tipo de Sesión</label>
+                          <select
+                            className="form-input"
+                            value={newApptType}
+                            onChange={(e) => setNewApptType(e.target.value)}
+                            style={{ height: '32px', fontSize: '0.74rem', padding: '0 8px', background: 'var(--background-tertiary)', border: '1px solid var(--border)', borderRadius: '6px', color: '#ffffff', cursor: 'pointer' }}
+                          >
+                            <option value="Sesión Individual">Sesión de Tratamiento Individual (50 min)</option>
+                            <option value="Triaje Clínico">Triaje de Evaluación Inicial (30 min)</option>
+                            <option value="Sesión de Seguimiento">Sesión de Seguimiento Breve (15 min)</option>
+                          </select>
+                        </div>
+
+                        <button 
+                          onClick={handleAddAppointment}
+                          className="btn btn-cyan"
+                          style={{ height: '34px', fontSize: '0.76rem', fontWeight: 'bold', marginTop: '8px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}
+                        >
+                          Crear y Sincronizar Sesión
+                        </button>
                       </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                        <label style={{ fontSize: '0.62rem', fontWeight: 'bold', color: 'var(--text-secondary)' }}>Hora de la Sesión</label>
-                        <input 
-                          type="time" 
-                          className="form-input" 
-                          value={newApptTime}
-                          onChange={(e) => setNewApptTime(e.target.value)}
-                          style={{ height: '32px', fontSize: '0.74rem', padding: '0 8px', background: 'var(--background-tertiary)', border: '1px solid var(--border)', borderRadius: '6px', color: '#ffffff' }}
-                        />
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                        <label style={{ fontSize: '0.62rem', fontWeight: 'bold', color: 'var(--text-secondary)' }}>Tipo de Sesión</label>
+                    </div>
+
+                    {/* Ciclo Terapéutico y Planificación de Revisiones */}
+                    <div className="glass-panel" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '14px', borderLeft: '4px solid var(--color-emerald)' }}>
+                      <h4 style={{ fontSize: '0.85rem', fontWeight: 800, color: '#ffffff', margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Clock size={16} color="var(--color-emerald)" />
+                        <span>Ciclo Terapéutico y Revisiones</span>
+                      </h4>
+                      <p style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', margin: 0, textAlign: 'left', lineHeight: 1.4 }}>
+                        Configura el inicio de la semana terapéutica de este paciente para escalonar la entrega de sus revisiones y balancear tu carga de trabajo semanal.
+                      </p>
+                      
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', textAlign: 'left', marginTop: '6px' }}>
+                        <label style={{ fontSize: '0.62rem', fontWeight: 'bold', color: 'var(--text-secondary)' }}>Inicio de la Semana Terapéutica</label>
                         <select
+                          value={selectedPatient.startOfWeek || localStorage.getItem(`patient_start_of_week_${selectedPatient.id}`) || selectedPatient.contexto_terapeutico?.start_of_week || 'Lunes'}
+                          onChange={(e) => updatePatientStartOfWeek(selectedPatient.id, e.target.value)}
                           className="form-input"
-                          value={newApptType}
-                          onChange={(e) => setNewApptType(e.target.value)}
                           style={{ height: '32px', fontSize: '0.74rem', padding: '0 8px', background: 'var(--background-tertiary)', border: '1px solid var(--border)', borderRadius: '6px', color: '#ffffff', cursor: 'pointer' }}
                         >
-                          <option value="Sesión Individual">Sesión de Tratamiento Individual (50 min)</option>
-                          <option value="Triaje Clínico">Triaje de Evaluación Inicial (30 min)</option>
-                          <option value="Sesión de Seguimiento">Sesión de Seguimiento Breve (15 min)</option>
+                          <option value="Lunes">Lunes (Límite de revisión: Domingo)</option>
+                          <option value="Martes">Martes (Límite de revisión: Lunes)</option>
+                          <option value="Miércoles">Miércoles (Límite de revisión: Martes)</option>
+                          <option value="Jueves">Jueves (Límite de revisión: Miércoles)</option>
+                          <option value="Viernes">Viernes (Límite de revisión: Jueves)</option>
+                          <option value="Sábado">Sábado (Límite de revisión: Viernes)</option>
+                          <option value="Domingo">Domingo (Límite de revisión: Sábado)</option>
                         </select>
                       </div>
 
-                      <button 
-                        onClick={handleAddAppointment}
-                        className="btn btn-cyan"
-                        style={{ height: '34px', fontSize: '0.76rem', fontWeight: 'bold', marginTop: '8px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}
-                      >
-                        Crear y Sincronizar Sesión
-                      </button>
+                      <div style={{ background: 'rgba(16,185,129,0.02)', padding: '10px', borderRadius: '6px', border: '1px solid rgba(16,185,129,0.1)', fontSize: '0.65rem', color: 'var(--text-secondary)', textAlign: 'left', lineHeight: 1.35, marginTop: '4px' }}>
+                        💡 <strong>Escalonamiento activo:</strong> Las revisiones del paciente vencerán el día anterior al inicio de su semana. Para este paciente, vencerán el <strong>{
+                          (() => {
+                            const val = selectedPatient.startOfWeek || localStorage.getItem(`patient_start_of_week_${selectedPatient.id}`) || selectedPatient.contexto_terapeutico?.start_of_week || 'Lunes';
+                            const DAYS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+                            const idx = DAYS.indexOf(val);
+                            return DAYS[(idx + 6) % 7];
+                          })()
+                        }</strong>.
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -2954,10 +2976,10 @@ export default function PsicologoDashboardView({
                       <div style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: '8px', padding: '14px', marginBottom: '14px' }}>
                         <span style={{ fontSize: '0.76rem', color: 'var(--color-emerald)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
                           <CheckCircle size={16} />
-                          ¡Sincronizado con josferestudio@gmail.com!
+                          ¡Sincronizado con {profile?.email || user?.email || 'tu cuenta de Google'}!
                         </span>
                         <p style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', margin: '6px 0 0 0', lineHeight: 1.35 }}>
-                          Se han importado 3 eventos externos y bloqueado buffers de descanso de forma segura.
+                          Tus sesiones clínicas programadas se sincronizan automáticamente con tu cuenta de Google Calendar.
                         </p>
                       </div>
                     ) : null}
@@ -2966,7 +2988,7 @@ export default function PsicologoDashboardView({
                   <button
                     onClick={handleSyncGoogleCalendar}
                     disabled={isSyncingGoogle}
-                    className="btn btn-cyan"
+                    className={googleSynced ? "btn btn-outline" : "btn btn-cyan"}
                     style={{
                       height: '42px',
                       fontSize: '0.8rem',
@@ -2977,19 +2999,20 @@ export default function PsicologoDashboardView({
                       gap: '8px',
                       width: '100%',
                       textTransform: 'none',
-                      border: 'none',
+                      borderColor: googleSynced ? 'rgba(244, 63, 94, 0.4)' : 'none',
+                      color: googleSynced ? 'var(--color-rose)' : '#ffffff',
                       cursor: 'pointer'
                     }}
                   >
                     {isSyncingGoogle ? (
                       <>
                         <RefreshCw size={16} className="animate-spin" />
-                        <span>Sincronizando con Google...</span>
+                        <span>Procesando...</span>
                       </>
                     ) : (
                       <>
                         <RefreshCw size={16} />
-                        <span>{googleSynced ? 'Volver a Sincronizar Calendario' : 'Sincronizar con Google Calendar'}</span>
+                        <span>{googleSynced ? 'Desconectar Google Calendar' : 'Sincronizar con Google Calendar'}</span>
                       </>
                     )}
                   </button>
@@ -3116,89 +3139,1192 @@ export default function PsicologoDashboardView({
                 </div>
               </div>
 
-              {/* Próximas Citas de Pacientes desde Supabase */}
-              <div className="glass-panel" style={{ padding: '24px', marginTop: '20px' }}>
-                <h4 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#ffffff', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Calendar size={18} color="var(--color-cyan)" />
-                    📋 Citas Agendadas por Pacientes en Supabase (Tiempo Real)
-                  </span>
-                  <button 
-                    onClick={fetchDbAppointments}
-                    type="button"
-                    className="btn btn-outline"
-                    style={{ height: '28px', fontSize: '0.65rem', paddingInline: '10px', display: 'flex', alignItems: 'center', gap: '4px' }}
-                  >
-                    <RefreshCw size={12} className={loadingAppts ? 'animate-spin' : ''} />
-                    <span>Actualizar</span>
-                  </button>
-                </h4>
+              {/* Balanceador de Carga Semanal de Revisiones Clínicas */}
+              {(() => {
+                const DAYS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+                const getDeadlineDay = (startOfWeek) => {
+                  if (!startOfWeek) startOfWeek = 'Lunes';
+                  const idx = DAYS.indexOf(startOfWeek);
+                  if (idx === -1) return 'Domingo';
+                  return DAYS[(idx + 6) % 7];
+                };
 
-                {loadingAppts ? (
-                  <div style={{ textAlign: 'center', padding: '20px', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                    Cargando citas en tiempo real...
+                const deadlineGroups = DAYS.reduce((acc, d) => {
+                  acc[d] = [];
+                  return acc;
+                }, {});
+
+                patients.forEach(p => {
+                  const pStartOfWeek = p.startOfWeek || localStorage.getItem(`patient_start_of_week_${p.id}`) || p.contexto_terapeutico?.start_of_week || 'Lunes';
+                  const deadline = getDeadlineDay(pStartOfWeek);
+                  deadlineGroups[deadline].push(p);
+                });
+
+                return (
+                  <div className="glass-panel" style={{ padding: '24px', marginTop: '20px', borderLeft: '4px solid var(--color-cyan)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                      <Activity size={20} color="var(--color-cyan)" />
+                      <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#ffffff', margin: 0 }}>
+                        Balanceador de Carga Semanal de Revisiones Clínicas
+                      </h3>
+                    </div>
+                    <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.45, marginBottom: '20px', margin: 0, textAlign: 'left' }}>
+                      Distribución de pacientes según el día límite de entrega de sus revisiones (el día anterior a su inicio de ciclo semanal). Reasigna su día de inicio para equilibrar tu volumen de trabajo diario y evitar la acumulación de revisiones los lunes.
+                    </p>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                      {DAYS.map(day => {
+                        const groupPatients = deadlineGroups[day] || [];
+                        const count = groupPatients.length;
+                        // Carga máxima sugerida de revisiones por día = 3
+                        const pct = Math.min(100, (count / 3) * 100);
+                        
+                        // Determinar color de la barra
+                        let barColor = 'rgba(255,255,255,0.05)';
+                        let labelColor = 'var(--text-tertiary)';
+                        let badgeStyle = { background: 'rgba(255,255,255,0.02)', color: 'var(--text-secondary)' };
+                        
+                        if (count > 0) {
+                          if (count <= 2) {
+                            barColor = 'var(--color-emerald)';
+                            labelColor = 'var(--color-emerald)';
+                            badgeStyle = { background: 'rgba(16,185,129,0.08)', color: 'var(--color-emerald)', border: '1px solid rgba(16,185,129,0.15)' };
+                          } else if (count === 3) {
+                            barColor = 'var(--color-cyan)';
+                            labelColor = 'var(--color-cyan)';
+                            badgeStyle = { background: 'rgba(6,182,212,0.08)', color: 'var(--color-cyan)', border: '1px solid rgba(6,182,212,0.15)' };
+                          } else {
+                            barColor = 'var(--color-rose)';
+                            labelColor = 'var(--color-rose)';
+                            badgeStyle = { background: 'rgba(244,63,94,0.08)', color: 'var(--color-rose)', border: '1px solid rgba(244,63,94,0.15)' };
+                          }
+                        }
+
+                        return (
+                          <div 
+                            key={day} 
+                            style={{ 
+                              display: 'grid', 
+                              gridTemplateColumns: '150px 1.5fr 3.5fr', 
+                              alignItems: 'center', 
+                              gap: '16px',
+                              paddingBottom: '12px',
+                              borderBottom: '1px solid rgba(255,255,255,0.03)'
+                            }}
+                            className="grid-responsive-detail"
+                          >
+                            {/* Nombre del Día y Contador */}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', textAlign: 'left' }}>
+                              <span style={{ fontSize: '0.8rem', fontWeight: 700, color: count > 0 ? '#ffffff' : 'var(--text-tertiary)' }}>
+                                Límite: {day}
+                              </span>
+                              <span style={{ fontSize: '0.65rem', color: count > 0 ? 'var(--text-secondary)' : 'var(--text-tertiary)' }}>
+                                {count === 0 ? 'Sin entregas' : (count === 1 ? '1 paciente' : `${count} pacientes`)}
+                              </span>
+                            </div>
+
+                            {/* Barra de progreso */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <div style={{ flex: 1, height: '6px', background: 'rgba(255,255,255,0.03)', borderRadius: '3px', overflow: 'hidden', position: 'relative' }}>
+                                <div 
+                                  style={{ 
+                                    width: `${pct}%`, 
+                                    height: '100%', 
+                                    background: barColor, 
+                                    borderRadius: '3px',
+                                    transition: 'width 0.3s ease, background-color 0.3s ease' 
+                                  }} 
+                                />
+                              </div>
+                              {count > 0 && (
+                                <span className="badge" style={{ ...badgeStyle, fontSize: '0.58rem', padding: '2px 6px' }}>
+                                  {count > 3 ? 'Sobrecarga' : (count === 3 ? 'Ideal' : 'Óptima')}
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Lista de pacientes asignados */}
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', justifyContent: 'flex-start' }}>
+                              {count > 0 ? (
+                                groupPatients.map(pat => {
+                                  const patStartOfWeek = pat.startOfWeek || localStorage.getItem(`patient_start_of_week_${pat.id}`) || pat.contexto_terapeutico?.start_of_week || 'Lunes';
+                                  return (
+                                    <div 
+                                      key={pat.id} 
+                                      style={{ 
+                                        display: 'inline-flex', 
+                                        alignItems: 'center', 
+                                        gap: '6px', 
+                                        background: 'rgba(255,255,255,0.02)', 
+                                        border: '1px solid rgba(255,255,255,0.06)', 
+                                        borderRadius: '20px', 
+                                        padding: '3px 8px 3px 3px',
+                                        fontSize: '0.68rem',
+                                        transition: 'all 0.15s ease'
+                                      }}
+                                    >
+                                      <img 
+                                        src={pat.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=150&h=150'} 
+                                        alt={pat.name} 
+                                        style={{ width: '22px', height: '22px', borderRadius: '50%', objectFit: 'cover' }} 
+                                      />
+                                      <span style={{ color: '#ffffff', fontWeight: 600 }}>{pat.name.split(' ')[0]}</span>
+                                      <select
+                                        value={patStartOfWeek}
+                                        onChange={(e) => updatePatientStartOfWeek(pat.id, e.target.value)}
+                                        style={{ 
+                                          background: 'transparent', 
+                                          border: 'none', 
+                                          color: 'var(--color-cyan)', 
+                                          fontSize: '0.65rem', 
+                                          cursor: 'pointer', 
+                                          outline: 'none',
+                                          padding: 0,
+                                          margin: 0,
+                                          fontWeight: 'bold'
+                                        }}
+                                      >
+                                        {DAYS.map(d => (
+                                          <option key={d} value={d} style={{ background: '#121824', color: '#fff' }}>
+                                            Inicia {d}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                  );
+                                })
+                              ) : (
+                                <span style={{ fontSize: '0.68rem', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>
+                                  Ningún paciente entrega este día
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
-                ) : dbAppointments.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '30px 10px', border: '1px dashed var(--border)', borderRadius: '8px', color: 'var(--text-tertiary)', fontSize: '0.76rem' }}>
-                    <AlertCircle size={16} style={{ marginBottom: '6px', opacity: 0.5 }} />
-                    <p>No tienes citas solicitadas en Supabase actualmente.</p>
+                );
+              })()}
+
+              {/* Calendario Mensual/Semanal/Diario de Citas (Estilo Google Calendar) */}
+              <div className="glass-panel" style={{ padding: '24px', marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                
+                {/* Cabecera del Calendario */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '16px' }}>
+                  
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div className="flex-center" style={{ width: '40px', height: '40px', borderRadius: '8px', background: 'rgba(6,182,212,0.08)', color: 'var(--color-cyan)' }}>
+                      <Calendar size={22} />
+                    </div>
+                    <div style={{ textAlign: 'left' }}>
+                      <h3 style={{ fontSize: '1.1rem', fontWeight: 900, color: '#ffffff', margin: 0 }}>
+                        Agenda de Sesiones Clínicas
+                      </h3>
+                      <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>
+                        Sincronizado con Supabase en tiempo real
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Rango de Fechas y Navegación */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <button 
+                      type="button"
+                      onClick={() => {
+                        const today = new Date();
+                        setSelectedDate(today);
+                        setCurrentYear(today.getFullYear());
+                        setCurrentMonth(today.getMonth());
+                      }}
+                      className="btn btn-outline"
+                      style={{ height: '32px', fontSize: '0.72rem', paddingInline: '14px', borderColor: 'var(--border)', cursor: 'pointer', background: 'transparent' }}
+                    >
+                      Hoy
+                    </button>
+
+                    <div style={{ display: 'flex', gap: '2px' }}>
+                      <button 
+                        type="button"
+                        onClick={() => {
+                          if (calendarView === 'month') {
+                            setCurrentMonth(prev => {
+                              if (prev === 0) {
+                                setCurrentYear(y => y - 1);
+                                return 11;
+                              }
+                              return prev - 1;
+                            });
+                          } else if (calendarView === 'week') {
+                            setSelectedDate(prev => {
+                              const nd = new Date(prev.getTime());
+                              nd.setDate(prev.getDate() - 7);
+                              setCurrentYear(nd.getFullYear());
+                              setCurrentMonth(nd.getMonth());
+                              return nd;
+                            });
+                          } else {
+                            setSelectedDate(prev => {
+                              const nd = new Date(prev.getTime());
+                              nd.setDate(prev.getDate() - 1);
+                              setCurrentYear(nd.getFullYear());
+                              setCurrentMonth(nd.getMonth());
+                              return nd;
+                            });
+                          }
+                        }}
+                        className="btn btn-outline"
+                        style={{ border: '1px solid var(--border)', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', background: 'transparent', padding: 0 }}
+                      >
+                        <ChevronLeft size={16} />
+                      </button>
+                      <button 
+                        type="button"
+                        onClick={() => {
+                          if (calendarView === 'month') {
+                            setCurrentMonth(prev => {
+                              if (prev === 11) {
+                                setCurrentYear(y => y + 1);
+                                return 0;
+                              }
+                              return prev + 1;
+                            });
+                          } else if (calendarView === 'week') {
+                            setSelectedDate(prev => {
+                              const nd = new Date(prev.getTime());
+                              nd.setDate(prev.getDate() + 7);
+                              setCurrentYear(nd.getFullYear());
+                              setCurrentMonth(nd.getMonth());
+                              return nd;
+                            });
+                          } else {
+                            setSelectedDate(prev => {
+                              const nd = new Date(prev.getTime());
+                              nd.setDate(prev.getDate() + 1);
+                              setCurrentYear(nd.getFullYear());
+                              setCurrentMonth(nd.getMonth());
+                              return nd;
+                            });
+                          }
+                        }}
+                        className="btn btn-outline"
+                        style={{ border: '1px solid var(--border)', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', background: 'transparent', padding: 0 }}
+                      >
+                        <ChevronRight size={16} />
+                      </button>
+                    </div>
+
+                    <span style={{ fontSize: '0.88rem', fontWeight: 800, color: '#ffffff', minWidth: '180px', textAlign: 'left' }}>
+                      {calendarView === 'month' && `${monthNames[currentMonth]} ${currentYear}`}
+                      {calendarView === 'week' && (() => {
+                        const getMonday = (d) => {
+                          const day = d.getDay();
+                          const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+                          return new Date(d.getFullYear(), d.getMonth(), diff);
+                        };
+                        const mon = getMonday(selectedDate);
+                        const sun = new Date(mon.getTime() + 6 * 24 * 60 * 60 * 1000);
+                        return mon.getMonth() === sun.getMonth() 
+                          ? `Del ${mon.getDate()} al ${sun.getDate()} de ${monthNames[mon.getMonth()]}`
+                          : `Del ${mon.getDate()} de ${monthNames[mon.getMonth()].substring(0, 3)} al ${sun.getDate()} de ${monthNames[sun.getMonth()].substring(0, 3)}`;
+                      })()}
+                      {calendarView === 'day' && (() => {
+                        const daysOfWeek = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+                        return `${daysOfWeek[selectedDate.getDay()]}, ${selectedDate.getDate()} de ${monthNames[selectedDate.getMonth()]}`;
+                      })()}
+                    </span>
+                  </div>
+
+                  {/* Selectores de Vista y Refresco */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div style={{ display: 'flex', background: 'rgba(0,0,0,0.25)', padding: '2px', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                      {['month', 'week', 'day'].map(view => (
+                        <button
+                          key={view}
+                          type="button"
+                          onClick={() => setCalendarView(view)}
+                          style={{
+                            height: '28px',
+                            paddingInline: '12px',
+                            fontSize: '0.7rem',
+                            fontWeight: 'bold',
+                            border: 'none',
+                            borderRadius: '4px',
+                            background: calendarView === view ? 'var(--color-cyan)' : 'transparent',
+                            color: calendarView === view ? '#121824' : 'var(--text-secondary)',
+                            cursor: 'pointer',
+                            transition: 'all 0.15s ease'
+                          }}
+                        >
+                          {view === 'month' ? 'Mes' : (view === 'week' ? 'Semana' : 'Día')}
+                        </button>
+                      ))}
+                    </div>
+
+                    <button 
+                      onClick={fetchDbAppointments}
+                      type="button"
+                      className="btn btn-outline"
+                      style={{ height: '32px', fontSize: '0.65rem', paddingInline: '12px', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', background: 'transparent' }}
+                      title="Refrescar citas desde Supabase"
+                    >
+                      <RefreshCw size={12} className={loadingAppts ? 'animate-spin' : ''} />
+                      <span>Sincronizar</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Grid del Calendario */}
+                {loadingAppts ? (
+                  <div style={{ textAlign: 'center', padding: '60px 0', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                    <RefreshCw size={28} className="animate-spin" style={{ marginBottom: '10px', opacity: 0.7, color: 'var(--color-cyan)' }} />
+                    <p>Sincronizando agenda clínica desde Supabase...</p>
                   </div>
                 ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    {dbAppointments.map(appt => (
-                      <div 
-                        key={appt.id} 
-                        style={{ 
-                          padding: '12px 16px', 
-                          borderRadius: '8px', 
-                          background: 'rgba(255,255,255,0.01)',
-                          border: '1px solid var(--border)',
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          flexWrap: 'wrap',
-                          gap: '12px'
-                        }}
-                      >
-                        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                          <div className="flex-center" style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'rgba(6,182,212,0.08)', color: 'var(--color-cyan)' }}>
-                            <User size={16} />
-                          </div>
-                          <div style={{ textAlign: 'left' }}>
-                            <strong style={{ fontSize: '0.8rem', color: '#ffffff', display: 'block' }}>
-                              {appt.patientName}
-                            </strong>
-                            <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>
-                              Consulta {appt.session_type === 'individual' ? 'Individual' : (appt.session_type === 'pareja' ? 'Pareja' : 'de Revisión')}
+                  <div style={{ minHeight: '400px' }}>
+                    
+                    {/* ================= VISTA DE MES ================= */}
+                    {calendarView === 'month' && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        {/* Cabecera de días de la semana */}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', textAlign: 'center', marginBottom: '4px' }}>
+                          {['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'].map(d => (
+                            <div key={d} style={{ fontSize: '0.68rem', fontWeight: 800, color: 'var(--text-tertiary)', paddingBlock: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                              {d}
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Cuadrícula de días */}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '6px' }}>
+                          {(() => {
+                            const daysCount = new Date(currentYear, currentMonth + 1, 0).getDate();
+                            const offset = (new Date(currentYear, currentMonth, 1).getDay() + 6) % 7;
+                            const days = [];
+                            
+                            // Días del mes anterior (offset)
+                            const prevMonthDaysCount = new Date(currentYear, currentMonth, 0).getDate();
+                            for (let i = offset - 1; i >= 0; i--) {
+                              days.push({
+                                dayNum: prevMonthDaysCount - i,
+                                isCurrentMonth: false,
+                                dateStr: `${currentMonth === 0 ? currentYear - 1 : currentYear}-${String(currentMonth === 0 ? 12 : currentMonth).padStart(2, '0')}-${String(prevMonthDaysCount - i).padStart(2, '0')}`
+                              });
+                            }
+                            
+                            // Días del mes actual
+                            for (let i = 1; i <= daysCount; i++) {
+                              days.push({
+                                dayNum: i,
+                                isCurrentMonth: true,
+                                dateStr: `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`
+                              });
+                            }
+                            
+                            // Días del mes siguiente para completar la cuadrícula de 35 o 42 celdas
+                            const totalCells = days.length <= 35 ? 35 : 42;
+                            const nextMonthCells = totalCells - days.length;
+                            for (let i = 1; i <= nextMonthCells; i++) {
+                              days.push({
+                                dayNum: i,
+                                isCurrentMonth: false,
+                                dateStr: `${currentMonth === 11 ? currentYear + 1 : currentYear}-${String(currentMonth === 11 ? 1 : currentMonth + 2).padStart(2, '0')}-${String(i).padStart(2, '0')}`
+                              });
+                            }
+
+                            return days.map((dayObj, index) => {
+                              const isToday = dayObj.dateStr === new Date().toISOString().split('T')[0];
+                              const isBlocked = blockedDates.includes(dayObj.dateStr);
+                              
+                              // Filtrar citas para este día
+                              const dayAppts = dbAppointments.filter(appt => appt.appointment_date === dayObj.dateStr && appt.status !== 'Cancelada');
+
+                              return (
+                                <div
+                                  key={index}
+                                  style={{
+                                    minHeight: '120px',
+                                    borderRadius: '8px',
+                                    background: isBlocked 
+                                      ? 'repeating-linear-gradient(45deg, rgba(255,255,255,0.01), rgba(255,255,255,0.01) 8px, rgba(255,255,255,0.02) 8px, rgba(255,255,255,0.02) 16px)'
+                                      : (dayObj.isCurrentMonth ? 'rgba(0,0,0,0.15)' : 'rgba(0,0,0,0.05)'),
+                                    border: isToday ? '1px solid var(--color-cyan)' : '1px solid var(--border)',
+                                    padding: '8px',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '6px',
+                                    opacity: dayObj.isCurrentMonth ? 1 : 0.4,
+                                    position: 'relative',
+                                    transition: 'all 0.15s ease'
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    if (dayObj.isCurrentMonth) e.currentTarget.style.backgroundColor = 'rgba(6,182,212,0.02)';
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    if (dayObj.isCurrentMonth) e.currentTarget.style.backgroundColor = isBlocked ? 'transparent' : 'rgba(0,0,0,0.15)';
+                                  }}
+                                >
+                                  {/* Encabezado del Día */}
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <span style={{
+                                      fontSize: '0.75rem',
+                                      fontWeight: 'bold',
+                                      width: '22px',
+                                      height: '22px',
+                                      borderRadius: '50%',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      background: isToday ? 'var(--color-cyan)' : 'transparent',
+                                      color: isToday ? '#121824' : '#ffffff'
+                                    }}>
+                                      {dayObj.dayNum}
+                                    </span>
+
+                                    {/* Indicadores / Acciones rápidas del día */}
+                                    {dayObj.isCurrentMonth && (
+                                      <div style={{ display: 'flex', gap: '4px' }}>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setQuickAddDate(dayObj.dateStr);
+                                            setQuickAddHour('10:00');
+                                            setShowQuickAddModal(true);
+                                          }}
+                                          style={{
+                                            background: 'transparent',
+                                            border: 'none',
+                                            color: 'var(--text-tertiary)',
+                                            fontSize: '0.85rem',
+                                            cursor: 'pointer',
+                                            padding: 0,
+                                            lineHeight: 1
+                                          }}
+                                          title="Agendar Cita Rápida"
+                                        >
+                                          +
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleToggleBlockDate(dayObj.dateStr)}
+                                          style={{
+                                            background: 'transparent',
+                                            border: 'none',
+                                            color: isBlocked ? 'var(--color-rose)' : 'var(--text-tertiary)',
+                                            fontSize: '0.65rem',
+                                            cursor: 'pointer',
+                                            padding: 0,
+                                            fontWeight: 'bold'
+                                          }}
+                                          title={isBlocked ? "Desbloquear Día" : "Bloquear Día (Día libre)"}
+                                        >
+                                          🚫
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {/* Estado de bloqueo */}
+                                  {isBlocked && (
+                                    <div style={{ fontSize: '0.55rem', color: 'var(--color-rose)', fontWeight: 'bold', textTransform: 'uppercase', textAlign: 'center', marginBlock: 'auto' }}>
+                                      Día Libre
+                                    </div>
+                                  )}
+
+                                  {/* Citas */}
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', overflowY: 'auto', flex: 1, maxHeight: '80px' }}>
+                                    {dayAppts.map(appt => {
+                                      const isCompleted = appt.status === 'Completada';
+                                      return (
+                                        <button
+                                          key={appt.id}
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setSelectedAppt(appt);
+                                          }}
+                                          style={{
+                                            fontSize: '0.62rem',
+                                            fontWeight: 700,
+                                            padding: '3px 6px',
+                                            borderRadius: '4px',
+                                            background: isCompleted ? 'rgba(16,185,129,0.12)' : 'rgba(6,182,212,0.12)',
+                                            border: isCompleted ? '1px solid rgba(16,185,129,0.3)' : '1px solid rgba(6,182,212,0.3)',
+                                            color: isCompleted ? 'var(--color-emerald)' : 'var(--color-cyan)',
+                                            cursor: 'pointer',
+                                            textAlign: 'left',
+                                            whiteSpace: 'nowrap',
+                                            overflow: 'hidden',
+                                            textOverflow: 'ellipsis',
+                                            width: '100%',
+                                            transition: 'all 0.15s ease'
+                                          }}
+                                          onMouseEnter={(e) => {
+                                            e.currentTarget.style.transform = 'scale(1.02)';
+                                          }}
+                                          onMouseLeave={(e) => {
+                                            e.currentTarget.style.transform = 'scale(1)';
+                                          }}
+                                        >
+                                          <strong>{appt.appointment_time.substring(0, 5)}</strong> {appt.patientName || 'Cita'}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+
+                                </div>
+                              );
+                            });
+                          })()}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ================= VISTA DE SEMANA ================= */}
+                    {calendarView === 'week' && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', overflowX: 'auto' }}>
+                        
+                        {/* Cabecera de columnas (Días de la semana) */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '80px repeat(7, 1fr)', gap: '4px', textAlign: 'center', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                          <div style={{ paddingBlock: '12px' }} /> {/* Espacio de la columna de horas */}
+                          
+                          {(() => {
+                            const getMonday = (d) => {
+                              const day = d.getDay();
+                              const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+                              return new Date(d.getFullYear(), d.getMonth(), diff);
+                            };
+                            const mon = getMonday(selectedDate);
+                            const wNames = ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'];
+                            
+                            return Array.from({ length: 7 }).map((_, i) => {
+                              const date = new Date(mon.getTime());
+                              date.setDate(mon.getDate() + i);
+                              const isToday = date.toISOString().split('T')[0] === new Date().toISOString().split('T')[0];
+                              
+                              return (
+                                <div key={i} style={{ paddingBlock: '8px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                                  <span style={{ fontSize: '0.62rem', fontWeight: 800, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>
+                                    {wNames[i]}
+                                  </span>
+                                  <span style={{
+                                    fontSize: '0.8rem',
+                                    fontWeight: 'bold',
+                                    width: '24px',
+                                    height: '24px',
+                                    borderRadius: '50%',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    background: isToday ? 'var(--color-cyan)' : 'transparent',
+                                    color: isToday ? '#121824' : '#ffffff'
+                                  }}>
+                                    {date.getDate()}
+                                  </span>
+                                </div>
+                              );
+                            });
+                          })()}
+                        </div>
+
+                        {/* Cuadrícula de horas y días */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', maxHeight: '500px', overflowY: 'auto' }}>
+                          {['08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00'].map(hour => {
+                            
+                            return (
+                              <div key={hour} style={{ display: 'grid', gridTemplateColumns: '80px repeat(7, 1fr)', gap: '4px', alignItems: 'stretch' }}>
+                                {/* Columna de la Hora */}
+                                <div style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', paddingBlock: '8px', borderRight: '1px solid rgba(255,255,255,0.03)' }}>
+                                  {hour}
+                                </div>
+
+                                {/* Columnas de los 7 días para esa hora */}
+                                {(() => {
+                                  const getMonday = (d) => {
+                                    const day = d.getDay();
+                                    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+                                    return new Date(d.getFullYear(), d.getMonth(), diff);
+                                  };
+                                  const mon = getMonday(selectedDate);
+
+                                  return Array.from({ length: 7 }).map((_, i) => {
+                                    const date = new Date(mon.getTime());
+                                    date.setDate(mon.getDate() + i);
+                                    const dateStr = date.toISOString().split('T')[0];
+                                    const isBlocked = blockedDates.includes(dateStr);
+                                    
+                                    // Filtrar citas en este bloque exacto de hora y día
+                                    const slotAppts = dbAppointments.filter(appt => 
+                                      appt.appointment_date === dateStr && 
+                                      appt.appointment_time.substring(0, 5) === hour &&
+                                      appt.status !== 'Cancelada'
+                                    );
+
+                                    return (
+                                      <div
+                                        key={i}
+                                        style={{
+                                          borderBottom: '1px solid rgba(255,255,255,0.03)',
+                                          borderRight: '1px solid rgba(255,255,255,0.03)',
+                                          minHeight: '42px',
+                                          background: isBlocked 
+                                            ? 'repeating-linear-gradient(45deg, rgba(255,255,255,0.005), rgba(255,255,255,0.005) 4px, rgba(255,255,255,0.01) 4px, rgba(255,255,255,0.01) 8px)'
+                                            : 'transparent',
+                                          padding: '2px',
+                                          position: 'relative',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'center',
+                                          transition: 'all 0.15s ease'
+                                        }}
+                                        onMouseEnter={(e) => {
+                                          if (!isBlocked && slotAppts.length === 0) {
+                                            e.currentTarget.style.backgroundColor = 'rgba(6,182,212,0.04)';
+                                            e.currentTarget.querySelector('.quick-add-btn').style.opacity = 1;
+                                          }
+                                        }}
+                                        onMouseLeave={(e) => {
+                                          if (!isBlocked && slotAppts.length === 0) {
+                                            e.currentTarget.style.backgroundColor = 'transparent';
+                                            e.currentTarget.querySelector('.quick-add-btn').style.opacity = 0;
+                                          }
+                                        }}
+                                      >
+                                        {/* Botón rápido de agregar cita (invisible por defecto, visible onHover) */}
+                                        {!isBlocked && slotAppts.length === 0 && (
+                                          <button
+                                            className="quick-add-btn"
+                                            type="button"
+                                            onClick={() => {
+                                              setQuickAddDate(dateStr);
+                                              setQuickAddHour(hour);
+                                              setShowQuickAddModal(true);
+                                            }}
+                                            style={{
+                                              opacity: 0,
+                                              position: 'absolute',
+                                              width: '20px',
+                                              height: '20px',
+                                              borderRadius: '50%',
+                                              background: 'var(--color-cyan)',
+                                              color: '#121824',
+                                              border: 'none',
+                                              cursor: 'pointer',
+                                              fontSize: '0.78rem',
+                                              fontWeight: 'bold',
+                                              display: 'flex',
+                                              alignItems: 'center',
+                                              justifyContent: 'center',
+                                              zIndex: 2,
+                                              transition: 'opacity 0.15s ease'
+                                            }}
+                                            title="Programar consulta aquí"
+                                          >
+                                            +
+                                          </button>
+                                        )}
+
+                                        {/* Renderizado de citas */}
+                                        {slotAppts.map(appt => {
+                                          const isCompleted = appt.status === 'Completada';
+                                          return (
+                                            <button
+                                              key={appt.id}
+                                              type="button"
+                                              onClick={() => setSelectedAppt(appt)}
+                                              style={{
+                                                width: '95%',
+                                                height: '90%',
+                                                borderRadius: '6px',
+                                                background: isCompleted ? 'rgba(16,185,129,0.12)' : 'rgba(6,182,212,0.12)',
+                                                border: isCompleted ? '1px solid rgba(16,185,129,0.3)' : '1px solid rgba(6,182,212,0.3)',
+                                                color: isCompleted ? 'var(--color-emerald)' : 'var(--color-cyan)',
+                                                fontSize: '0.62rem',
+                                                fontWeight: 800,
+                                                cursor: 'pointer',
+                                                textAlign: 'center',
+                                                padding: '2px',
+                                                zIndex: 3,
+                                                overflow: 'hidden',
+                                                textOverflow: 'ellipsis',
+                                                display: 'flex',
+                                                flexDirection: 'column',
+                                                justifyContent: 'center'
+                                              }}
+                                            >
+                                              <span style={{ display: 'block', fontWeight: 900 }}>{appt.patientName.split(' ')[0]}</span>
+                                              <span style={{ fontSize: '0.52rem', opacity: 0.8 }}>{appt.session_type || 'Sesión'}</span>
+                                            </button>
+                                          );
+                                        })}
+                                      </div>
+                                    );
+                                  });
+                                })()}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ================= VISTA DE DÍA ================= */}
+                    {calendarView === 'day' && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                        
+                        {/* Cabecera del día */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '100px 1fr', gap: '10px', paddingBlock: '12px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                          <div /> {/* Espacio horas */}
+                          <div style={{ textAlign: 'left', paddingLeft: '10px' }}>
+                            <span style={{ fontSize: '0.68rem', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                              Día Seleccionado
                             </span>
+                            <h4 style={{ fontSize: '1rem', fontWeight: 900, color: '#ffffff', margin: '2px 0 0 0' }}>
+                              {monthNames[selectedDate.getMonth()]} {selectedDate.getDate()}, {selectedDate.getFullYear()}
+                            </h4>
                           </div>
                         </div>
 
-                        <div style={{ display: 'flex', gap: '14px', alignItems: 'center' }}>
-                          <div style={{ textAlign: 'right', fontSize: '0.74rem' }}>
-                            <strong style={{ color: 'var(--color-cyan)', display: 'block' }}>{appt.appointment_date}</strong>
-                            <span style={{ color: 'var(--text-secondary)' }}>{appt.appointment_time}h</span>
-                          </div>
-                          <div>
-                            {appt.status === 'upcoming' ? (
-                              <span className="badge badge-cyan" style={{ fontSize: '0.6rem' }}>Confirmada (Pago Split OK)</span>
-                            ) : (
-                              <span className="badge" style={{ fontSize: '0.6rem', background: 'rgba(255,255,255,0.03)', borderColor: 'var(--border)' }}>{appt.status}</span>
-                            )}
-                          </div>
-                          {appt.patient_id && (
-                            <div style={{ display: 'flex', gap: '4px' }}>
-                              <button onClick={() => setActiveSubSection('perfil', appt.patient_id)} className="btn-icon" title="Perfil">👤</button>
-                              <button onClick={() => setActiveSubSection('soap', appt.patient_id)} className="btn-icon" title="Notas SOAP">📝</button>
-                              <button onClick={() => setActiveSubSection('briefing', appt.patient_id)} className="btn-icon" title="Briefing">📊</button>
-                            </div>
-                          )}
+                        {/* Listado de horas */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', maxHeight: '500px', overflowY: 'auto' }}>
+                          {['08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00'].map(hour => {
+                            const dateStr = selectedDate.toISOString().split('T')[0];
+                            const isBlocked = blockedDates.includes(dateStr);
+                            const slotAppts = dbAppointments.filter(appt => 
+                              appt.appointment_date === dateStr && 
+                              appt.appointment_time.substring(0, 5) === hour &&
+                              appt.status !== 'Cancelada'
+                            );
+
+                            return (
+                              <div key={hour} style={{ display: 'grid', gridTemplateColumns: '100px 1fr', gap: '10px', alignItems: 'stretch' }}>
+                                {/* Columna Hora */}
+                                <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', paddingBlock: '14px', borderRight: '1px solid rgba(255,255,255,0.03)' }}>
+                                  {hour}
+                                </div>
+
+                                {/* Detalle del Slot */}
+                                <div
+                                  style={{
+                                    borderBottom: '1px solid rgba(255,255,255,0.03)',
+                                    background: isBlocked 
+                                      ? 'repeating-linear-gradient(45deg, rgba(255,255,255,0.005), rgba(255,255,255,0.005) 4px, rgba(255,255,255,0.01) 4px, rgba(255,255,255,0.01) 8px)'
+                                      : 'transparent',
+                                    padding: '4px 12px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    position: 'relative',
+                                    minHeight: '52px'
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    if (!isBlocked && slotAppts.length === 0) {
+                                      e.currentTarget.style.backgroundColor = 'rgba(6,182,212,0.04)';
+                                      e.currentTarget.querySelector('.day-quick-add').style.opacity = 1;
+                                    }
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    if (!isBlocked && slotAppts.length === 0) {
+                                      e.currentTarget.style.backgroundColor = 'transparent';
+                                      e.currentTarget.querySelector('.day-quick-add').style.opacity = 0;
+                                    }
+                                  }}
+                                >
+                                  {/* Botón agregar día */}
+                                  {!isBlocked && slotAppts.length === 0 && (
+                                    <button
+                                      className="day-quick-add btn btn-cyan"
+                                      type="button"
+                                      onClick={() => {
+                                        setQuickAddDate(dateStr);
+                                        setQuickAddHour(hour);
+                                        setShowQuickAddModal(true);
+                                      }}
+                                      style={{
+                                        opacity: 0,
+                                        height: '28px',
+                                        fontSize: '0.68rem',
+                                        paddingInline: '10px',
+                                        cursor: 'pointer',
+                                        transition: 'opacity 0.15s ease'
+                                      }}
+                                    >
+                                      + Agendar consulta a las {hour}
+                                    </button>
+                                  )}
+
+                                  {isBlocked && slotAppts.length === 0 && (
+                                    <span style={{ fontSize: '0.7rem', color: 'var(--color-rose)', fontWeight: 'bold' }}>
+                                      🚫 Bloqueado (Día libre configurado)
+                                    </span>
+                                  )}
+
+                                  {/* Citas */}
+                                  {slotAppts.map(appt => {
+                                    const isCompleted = appt.status === 'Completada';
+                                    return (
+                                      <div
+                                        key={appt.id}
+                                        onClick={() => setSelectedAppt(appt)}
+                                        style={{
+                                          flex: 1,
+                                          height: '90%',
+                                          borderRadius: '8px',
+                                          background: isCompleted ? 'rgba(16,185,129,0.08)' : 'rgba(6,182,212,0.08)',
+                                          border: isCompleted ? '1px solid rgba(16,185,129,0.25)' : '1px solid rgba(6,182,212,0.25)',
+                                          padding: '8px 14px',
+                                          cursor: 'pointer',
+                                          display: 'flex',
+                                          justifyContent: 'space-between',
+                                          alignItems: 'center',
+                                          textAlign: 'left',
+                                          transition: 'all 0.15s ease'
+                                        }}
+                                        onMouseEnter={(e) => {
+                                          e.currentTarget.style.backgroundColor = isCompleted ? 'rgba(16,185,129,0.12)' : 'rgba(6,182,212,0.12)';
+                                        }}
+                                        onMouseLeave={(e) => {
+                                          e.currentTarget.style.backgroundColor = isCompleted ? 'rgba(16,185,129,0.08)' : 'rgba(6,182,212,0.08)';
+                                        }}
+                                      >
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                          <strong style={{ fontSize: '0.8rem', color: '#ffffff' }}>
+                                            {appt.patientName}
+                                          </strong>
+                                          <span style={{ fontSize: '0.64rem', color: 'var(--text-secondary)' }}>
+                                            Tipo: {appt.session_type || 'Sesión de Tratamiento Individual'}
+                                          </span>
+                                        </div>
+
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                          <span className="badge" style={{
+                                            fontSize: '0.58rem',
+                                            padding: '2px 8px',
+                                            background: isCompleted ? 'rgba(16,185,129,0.12)' : 'rgba(6,182,212,0.12)',
+                                            color: isCompleted ? 'var(--color-emerald)' : 'var(--color-cyan)',
+                                            borderColor: 'transparent'
+                                          }}>
+                                            {appt.status}
+                                          </span>
+                                          <span style={{ fontSize: '0.68rem', color: 'var(--text-tertiary)' }}>
+                                            Haz clic para gestionar
+                                          </span>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
-                    ))}
+                    )}
+
                   </div>
                 )}
               </div>
+
+              {/* ================= POPOVER / DETALLES DE CITA SELECCIONADA ================= */}
+              {selectedAppt && (
+                <div style={{
+                  position: 'fixed',
+                  inset: 0,
+                  background: 'rgba(0,0,0,0.6)',
+                  backdropFilter: 'blur(4px)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  zIndex: 999,
+                  animation: 'fade-in 0.2s ease-out'
+                }} onClick={() => setSelectedAppt(null)}>
+                  <div style={{
+                    background: 'var(--background-secondary)',
+                    border: '1px solid var(--border)',
+                    borderRadius: '12px',
+                    width: '100%',
+                    maxWidth: '440px',
+                    padding: '24px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '16px',
+                    boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5)',
+                    textAlign: 'left'
+                  }} onClick={(e) => e.stopPropagation()}>
+                    
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <div>
+                        <span className="badge badge-cyan" style={{ fontSize: '0.6rem', marginBottom: '6px' }}>
+                          Cita Registrada
+                        </span>
+                        <h4 style={{ fontSize: '1.05rem', fontWeight: 900, color: '#ffffff', margin: 0 }}>
+                          {selectedAppt.patientName}
+                        </h4>
+                      </div>
+                      <button 
+                        type="button" 
+                        onClick={() => setSelectedAppt(null)} 
+                        style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '1.1rem', padding: 0 }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+
+                    <div style={{ height: '1px', background: 'var(--border)' }} />
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <Clock size={14} color="var(--color-cyan)" />
+                        <span><strong>Fecha y hora:</strong> {selectedAppt.appointment_date} a las {selectedAppt.appointment_time.substring(0, 5)}h</span>
+                      </div>
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <FileText size={14} color="var(--color-cyan)" />
+                        <span><strong>Tipo:</strong> {selectedAppt.session_type || 'Sesión de Tratamiento Individual'}</span>
+                      </div>
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <CheckCircle size={14} color={selectedAppt.status === 'Completada' ? 'var(--color-emerald)' : 'var(--color-cyan)'} />
+                        <span><strong>Estado:</strong> {selectedAppt.status}</span>
+                      </div>
+                    </div>
+
+                    <div style={{ height: '1px', background: 'var(--border)' }} />
+
+                    {/* Acciones Clínicas e Integración Directa */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const matchingPatient = patients.find(p => p.id === selectedAppt.patient_id);
+                          if (matchingPatient) {
+                            setSelectedPatientId(selectedAppt.patient_id);
+                            setActiveSection('dashboard');
+                            setPatientSubTab('resumen');
+                            setSelectedAppt(null);
+                          } else {
+                            alert("No se pudo cargar el perfil del paciente: el id no coincide o no está en tu consulta.");
+                          }
+                        }}
+                        className="btn btn-outline"
+                        style={{ height: '34px', fontSize: '0.74rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', width: '100%', cursor: 'pointer' }}
+                      >
+                        <User size={13} />
+                        <span>Ir al expediente Paciente 360</span>
+                      </button>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const matchingPatient = patients.find(p => p.id === selectedAppt.patient_id);
+                            if (matchingPatient) {
+                              setSelectedPatientId(selectedAppt.patient_id);
+                              setActiveSection('soap');
+                              setSelectedAppt(null);
+                            }
+                          }}
+                          className="btn btn-outline"
+                          style={{ height: '34px', fontSize: '0.72rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', cursor: 'pointer' }}
+                        >
+                          <Sparkles size={12} />
+                          <span>Crear Nota SOAP</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const matchingPatient = patients.find(p => p.id === selectedAppt.patient_id);
+                            if (matchingPatient) {
+                              setSelectedPatientId(selectedAppt.patient_id);
+                              setActiveSection('briefing');
+                              setSelectedAppt(null);
+                            }
+                          }}
+                          className="btn btn-cyan"
+                          style={{ height: '34px', fontSize: '0.72rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', cursor: 'pointer' }}
+                        >
+                          <Video size={12} />
+                          <span>Preparar Sesión</span>
+                        </button>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (window.confirm("¿Seguro que deseas cancelar esta sesión terapéutica? Se notificará al paciente y se liberará su slot.")) {
+                            try {
+                              const { error } = await supabase
+                                .from('appointments')
+                                .update({ status: 'Cancelada' })
+                                .eq('id', selectedAppt.id);
+                              
+                              if (error) throw error;
+                              
+                              setSelectedAppt(null);
+                              await fetchDbAppointments();
+                            } catch (err) {
+                              alert("Error al cancelar cita: " + err.message);
+                            }
+                          }
+                        }}
+                        className="btn btn-outline"
+                        style={{ height: '34px', fontSize: '0.74rem', color: 'var(--color-rose)', borderColor: 'rgba(244,63,94,0.3)', width: '100%', cursor: 'pointer', background: 'transparent' }}
+                      >
+                        Cancelar Sesión
+                      </button>
+                    </div>
+
+                  </div>
+                </div>
+              )}
+
+              {/* ================= MODAL DE AGENDAMIENTO RÁPIDO ================= */}
+              {showQuickAddModal && (
+                <div style={{
+                  position: 'fixed',
+                  inset: 0,
+                  background: 'rgba(0,0,0,0.6)',
+                  backdropFilter: 'blur(4px)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  zIndex: 999,
+                  animation: 'fade-in 0.2s ease-out'
+                }} onClick={() => setShowQuickAddModal(false)}>
+                  <form 
+                    onSubmit={async (e) => {
+                      e.preventDefault();
+                      if (!quickAddPatientId) {
+                        alert("Por favor selecciona un paciente.");
+                        return;
+                      }
+                      try {
+                        const { error } = await supabase
+                          .from('appointments')
+                          .insert({
+                            patient_id: quickAddPatientId,
+                            psychologist_id: profile.id,
+                            appointment_date: quickAddDate,
+                            appointment_time: quickAddHour,
+                            session_type: quickAddType,
+                            status: 'Programada'
+                          });
+
+                        if (error) throw error;
+
+                        setShowQuickAddModal(false);
+                        await fetchDbAppointments();
+                        setQuickAddPatientId('');
+                      } catch (err) {
+                        alert("Error al insertar la cita en Supabase: " + err.message);
+                      }
+                    }}
+                    style={{
+                      background: 'var(--background-secondary)',
+                      border: '1px solid var(--border)',
+                      borderRadius: '12px',
+                      width: '100%',
+                      maxWidth: '420px',
+                      padding: '24px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '16px',
+                      boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5)',
+                      textAlign: 'left'
+                    }} onClick={(e) => e.stopPropagation()}>
+                    
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <h4 style={{ fontSize: '1rem', fontWeight: 900, color: '#ffffff', margin: 0 }}>
+                        Programar Cita Rápida
+                      </h4>
+                      <button 
+                        type="button" 
+                        onClick={() => setShowQuickAddModal(false)} 
+                        style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '1.1rem', padding: 0 }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+
+                    <div style={{ height: '1px', background: 'var(--border)' }} />
+
+                    {/* Paciente */}
+                    <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <label style={{ fontSize: '0.65rem', fontWeight: 'bold', color: 'var(--text-secondary)' }}>Paciente de tu consulta</label>
+                      <select
+                        className="form-input"
+                        value={quickAddPatientId}
+                        onChange={(e) => setQuickAddPatientId(e.target.value)}
+                        required
+                        style={{ height: '36px', fontSize: '0.78rem', background: 'var(--background-tertiary)', border: '1px solid var(--border)', borderRadius: '6px', color: '#ffffff', cursor: 'pointer', width: '100%' }}
+                      >
+                        <option value="">-- Selecciona un Paciente --</option>
+                        {patients.map(p => (
+                          <option key={p.id} value={p.id}>{p.name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Fecha y Hora */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                      <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <label style={{ fontSize: '0.65rem', fontWeight: 'bold', color: 'var(--text-secondary)' }}>Fecha</label>
+                        <input 
+                          type="date" 
+                          className="form-input" 
+                          value={quickAddDate}
+                          onChange={(e) => setQuickAddDate(e.target.value)}
+                          required
+                          style={{ height: '36px', fontSize: '0.78rem', background: 'var(--background-tertiary)', border: '1px solid var(--border)', borderRadius: '6px', color: '#ffffff', paddingInline: '8px' }}
+                        />
+                      </div>
+                      <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <label style={{ fontSize: '0.65rem', fontWeight: 'bold', color: 'var(--text-secondary)' }}>Hora</label>
+                        <input 
+                          type="time" 
+                          className="form-input" 
+                          value={quickAddHour}
+                          onChange={(e) => setQuickAddHour(e.target.value)}
+                          required
+                          style={{ height: '36px', fontSize: '0.78rem', background: 'var(--background-tertiary)', border: '1px solid var(--border)', borderRadius: '6px', color: '#ffffff', paddingInline: '8px' }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Tipo de Sesión */}
+                    <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <label style={{ fontSize: '0.65rem', fontWeight: 'bold', color: 'var(--text-secondary)' }}>Tipo de Sesión</label>
+                      <select
+                        className="form-input"
+                        value={quickAddType}
+                        onChange={(e) => setQuickAddType(e.target.value)}
+                        style={{ height: '36px', fontSize: '0.78rem', background: 'var(--background-tertiary)', border: '1px solid var(--border)', borderRadius: '6px', color: '#ffffff', cursor: 'pointer', width: '100%' }}
+                      >
+                        <option value="Sesión Individual">Sesión de Tratamiento Individual (50 min)</option>
+                        <option value="Triaje Clínico">Triaje de Evaluación Inicial (30 min)</option>
+                        <option value="Sesión de Seguimiento">Sesión de Seguimiento Breve (15 min)</option>
+                      </select>
+                    </div>
+
+                    <div style={{ height: '1px', background: 'var(--border)', marginTop: '8px' }} />
+
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                      <button 
+                        type="button" 
+                        onClick={() => setShowQuickAddModal(false)}
+                        className="btn btn-outline"
+                        style={{ height: '34px', fontSize: '0.74rem' }}
+                      >
+                        Cancelar
+                      </button>
+                      <button 
+                        type="submit"
+                        className="btn btn-cyan"
+                        style={{ height: '34px', fontSize: '0.74rem', fontWeight: 'bold' }}
+                      >
+                        Programar Cita
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              )}
 
             </div>
           )}
@@ -3227,8 +4353,6 @@ export default function PsicologoDashboardView({
             </div>
           )}
         </div>
-
-      </div>
 
     </div>
   );

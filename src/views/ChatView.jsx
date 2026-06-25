@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import { invokeChatTerapeuta } from '../lib/chatTerapeuta';
+import { processChatSessionClinically } from '../lib/clinicalEngine';
 import {
   Send,
   Brain,
@@ -260,7 +261,13 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
         conversationId: activeConversationId
       });
       if (resData && resData.success) {
-        alert("Sesión archivada y cerrada con éxito.");
+        try {
+          await processChatSessionClinically(activeConversationId);
+        } catch (clinicalErr) {
+          console.error("Error creating clinical proposals from chat session:", clinicalErr);
+          setError("La sesion se archivo, pero el motor clinico no pudo generar propuestas: " + clinicalErr.message);
+        }
+        alert("Sesión archivada y enviada al motor clínico para revisión.");
         setClosurePrepared(false);
         await loadConversations();
       } else {
@@ -378,7 +385,7 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
       // Save initial greeting to database
       const greeting = genericMode
         ? 'Hola. Soy tu asistente de apoyo. Este espacio se irá adaptando a lo que compartas en el chat y a los documentos que subas. ¿Qué te gustaría trabajar hoy?'
-        : 'Hola Emilio. Soy tu asistente de apoyo. Estoy aquí contigo tanto para ayudarte a reprocesar tu ansiedad y tus bloqueos emocionales, como para vigilar de cerca tu gestión de riesgos en el mercado. Recuerda: Lola te necesita sano, estable y en casa, no millonario. ¿Cómo te encuentras hoy en tu habitación? ¿Has rellenado tu Diario de Sensaciones?';
+        : 'Hola. Soy el asistente de apoyo de Áncora. Este espacio sirve para acompañarte entre sesiones y ordenar lo que compartas para que tu psicólogo pueda revisarlo contigo. No hago diagnósticos ni sustituyo una sesión clínica. ¿Qué te gustaría trabajar hoy?';
       await supabase.from('messages').insert([{
         conversation_id: newConv.id,
         role: 'assistant',

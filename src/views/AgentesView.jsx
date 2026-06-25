@@ -1946,7 +1946,7 @@ export default function AgentesView({ user, profile, sidebarCollapsed = false, s
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           chat_id: telegramChatId,
-          text: `🔌 <b>Prueba de Conexión de Walter Clínica</b>\n\n¡Enhorabuena Emilio! La conexión con tu bot se ha establecido de forma exitosa.\n\nHora de verificación: ${new Date().toLocaleTimeString('es-ES')} (Local)\nURL del Portal: https://ayuda-emilio-83261.web.app\n\n<i>Tus alertas y reportes llegarán a este chat.</i>`,
+          text: `🔌 <b>Prueba de Conexión de Walter Clínica</b>\n\n¡Enhorabuena Emilio! La conexión con tu bot se ha establecido de forma exitosa.\n\nHora de verificación: ${new Date().toLocaleTimeString('es-ES')} (Local)\nURL del Portal: https://ancora-portal.web.app\n\n<i>Tus alertas y reportes llegarán a este chat.</i>`,
           parse_mode: 'HTML'
         })
       });
@@ -4485,7 +4485,7 @@ export default function AgentesView({ user, profile, sidebarCollapsed = false, s
                               <li>Escribe el título de tu app (ej: <code>Walter Clínica</code>) y su descripción.</li>
                               <li>Sube una imagen de logo si lo deseas (o envia /skip).</li>
                               <li>Cuando te pida la <b>URL del Web App</b>, pega la URL de esta web:<br />
-                                <strong style={{ color: '#ffffff', wordBreak: 'break-all' }}>https://ayuda-emilio-83261.web.app</strong>
+                                <strong style={{ color: '#ffffff', wordBreak: 'break-all' }}>https://ancora-portal.web.app</strong>
                               </li>
                               <li>Escribe un nombre corto (alias) y se generará tu enlace directo (ej: <code>t.me/TuBotName/app</code>).</li>
                             </ol>

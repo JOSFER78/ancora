@@ -1,6 +1,6 @@
 const https = require('https');
 
-const token = '8021173910:AAFsH5fo2IWVoLj4r-fjUSjbamuw3zPWr4k';
+const token = process.env.TELEGRAM_BOT_TOKEN || 'YOUR_TELEGRAM_BOT_TOKEN';
 const chatId = '@elreydelmambot';
 const text = '🤖 <b>Conexión Exitosa</b>\n\nEl sistema de agentes de Antigravity ha verificado la configuración de tu bot de Telegram con éxito.\n\n🔗 Web App: https://ancora-portal.web.app';
 

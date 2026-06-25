@@ -34,16 +34,17 @@ En la actualidad, millones de personas utilizan modelos de lenguaje de propósit
 
 ---
 
-## 💳 Modelo de Negocio e Integración con Stripe Connect Split Payments
+## 💳 Modelo de Negocio y Estructura de Planes Clínicos
 
-Para asegurar la exención del IVA clínica en España y evitar contingencias laborales (evitando falsos autónomos), los cobros se dividen automáticamente en origen mediante **Stripe Connect**:
-*   **Onboarding y Diagnóstico Inicial**: 99,00 € (promocionado a 49,00 € con cupón de bienvenida).
+Para asegurar la exención del IVA clínica en España y cumplir con el régimen de Stripe Connect Split Payments, los cobros se estructuran en base al tipo de servicio prestado y supervisión requerida:
+
+*   **Fase de Onboarding y Diagnóstico Inicial**: Sesión clínica de triaje y cribado que evalúa y clasifica al usuario en niveles de riesgo para asignarle el plan terapéutico adecuado.
 *   **Planes de Suscripción Individual**:
-    - **Plan Esencial (Mínimo de Seguridad)**: 69 €/mes. Es el plan de entrada obligatorio para garantizar el uso de la plataforma y **dos supervisiones de 15 minutos con un psicólogo colegiado**. Es el estándar mínimo de protección clínica necesario para que los usuarios estén protegidos con diagnósticos, validación y supervisión humana del contenido y progreso de lo que interactúan y hablan con la IA, mitigando los riesgos del autotratamiento autónomo.
-    - **Plan Intermedio**: 99 €/mes.
-    - **Plan Intensivo**: 159 €/mes.
-*   **Planes Grupales**: Duo (240 €/mes) y Familiar (380 €/mes).
-*   **Facturación Split**: El psicólogo factura directamente al paciente el servicio clínico (exento de IVA) y la plataforma factura la tarifa informática de software (sujeta al 21% de IVA).
+    - **Plan Esencial (Mínimo de Seguridad)**: Garantiza el uso completo del diario interactivo y chat clínico con IA, respaldado por **dos supervisiones de 15 minutos mensuales con un psicólogo colegiado**. Es el estándar mínimo de protección clínica obligatorio para asegurar que el contenido que el paciente comparte con la IA sea auditado, corregido y validado bajo criterio clínico humano.
+    - **Plan Intermedio**: Ofrece un mayor número de revisiones mensuales y un acompañamiento clínico de mayor frecuencia para perfiles de riesgo moderado.
+    - **Plan Intensivo**: Diseñado para perfiles de alta demanda clínica, con revisiones prioritarias asíncronas constantes y feedback continuo.
+*   **Planes Grupales (Duo / Familiar)**: Extienden la contención diaria con IA y las supervisiones periódicas del psicólogo a varios miembros de la unidad familiar.
+*   **Facturación Split**: El flujo económico se divide en origen; el psicólogo factura directamente al paciente los servicios clínicos exentos de IVA, y la plataforma factura la tarifa informática por el soporte y uso del software.
 
 ---
 
@@ -51,11 +52,11 @@ Para asegurar la exención del IVA clínica en España y evitar contingencias la
 
 Para garantizar una confidencialidad médica absoluta y cumplir con el RGPD europeo y el Esquema Nacional de Seguridad (ENS), Áncora no utiliza APIs comerciales extranjeras que puedan comprometer la intimidad de los pacientes. La inferencia se realiza localmente en servidores de hardware propio dedicados.
 
-### 🖥️ Infraestructura GPU Distribuida (Mini-PCs NVIDIA Spark 128GB)
-*   **Nodos de Inferencia**: Configuración de **4x Mini-PCs NVIDIA Spark (128GB de memoria unificada cada uno)**. El formato ultra-compacto de bajo consumo minimiza costes operativos y la huella energética en comparación con servidores de torre tradicionales.
+### 🖥️ Infraestructura de Servidores de IA (NVIDIA DGX Spark 128GB)
+*   **Nodos de Inferencia**: Configuración de **4x Servidores IA NVIDIA DGX Spark (128GB de memoria unificada coherente - Grace Blackwell Superchip)**. El formato profesional de alto rendimiento y bajo consumo energético minimiza costes operativos sin comprometer la capacidad de procesamiento en local.
 *   **Distribución por Zonas Horarias**:
-    - **2x Mini-PCs dedicados al horario de Europa**.
-    - **2x Mini-PCs dedicados al horario de Latinoamérica**.
+    - **2x Servidores IA dedicados al horario de Europa**.
+    - **2x Servidores IA dedicados al horario de Latinoamérica**.
 *   **Distribución del Procesamiento (Modelos Día/Noche)**:
     - **Horario de Día (Chat Interactivo)**: Carga de **modelos ligeros y rápidos** optimizados para interacciones fluidas de baja latencia con el paciente en el diario y chat clínico.
     - **Horario de Noche (Procesamiento Asíncrono)**: Carga de **modelos pesados de razonamiento clínico** para realizar las tareas de síntesis del diario, extracción de hechos, briefings y redacción de informes SOAP para el terapeuta.

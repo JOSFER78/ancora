@@ -17,20 +17,19 @@ En la actualidad, millones de personas utilizan modelos de lenguaje de propósit
 
 ## ⚓ La Solución de Áncora: El Copiloto Clínico Híbrido
 
-Áncora no prohíbe el uso de la IA (reconociendo su conveniencia y disponibilidad de 24 horas todos los días), sino que la canaliza de manera segura y controlada dentro de un marco clínico profesional:
+Áncora no prohíbe el uso de la IA (reconociendo su conveniencia y disponibilidad de 24 horas todos los días), sino que la canaliza de manera segura y controlada dentro de un marco clínico profesional que ofrece ventajas determinantes para ambas partes:
 
-1.  **Acompañamiento Diario Estructurado**: El paciente dispone de un diario emocional y chat terapéutico asistido por IA para desahogarse, estructurar hábitos y registrar sus sensaciones clínicas diariamente (un servicio económico y accesible en cualquier momento).
-2.  **Acceso Democrático a Soporte Humano Real**: En lugar de pagar sesiones semanales completas de 50 minutos que son costosas, la IA consolida y estructura la información diaria del paciente. Esto permite a un **psicólogo real de nuestra red** realizar una revisión clínica exhaustiva del estado del paciente en **revisiones semanales rápidas de 15 minutos** por una fracción del precio tradicional, haciendo viable el acceso a soporte humano profesional constante por poco dinero.
-3.  **Prevención del Sesgo Clínico (Raw-First)**: El portal del profesional implementa un bloqueo visual *glassmorphism* que le obliga a leer los datos objetivos del paciente (horas de sueño, wearables, citas textuales críticas del chat) antes de revelar las interpretaciones del modelo de IA, previniendo el efecto anclaje y el sesgo de automatización diagnóstica.
+### 👥 Ventajas Clínicas para el Paciente
+*   **Continuidad Asistencial (Acompañamiento 24/7)**: Elimina la desasistencia emocional entre las sesiones presenciales semanales. El paciente dispone de un diario interactivo asistido por IA para el manejo cognitivo-conductual (TCC) en tiempo real ante picos de ansiedad.
+*   **Sin el Desgaste de "Repetir la Historia"**: La IA consolida y estructura de forma asíncrona sus hitos emocionales e interacciones diarias en un **Árbol de Vida Clínica (Clinical Life Tree)** y una línea de tiempo unificada. De este modo, el terapeuta conoce a fondo la evolución del paciente antes de la sesión, evitando que el usuario tenga que desgastarse repitiendo su historia clínica constantemente.
+*   **Privacidad Extrema Zero-Knowledge**: La inferencia se ejecuta localmente en servidores de hardware propio dedicados, lo que impide que las conversaciones íntimas del paciente alimenten APIs comerciales extranjeras. Todo el historial se protege bajo llaves derivadas del cliente (Argon2id).
+*   **Acceso Democrático a Profesionales**: Facilita la supervisión periódica de un psicólogo humano real colegiado (a través de revisiones rápidas asíncronas) desde planes sumamente accesibles, reduciendo la vulnerabilidad al autotratamiento desatendido de los chatbots de IA.
 
----
-
-## 🚀 Módulos Clave de la Plataforma
-
-*   **Triaje Inicial Contextual**: Incorporación camuflada y empática de cuestionarios psicométricos estandarizados (**PHQ-9** y **GAD-7**).
-*   **Smart SOAP**: Transcripción y redacción automatizada asistida por IA local de informes SOAP y evolución para ahorrar hasta un 40% de tiempo administrativo al psicólogo.
-*   **Video-Briefing con Teleprompter**: Permite al psicólogo grabar su evolución clínica en vídeo de forma ágil apoyado en un teleprompter inteligente con los hitos de la semana del paciente.
-*   **Disonancia de Datos**: Panel de control de alertas automáticas cuando la IA detecta contradicciones entre la narrativa del diario declarado del paciente y sus métricas objetivas (ej. reporta sentirse bien pero registra insomnio real severo).
+### 🩺 Ventajas Operativas para el Psicólogo
+*   **Eficiencia de Tiempo Extrema (Smart SOAP)**: El sistema autogenera borradores de **Notas SOAP** e informes de progreso a partir de la síntesis del chat del paciente, reduciendo las tareas burocráticas administrativas en un 40%.
+*   **Preclusión del Anclaje y Sesgo Diagnóstico**: El panel del terapeuta implementa un bloqueo visual *glassmorphic* (*Raw-First*) que le obliga a leer los datos cuantitativos reales y citas textuales (*verbatim*) antes de revelar los análisis y sugerencias semánticas del LLM, garantizando un juicio profesional libre de sesgos tecnológicos.
+*   **Devolución Ágil asistida por Teleprompter**: El psicólogo graba un Video-Briefing de evolución de 5-10 minutos directamente desde la app, asistido por un teleprompter inteligente que le muestra de forma superpuesta las citas y métricas clave de la semana del paciente.
+*   **Burocracia Cero y Split de Stripe**: Gestión automatizada de cobros y facturación exenta de IVA mediante Stripe Connect, eliminando costes administrativos de micro-cobros individuales.
 
 ---
 

@@ -47,16 +47,25 @@ Frente al avance inevitable de la IA, la filosofía de **Áncora** es no prohibi
 ### ¿Por qué surge Áncora?
 Áncora surge para resolver la brecha entre la conveniencia de la tecnología y la seguridad de la praxis médica. La IA genérica es una herramienta de desahogo útil y de bajo coste, pero carece de la capacidad de estructurar tratamientos efectivos, verificar la veracidad del relato del paciente y guiar la evolución psicológica. El autotratamiento descontrolado con IAs genera retrasos en el diagnóstico real y cronifica el malestar debido a la complacencia del LLM.
 
-### Cómo lucha Áncora contra el autotratamiento con IA:
-1.  **Canalización Segura de la Contención (Diario de IA)**: Áncora utiliza la IA no como un terapeuta sustituto, sino como un **optimizador cognitivo-conductual (TCC)**. El usuario interactúa de forma diaria con un diario interactivo y un bot de contención estructurado, sirviendo como diario conductual disponible 24/7.
-2.  **El Filtro Humano y Estructura de Planes (Plan Esencial)**: Áncora introduce una barrera de seguridad clínica obligatoria a través de sus planes de suscripción. El nivel de entrada (Plan Esencial) garantiza el uso de la plataforma de IA de contención junto con **dos supervisiones clínicas de 15 minutos mensuales** por parte de un psicólogo humano real colegiado de nuestra red.
-3.  **Evaluación de Disonancia y Bloqueo Visivo (Raw-First)**: El panel del terapeuta combate el sesgo del profesional mediante la interfaz *Raw-First*. El software analiza los datos de forma continua y alerta al psicólogo sobre posibles disonancias (ej. el paciente reporta al bot sentirse excelente, pero los datos de sus dispositivos registran un aumento severo del insomnio y la ansiedad fisiológica). El psicólogo humano lee la información cruda objetiva antes de que la IA le sugiera interpretaciones, forzando un diagnóstico y una supervisión 100% científica.
-4.  **Validación y Diagnóstico Profesional**: El psicólogo clínico humano revisa el resumen estructurado de las interacciones con la IA, interviene en las desviaciones, corrige las pautas de comportamiento de manera segura y emite su devolución en un formato rápido de vídeo con firma digital. Esto asegura que la terapia mantenga su carácter médico y ético a una fracción del coste de las consultas clásicas presenciales.
-5.  **Infraestructura de Servidores de IA (4x Servidores IA NVIDIA DGX Spark 128GB)**:
-    - **Hardware de Inferencia**: El sistema se ejecuta sobre **4x Servidores IA NVIDIA DGX Spark con 128GB de memoria unificada coherente (Grace Blackwell Superchip)**, reduciendo drásticamente los consumos eléctricos y los costes de climatización en comparación con infraestructuras convencionales.
-    - **Distribución Geográfica y de Carga**: 2x Servidores IA están permanentemente dedicados a dar servicio al horario de Europa, y 2x Servidores IA cubren el horario de Latinoamérica.
-    - **Optimización de Modelos por Horarios**:
-        - **Día (Chat Activo)**: Los nodos ejecutan **modelos de lenguaje ligeros y ultra-rápidos** para asegurar latencias inferiores a 1.5 segundos durante la interacción de chat diario con el paciente.
-        - **Noche (Procesamiento Asíncrono)**: Los nodos cargan **modelos pesados de razonamiento clínico y estructuración semántica** para procesar resúmenes, extraer de forma asíncrona los hitos semanales, rellenar notas SOAP para el terapeuta y generar briefings clínicos libres de alucinaciones.
+### Cómo lucha Áncora contra el autotratamiento con IA (Ventajas del Ecosistema Híbrido):
+
+#### 👥 Ventajas Clínicas para el Paciente
+1.  **Continuidad Asistencial (Terapia Continuada 24/7)**: Evita la desasistencia emocional entre las consultas presenciales clásicas de carácter semanal o quincenal. El paciente cuenta con un diario interactivo asistido por IA local entrenado en técnicas de Terapia Cognitivo-Conductual (TCC) para gestionar picos de ansiedad en tiempo real.
+2.  **Sin el Desgaste de "Repetir la Historia"**: Al cambiar de terapeuta o iniciar una sesión, el paciente no tiene que repetir reiteradamente sus antecedentes o historia clínica. La IA consolida y estructura de forma asíncrona sus hitos y la evolución en un **Árbol de Vida Clínica (Clinical Life Tree)** y una línea de tiempo unificada, permitiendo que el profesional esté al tanto de inmediato sin fricciones de comunicación.
+3.  **Privacidad Absoluta Zero-Knowledge**: La inferencia se realiza en servidores de hardware propio dedicados, lo que impide que las conversaciones del paciente alimenten APIs comerciales extranjeras. Toda la información médica se blinda bajo claves derivadas del cliente (Argon2id) cumpliendo el RGPD europeo.
+4.  **Acceso Democrático al Acompañamiento Humano**: Al optimizar el flujo de trabajo, los planes facilitan que personas con recursos económicos limitados dispongan de la supervisión periódica de un psicólogo humano real (a través de revisiones rápidas asíncronas) mitigando el riesgo de alucinaciones o autotratamientos fallidos.
+
+#### 🩺 Ventajas Operativas para el Psicólogo
+1.  **Eficiencia Extrema de Tiempo (Ahorro del 40%)**: El sistema autogenera borradores de **Notas SOAP** y resúmenes de progreso clínico clínico a partir del chat diario del paciente, eliminando la carga de redacción burocrática del psicólogo.
+2.  **Preclusión del Anclaje y Sesgo Diagnóstico**: La interfaz del terapeuta cuenta con un bloqueo visual *glassmorphism* (*Raw-First*) que le obliga a inspeccionar los datos objetivos (insomnio, métricas biológicas, extractos literales clínicos) antes de revelar las interpretaciones semánticas del LLM, garantizando un juicio libre de sesgos tecnológicos.
+3.  **Devoluciones Ágiles asistidas por Teleprompter**: El terapeuta realiza las devoluciones en 15 minutos grabando un Video-Briefing asistido por un teleprompter inteligente interactivo que superpone los datos clave de la semana del paciente.
+4.  **Burocracia Cero y Split Tributario**: El sistema gestiona automáticamente la facturación y el split fiscal de IRPF e IVA mediante Stripe Connect, permitiendo al psicólogo facturar la clínica (exenta de IVA) de forma directa y simplificada.
+
+#### ⚙️ Infraestructura de Servidores de IA (4x Servidores IA NVIDIA DGX Spark 128GB)
+- **Hardware de Inferencia**: El sistema se ejecuta sobre **4x Servidores IA NVIDIA DGX Spark con 128GB de memoria unificada coherente (Grace Blackwell Superchip)**, reduciendo drásticamente los consumos eléctricos y los costes de climatización en comparación con infraestructuras convencionales.
+- **Distribución Geográfica y de Carga**: 2x Servidores IA están permanentemente dedicados a dar servicio al horario de Europa, y 2x Servidores IA cubren el horario de Latinoamérica.
+- **Optimización de Modelos por Horarios**:
+    - **Día (Chat Activo)**: Los nodos ejecutan **modelos de lenguaje ligeros y ultra-rápidos** para asegurar latencias inferiores a 1.5 segundos durante la interacción de chat diario con el paciente.
+    - **Noche (Procesamiento Asíncrono)**: Los nodos cargan **modelos pesados de razonamiento clínico y estructuración semántica** para procesar resúmenes, extraer de forma asíncrona los hitos semanales, rellenar notas SOAP para el terapeuta y generar briefings clínicos libres de alucinaciones.
 
 

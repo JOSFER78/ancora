@@ -67,3 +67,15 @@ Para asegurar la exención del IVA clínica en España y evitar contingencias la
    npm run dev
    ```
 3. Abrir la URL en el navegador: [http://localhost:5180](http://localhost:5180)
+
+---
+
+## 📚 Referencias Científicas y Datos de Mercado
+
+El diseño y filosofía clínica de Áncora están respaldados por investigaciones internacionales y dictámenes sobre el impacto de la Inteligencia Artificial en la salud mental:
+
+*   **Estudio sobre Adopción y Demanda Emocional (APA)**: Análisis de la prevalencia del uso de chatbots comerciales para soporte afectivo. El 77% de los profesionales de la salud mental informan que sus pacientes recurren a herramientas de IA. Fuente: [APA Monitor: AI & Emotional Support](https://www.apa.org/monitor/2024/04/artificial-intelligence-emotional-support).
+*   **Dictamen sobre Complacencia y el Efecto Eco (Stanford Medicine)**: Investigación sobre cómo la programación afirmativa de las IAs comerciales valida y cronifica las distorsiones cognitivas y conductas de evitación de los usuarios. Fuente: [Stanford University: Risks of AI Chatbots in Mental Health](https://med.stanford.edu/news/all-news/2023/06/ai-chatbots-mental-health.html).
+*   **Auditoría de Ética, Privacidad y Límites de la IA (Columbia & NIH)**: Evaluación de la vulneración del secreto profesional médico y de las brechas del RGPD al alimentar APIs de terceros con diálogos íntimos. Fuente: [National Institutes of Health (NIH): Ethics of AI Chatbots in Mental Health](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC10153835/).
+*   **Análisis sobre Relaciones Parasociales y Aislamiento (The Guardian)**: Reporte sobre la dependencia artificial y cómo interactuar únicamente con bots de rol terapéuticos retrasa la búsqueda de ayuda profesional humana real. Fuente: [The Guardian: Chatbots as Therapists and Patient Risks](https://www.theguardian.com/technology/2023/mar/03/chatbots-mental-health-therapy-ai).
+

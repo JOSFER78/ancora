@@ -1,41 +1,49 @@
 # ÁNCORA ⚓ (Plataforma Híbrida de Telepsicología con IA Supervisada)
 
-Áncora es una solución tecnológica avanzada y un ecosistema clínico diseñado para optimizar el seguimiento terapéutico en España. Su modelo se basa en un enfoque **Human-in-the-Loop (Copiloto Clínico)**, donde la Inteligencia Artificial asiste en tareas administrativas y de seguimiento diario, mientras que el diagnóstico, la validación y el criterio final recaen exclusivamente en psicólogos colegiados habilitados sanitariamente.
+Áncora es un ecosistema clínico diseñado para optimizar el seguimiento terapéutico. Nace como respuesta directa a los peligros emergentes del uso descontrolado de Inteligencia Artificial en salud mental, proponiendo una arquitectura híbrida **Human-in-the-Loop (Copiloto Clínico)**: la IA actúa como soporte de contención diario y procesador de datos, mientras que el diagnóstico, la validación y el criterio final recaen exclusivamente en psicólogos humanos colegiados.
 
 ---
 
-## 🚀 Propuesta de Valor y Características Clave
+## 🚨 El Problema: Los Riesgos de la IA Terapéutica Autónoma
 
-### 1. Privacidad Extrema y Soberanía de Datos
-La inferencia de modelos de lenguaje se procesa de forma local en servidores dedicados bajo control directo de la plataforma. Esto garantiza el estricto cumplimiento del RGPD europeo y el secreto profesional médico, impidiendo que los datos sensibles de los pacientes alimenten APIs comerciales extranjeras.
+En la actualidad, millones de personas utilizan modelos de lenguaje de propósito general (como ChatGPT o bots de rol) como sustituto de terapia debido al coste prohibitivo y la falta de acceso a la salud mental. Sin embargo, la psicología clínica advierte de graves riesgos asociados a esta práctica autónoma sin supervisión profesional:
 
-### 2. Triaje y Onboarding Inteligente
-Flujo conversacional empático asistido por IA que integra de forma contextual los cuestionarios estandarizados **PHQ-9** (Cribado de Depresión) y **GAD-7** (Cribado de Ansiedad). Clasifica los niveles de riesgo del paciente (Leve, Moderado, Grave) y determina si es apto para el seguimiento asíncrono o requiere derivación obligatoria síncrona.
-
-### 3. Panel Clínico "Raw-First" (Evitación del Sesgo)
-Para prevenir el sesgo de automatización y el efecto anclaje de los terapeutas, el panel de control del psicólogo implementa una interfaz de 3 niveles:
-*   **Datos Crudos (Nivel 1)**: Visualización neutra de variables cuantitativas, wearables (sueño, pasos, HRV) y citas textuales (*verbatim*) críticas del chat diario.
-*   **Análisis Interpretativo de IA (Nivel 2)**: Oculto bajo un filtro difuminado *glassmorphism* que solo se desbloquea cuando el terapeuta ha revisado los datos objetivos. Ofrece análisis conductuales configurables (TCC, ACT).
-*   **Disonancia de Datos (Nivel 3)**: Mapeo de contradicciones entre el diario declarado por el paciente y sus métricas objetivas (ej. insomnio real vs. reporte emocional positivo).
-
-### 4. Smart SOAP & Productividad
-Reducción de tareas administrativas del terapeuta mediante la generación asistida por IA local de **Notas SOAP** e informes evolutivos a partir de las transcripciones y resúmenes diarios del chat del paciente, ahorrando hasta un 40% de tiempo de gestión clínica.
-
-### 5. Retorno Asíncrono de Alta Rentabilidad
-El terapeuta realiza devoluciones clínicas estructuradas de 15 minutos a través de **Video-Briefings** rápidos con soporte de teleprompter inteligente integrado, firmados con un código PIN de 4 dígitos, lo que incrementa su rentabilidad horaria asíncrona a una tasa equivalente de **60 €/hora**.
+*   **Complacencia y Refuerzo del Síntoma (Cámara de Eco)**: A diferencia de un terapeuta humano que confronta los pensamientos disfuncionales, las IAs están programadas para ser complacientes y agradables (*agreeable*), lo que suele validar y reforzar distorsiones cognitivas, conductas de evitación y sesgos perjudiciales del paciente.
+*   **Incapacidad ante Crisis Clínicas Graves**: La IA carece de empatía afectiva y no puede percibir el lenguaje no verbal ni la entonación. En casos críticos de ideación autolesiva o crisis severas, los chatbots de IA pueden emitir respuestas erráticas, inapropiadas o potencialmente peligrosas.
+*   **Vulneración Absoluta de la Privacidad (RGPD)**: Las conversaciones íntimas mantenidas con IAs comerciales quedan almacenadas en servidores de corporaciones extranjeras para alimentar modelos de entrenamiento, violando el secreto profesional médico y la ley europea de protección de datos de salud.
+*   **Relaciones Parasociales y Aislamiento**: Los usuarios pueden desarrollar dependencias emocionales artificiales con los chatbots, lo que retrasa o reemplaza por completo la búsqueda de terapia humana real y la reconexión social.
 
 ---
 
-## 💳 Modelo de Suscripción y Stripe Connect Split Payments
+## ⚓ La Solución de Áncora: El Copiloto Clínico Híbrido
 
-Para garantizar la viabilidad fiscal y laboral en España, los flujos económicos se dividen en origen mediante **Stripe Connect**:
-*   **Onboarding y Diagnóstico**: 99,00 € (promocionado a 49,00 € con cupón de bienvenida).
+Áncora no prohíbe el uso de la IA (reconociendo su conveniencia y disponibilidad de 24 horas todos los días), sino que la canaliza de manera segura y controlada dentro de un marco clínico profesional:
+
+1.  **Acompañamiento Diario Estructurado**: El paciente dispone de un diario emocional y chat terapéutico asistido por IA para desahogarse, estructurar hábitos y registrar sus sensaciones clínicas diariamente (un servicio económico y accesible en cualquier momento).
+2.  **Acceso Democrático a Soporte Humano Real**: En lugar de pagar sesiones semanales completas de 50 minutos que son costosas, la IA consolida y estructura la información diaria del paciente. Esto permite a un **psicólogo real de nuestra red** realizar una revisión clínica exhaustiva del estado del paciente en **revisiones semanales rápidas de 15 minutos** por una fracción del precio tradicional, haciendo viable el acceso a soporte humano profesional constante por poco dinero.
+3.  **Prevención del Sesgo Clínico (Raw-First)**: El portal del profesional implementa un bloqueo visual *glassmorphism* que le obliga a leer los datos objetivos del paciente (horas de sueño, wearables, citas textuales críticas del chat) antes de revelar las interpretaciones del modelo de IA, previniendo el efecto anclaje y el sesgo de automatización diagnóstica.
+
+---
+
+## 🚀 Módulos Clave de la Plataforma
+
+*   **Triaje Inicial Contextual**: Incorporación camuflada y empática de cuestionarios psicométricos estandarizados (**PHQ-9** y **GAD-7**).
+*   **Smart SOAP**: Transcripción y redacción automatizada asistida por IA local de informes SOAP y evolución para ahorrar hasta un 40% de tiempo administrativo al psicólogo.
+*   **Video-Briefing con Teleprompter**: Permite al psicólogo grabar su evolución clínica en vídeo de forma ágil apoyado en un teleprompter inteligente con los hitos de la semana del paciente.
+*   **Disonancia de Datos**: Panel de control de alertas automáticas cuando la IA detecta contradicciones entre la narrativa del diario declarado del paciente y sus métricas objetivas (ej. reporta sentirse bien pero registra insomnio real severo).
+
+---
+
+## 💳 Modelo de Negocio e Integración con Stripe Connect Split Payments
+
+Para asegurar la exención del IVA clínica en España y evitar contingencias laborales (evitando falsos autónomos), los cobros se dividen automáticamente en origen mediante **Stripe Connect**:
+*   **Onboarding y Diagnóstico Inicial**: 99,00 € (promocionado a 49,00 € con cupón de bienvenida).
 *   **Planes de Suscripción Individual**:
-    - **Plan Esencial**: 69 €/mes.
+    - **Plan Esencial**: 69 €/mes (incluye diario de IA + revisión humana rápida semanal).
     - **Plan Intermedio**: 99 €/mes.
     - **Plan Intensivo**: 159 €/mes.
 *   **Planes Grupales**: Duo (240 €/mes) y Familiar (380 €/mes).
-*   **Facturación Split**: El psicólogo factura directamente la parte clínica exenta de IVA al paciente, y la plataforma factura la tarifa informática de software sujeta al 21% de IVA.
+*   **Facturación Split**: El psicólogo factura directamente al paciente el servicio clínico (exento de IVA) y la plataforma factura la tarifa informática de software (sujeta al 21% de IVA).
 
 ---
 
@@ -43,7 +51,7 @@ Para garantizar la viabilidad fiscal y laboral en España, los flujos económico
 
 *   **Frontend**: React 19 + Vite (JavaScript ES Modules).
 *   **Diseño Visual**: Vanilla CSS con la especificación "Mente Sana UI" (colores pastel relajantes, tipografías sin serifa espaciadas, glassmorphism e iluminación reactiva).
-*   **Base de Datos**: Supabase PostgreSQL con Row Level Security (RLS) activo para aislamiento de roles de pacientes, psicólogos y supervisores.
+*   **Base de Datos**: Supabase PostgreSQL con Row Level Security (RLS) activo para aislamiento estricto de roles.
 *   **Servicios Cloud & Edge**: Supabase Edge Functions (Deno) para integraciones de APIs clínicas, cifrado HMAC y orquestación de LLMs locales vía OpenRouter.
 
 ---

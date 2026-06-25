@@ -1,16 +1,54 @@
-# React + Vite
+# ÁNCORA ⚓ (Sistema EN-78: Centro de Control y Blindaje Conductual)
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Áncora es un panel de control financiero y conductual de grado clínico desarrollado para dar soporte terapéutico, monitorear la operativa en futuros y gestionar deudas, actuando como un escudo protector interactivo.
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 1. Misión y Propósito Clínico
 
-## React Compiler
+El sistema está diseñado para ofrecer soporte integral en disregulación emocional y control conductual mediante:
+*   **Blindaje Operativo (Trading)**: Monitoreo de cuentas reales en BingX, límites de riesgo y lista de seguridad pre-market obligatoria.
+*   **Terapeuta Virtual ("Walter")**: Asistente clínico automatizado para mitigar la ansiedad y parálisis conductual. Al finalizar cada sesión, genera un reporte clínico estructurado utilizando modelos avanzados de IA (DeepSeek V4 Pro) consolidados en la ficha del paciente.
+*   **Planificación Financiera (Deudas)**: Un calendario interactivo y dinámico que simula flujos de caja y organiza el pago de deudas por prioridades basándose en salarios y rendimiento real.
+*   **Hoja de Ruta Legal (INSS)**: Seguimiento en fases de gestiones legales de incapacidad.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+---
 
-## Expanding the ESLint configuration
+## 2. Arquitectura Tecnológica
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+### Frontend
+*   **Core**: React 19 (Vite) + Javascript (ES Modules).
+*   **Estilos**: Vanilla CSS con diseño premium oscuro, efectos de cristal (glassmorphism), variables globales fluidas e iluminación cian/esmeralda.
+*   **Librerías**: `lucide-react` para iconos y `@supabase/supabase-js` para la integración de datos en tiempo real.
+*   **Despliegue**: Firebase Hosting (`ancora-portal.web.app`).
+
+### Backend & Base de Datos
+*   **Base de Datos**: Supabase PostgreSQL con Row Level Security (RLS) activo en todas las tablas para separar los roles de `emilio` y `supervisor`.
+*   **Backend (Supabase Edge Functions)**:
+    - `chat-terapeuta`: Edge Function en Deno que maneja el chat clínico y llamadas HMAC SHA-256 a la API de futuros de BingX para gestión de balances y cierres de emergencia.
+    - Integración con APIs de OpenRouter/DeepSeek para procesamiento cognitivo y generación de conclusiones.
+
+---
+
+## 3. Instalación y Ejecución Local
+
+Para levantar el servidor de desarrollo local de Vite:
+
+1. Instala las dependencias:
+   ```bash
+   npm install
+   ```
+2. Ejecuta el servidor en modo de desarrollo:
+   ```bash
+   npm run dev
+   ```
+3. Accede desde tu navegador en la dirección local configurada (usualmente [http://localhost:5180/](http://localhost:5180/)).
+
+---
+
+## 4. Estructura de Módulos Clave (`src/components/trading/`)
+
+*   **`ViabilityWidget`**: Simulador financiero interconectado con deudas y calendario de previsión.
+*   **`PanicSimulatorWidget`**: Asistente de amígdala con ejercicios de choque autonómico y respiración guiada.
+*   **`GriefWidget`**: Aceptación radical de pérdidas operativas en el trading.
+*   **`SecurityChecklistWidget`**: Check pre-market mandatorio para habilitar operativas.

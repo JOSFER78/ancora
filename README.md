@@ -1,4 +1,4 @@
-# ÁNCORA ⚓ (Plataforma Híbrida de Telepsicología con IA Supervisada)
+# ÁNCORA ⚓ (Plataforma seguimiento terapeutico con IA Supervisada por profesionales)
 
 Áncora es un ecosistema clínico diseñado para optimizar el seguimiento terapéutico. Nace como respuesta directa a los peligros emergentes del uso descontrolado de Inteligencia Artificial en salud mental, proponiendo una arquitectura híbrida **Human-in-the-Loop (Copiloto Clínico)**: la IA actúa como soporte de contención diario y procesador de datos, mientras que el diagnóstico, la validación y el criterio final recaen exclusivamente en psicólogos humanos colegiados.
 

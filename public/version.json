@@ -1,12 +1,8 @@
 {
   "version": "1.0.0",
-  "build": 100,
-  "releaseNotes": "Versión 1.0.0 Oficial de Áncora (PWA, Android APK, Windows, macOS, Linux). Incluye Motor Clínico, SOAP Teleprompter, Memoria Persistente y Stripe Split.",
-  "downloadUrls": {
-    "android": "https://github.com/JOSFER78/ancora/releases/download/v1.0.0/ancora-v1.0.0.apk",
-    "windows": "https://github.com/JOSFER78/ancora/releases/download/v1.0.0/ancora-v1.0.0-setup.exe",
-    "macOS_arm64": "https://github.com/JOSFER78/ancora/releases/download/v1.0.0/ancora-v1.0.0-arm64.dmg",
-    "macOS_x64": "https://github.com/JOSFER78/ancora/releases/download/v1.0.0/ancora-v1.0.0-x64.dmg",
-    "linux": "https://github.com/JOSFER78/ancora/releases/download/v1.0.0/ancora-v1.0.0.AppImage"
-  }
+  "name": "ÁNCORA",
+  "apkUrl": "https://github.com/JOSFER78/ancora/releases/download/v1.0.0/ancora.apk",
+  "bundleZipUrl": "https://github.com/JOSFER78/ancora/releases/download/v1.0.0/ancora.apk",
+  "changelog": "Compilación nativa APK oficial verificada para instalación directa en Android.",
+  "publishedAt": "2026-08-14T22:20:00.000Z"
 }

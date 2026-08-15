@@ -19,81 +19,131 @@ export class ContextBuilder {
    * Compila el contexto completo estructurado para el Fast Path.
    * 
    * @param {Object} params
-   * @param {string} params.patientName Nombre o alias del paciente.
-   * @param {Object} params.semanticProfile Perfil semántico activo.
-   * @param {Array<Object>} params.directives Directivas clínicas activas del psicólogo.
-   * @param {Array<Object>} params.episodes Lista de episodios candidatos.
-   * @param {Array<Object>} params.lifeTreeNodes Nodos del Árbol Vital.
-   * @param {Array<Object>} params.recentMessages Historial de mensajes recientes.
-   * @param {string} params.currentQuery Último mensaje enviado por el paciente.
+   * @param {string} [params.patientName='Paciente'] Nombre o alias del paciente.
+   * @param {Object} [params.semanticProfile=null] Perfil semántico activo.
+   * @param {Array<Object>} [params.directives=[]] Directivas clínicas activas del psicólogo.
+   * @param {Array<Object>} [params.episodes=[]] Lista de episodios clínicos.
+   * @param {Array<Object>} [params.lifeTreeNodes=[]] Nodos del Árbol Vital.
+   * @param {Array<Object>} [params.recentMessages=[]] Historial de mensajes recientes.
+   * @param {string} [params.currentQuery=''] Último mensaje enviado por el paciente.
+   * @param {Object} [params.emotionalState=null] Estado emocional de hoy (ansiedad/impulsividad).
    * @returns {{ systemPrompt: string, contextMessages: Array<Object>, telemetry: Object }}
    */
   buildContext({
     patientName = 'Paciente',
+    patientProfile = {},
     semanticProfile = null,
     directives = [],
     episodes = [],
     lifeTreeNodes = [],
     recentMessages = [],
-    currentQuery = ''
+    currentQuery = '',
+    emotionalState = null
   }) {
     const budget = this.budgetManager.getBudgetDistribution();
 
-    // 1. Inyectar System Prompt Base (Identidad y Seguridad Clínica)
-    let systemPrompt = `Eres Áncora, el asistente de apoyo cognitivo-conductual del paciente ${patientName}, supervisado directamente por su psicólogo colegiado.\n` +
-      `PRINCIPIOS INVIOLABLES:\n` +
-      `- CERO COMPLACENCIA: No valides distorsiones cognitivas ni prometas soluciones mágicas.\n` +
-      `- NO ERES EL PSICÓLOGO TITULAR: No emitas diagnósticos clínicos independientes ni modifiques pautas farmacológicas.\n` +
-      `- ENFOCADO EN CONTENCIÓN Y ANCLAJE: Utiliza las directivas y pautas somáticas establecidas por su terapeuta.\n` +
-      `- BREVEDAD Y CONTACTO: Sé directo, cálido y conciso.`;
+    const ctx = patientProfile.contexto_terapeutico || {};
+    const effectiveName = patientProfile.display_name || patientProfile.displayName || ctx.displayName || semanticProfile?.displayName || patientName || 'el paciente';
+    const motivoConsulta = ctx.motivo || semanticProfile?.motivo || 'Acompañamiento psicológico y regulación emocional';
+    const triageData = ctx.triaje || semanticProfile?.triage || null;
+    const focosInteres = ctx.tags || semanticProfile?.activeTriggers || [];
+    const contactEmergencia = ctx.emergencyContact || null;
+    const anoNacimiento = ctx.birthYear || null;
 
-    // 2. Inyectar Directivas Clínicas Nivel 1
+    // 1. Inyectar System Prompt Base (Identidad y Seguridad Clínica)
+    let systemPrompt = `Eres Áncora ⚓, el asistente clínico conversacional experto y empático de apoyo cognitivo-conductual de ${effectiveName}, supervisado directamente por su psicólogo colegiado.\n` +
+      `PRINCIPIOS INVIOLABLES DE BLINDAJE CLÍNICO:\n` +
+      `- CERO COMPLACENCIA: No valides distorsiones cognitivas, sobregeneralizaciones ni impulsos de riesgo.\n` +
+      `- NO ERES EL PSICÓLOGO TITULAR: No emitas diagnósticos independientes ni alteres pautas farmacológicas.\n` +
+      `- ENFOCADO EN CONTENCIÓN Y ANCLAJE: Utiliza las directivas y pautas somáticas establecidas por el terapeuta.\n` +
+      `- FORMATO: Sé directo, cálido, estructurado y conciso. Párrafos breves, negritas y viñetas limpias. Cierra con preguntas abiertas o pautas somáticas concretas.`;
+
+    // Inyectar datos del triaje de registro y ficha del paciente
+    let triageText = `\n\n--- EXPEDIENTE CLÍNICO Y TRIAJE INICIAL CONOCIDO ---` +
+      `\n• Nombre del paciente: ${effectiveName}` +
+      `\n• Motivo inicial de consulta declarado: "${motivoConsulta}"`;
+
+    if (triageData) {
+      triageText += `\n• Puntuaciones de Triaje Basal: PHQ-9 (Depresión/Ánimo) = ${triageData.phq9 !== undefined ? triageData.phq9 + '/27' : 'Completado'} | GAD-7 (Ansiedad/Estrés) = ${triageData.gad7 !== undefined ? triageData.gad7 + '/21' : 'Completado'}`;
+      if (triageData.highRisk) triageText += ` (Alerta de riesgo basal)`;
+    }
+    if (focosInteres.length > 0) {
+      triageText += `\n• Focos y Etiquetas declaradas: ${focosInteres.join(', ')}`;
+    }
+    if (contactEmergencia?.name) {
+      triageText += `\n• Contacto de emergencia: ${contactEmergencia.name} (${contactEmergencia.phone || 'Sin teléfono'})`;
+    }
+    if (anoNacimiento) {
+      triageText += `\n• Año de nacimiento: ${anoNacimiento}`;
+    }
+
+    triageText += `\n\n--- DIRECTIVAS CRÍTICAS DE TRANSPARENCIA Y SONSACADO CLÍNICO PERSUASIVO ---` +
+      `\n1. TRANSPARENCIA SOBRE DATOS DEL TRIAJE: Si ${effectiveName} te pregunta "¿qué sabes de mí?", "¿qué información tienes sobre mí?" o similar, NUNCA digas que no tienes información o que no tienes historial. Responde con calidez y cercanía resumiendo lo que sabes de su triaje de admisión: su nombre (${effectiveName}), el motivo por el que acudió ("${motivoConsulta}"), sus niveles basales de ansiedad y ánimo en el triaje (GAD-7: ${triageData?.gad7 ?? 'N/A'}/21, PHQ-9: ${triageData?.phq9 ?? 'N/A'}/27) y sus focos de interés (${focosInteres.join(', ') || 'gestión emocional'}).` +
+      `\n2. SONSACADO PERSUASIVO Y CONSTRUCCIÓN INVISIBLE DEL EXPEDIENTE VIVO: Tu misión terapéutica esencial es ir descubriendo y organizando en segundo plano su historia clínica completa (árbol vital de familia e infancia, relaciones de pareja o amistades, hitos biográficos, hábitos de sueño, salud física, medicación actual o previa y detonantes) de manera cálida, empática e invisible para el paciente. El paciente NO debe sentir que rellena un cuestionario, sino que está en un diálogo fluido y de confianza.` +
+      `\n3. TÉCNICA SOCRÁTICA Y NOTAS DE VOZ: En cada intervención, valida primero la emoción del paciente, ofrece contención o perspectiva cognitiva, y remata con una pregunta suave y curiosa que le invite a profundizar (ej. "¿esto te recuerda a cómo se gestionaban las cosas en tu familia de origen?", "¿cómo sueles descansar por las noches cuando esto pasa?", "¿hay antecedentes en tu familia con situaciones parecidas?"). Si el tema es denso, invítale a notas de voz: "Si te resulta más cómodo desahogarte hablando, puedes pulsar el micrófono y grabarme un audio breve contándomelo a tu ritmo".`;
+
+    systemPrompt += triageText;
+
+    // 2. Inyectar Directivas Clínicas Nivel 1 (Prioridad Máxima e Inviolable)
     if (directives && directives.length > 0) {
-      let directivesText = `\n\nDIRECTIVAS CLÍNICAS ACTIVAS (FIJADAS POR EL PSICÓLOGO - PRIORIDAD MÁXIMA):\n`;
+      let directivesText = `\n\n--- DIRECTIVAS CLÍNICAS ACTIVAS (FIJADAS POR EL PSICÓLOGO - NIVEL 1 MÁXIMA PRIORIDAD) ---\n`;
       directives.forEach(d => {
-        directivesText += `- [${d.category || 'PAUTA'}] ${d.directive || d.instruccion || ''}\n`;
+        const cat = d.category || d.scope || 'PAUTA';
+        const txt = d.directive || d.instruction || d.instruccion || '';
+        directivesText += `• [${cat}] (Prioridad ${d.priority || 1}): ${txt}\n`;
       });
       systemPrompt += TokenBudgetManager.truncateToTokenLimit(directivesText, budget.directives);
     }
 
-    // 3. Inyectar Perfil Semántico y Diagnóstico Activo
-    if (semanticProfile) {
-      let stateText = `\n\nESTADO CLÍNICO CONSOLIDADO:\n`;
-      if (semanticProfile.currentSummary) stateText += `Resumen: ${semanticProfile.currentSummary}\n`;
-      if (semanticProfile.activeTriggers?.length) stateText += `Disparadores conocidos: ${semanticProfile.activeTriggers.join(', ')}\n`;
-      if (semanticProfile.protectiveAnchors?.length) stateText += `Anclajes protectores: ${semanticProfile.protectiveAnchors.join(', ')}\n`;
-      systemPrompt += TokenBudgetManager.truncateToTokenLimit(stateText, budget.patientState);
+    // 3. Inyectar Perfil Semántico y Estado Emocional
+    let stateText = `\n\n--- ESTADO CLÍNICO CONSOLIDADO ---`;
+    if (emotionalState) {
+      stateText += `\nRegistro Emocional Actual: Ansiedad ${(emotionalState.anxiety ?? emotionalState.anxiety_level ?? 'N/A')}/10 | Impulsividad ${(emotionalState.impulsivity ?? emotionalState.impulsivity_level ?? 'N/A')}/10`;
+      if (emotionalState.notes) stateText += ` | Nota: "${emotionalState.notes}"`;
     }
+    if (semanticProfile) {
+      if (semanticProfile.currentSummary) stateText += `\nResumen Clínico: ${semanticProfile.currentSummary}`;
+      if (semanticProfile.activeTriggers?.length) stateText += `\nDisparadores conocidos: ${semanticProfile.activeTriggers.join(', ')}`;
+      if (semanticProfile.protectiveAnchors?.length) stateText += `\nAnclajes Protectores: ${semanticProfile.protectiveAnchors.join(', ')}`;
+      if (semanticProfile.coreBeliefs?.length) {
+        stateText += `\nEsquemas/Creencias Nucleares: ${semanticProfile.coreBeliefs.map(b => typeof b === 'string' ? b : b.belief).join('; ')}`;
+      }
+    }
+    systemPrompt += TokenBudgetManager.truncateToTokenLimit(stateText, budget.patientState);
 
     // 4. Seleccionar y ordenar Recuerdos Episódicos y Life Tree por Retrieval Score
     const allMemories = [
-      ...episodes.map(e => ({ ...e, type: 'EPISODE' })),
-      ...lifeTreeNodes.map(n => ({ ...n, type: 'LIFE_TREE', content: n.description }))
+      ...episodes.map(e => ({ ...e, type: 'EPISODIO' })),
+      ...lifeTreeNodes.map(n => ({ ...n, type: 'ÁRBOL_VITAL', content: n.description }))
     ];
 
     const scoredMemories = allMemories.map(mem => ({
       memory: mem,
-      score: RelevanceScorer.scoreMemory(mem, currentQuery)
+      score: RelevanceScorer.scoreMemory(mem, currentQuery, emotionalState)
     })).sort((a, b) => b.score - a.score);
 
     // Tomar solo las memorias más relevantes hasta agotar budget.episodicMemory
-    let episodicContextText = `\n\nHECHOS BIOGRÁFICOS Y EPISODIOS RELEVANTES:\n`;
+    let episodicContextText = `\n\n--- EVIDENCIA BIOGRÁFICA Y HECHOS CLÍNICOS RELEVANTES ---`;
     let usedEpisodicTokens = 0;
+    let injectedCount = 0;
 
     for (const item of scoredMemories) {
       const mem = item.memory;
-      let line = `- (${mem.type}) [Nivel ${mem.authorityLevel || 3}] `;
-      if (mem.verbatimQuote) line += `Cita literal: "${mem.verbatimQuote}" | `;
-      line += `${mem.title ? mem.title + ': ' : ''}${mem.content || mem.description || ''}\n`;
+      let line = `\n• [${mem.type}] [Nivel ${mem.authorityLevel || 3}] `;
+      if (mem.verbatimQuote || mem.verbatim_quote) {
+        line += `Cita textual: "${mem.verbatimQuote || mem.verbatim_quote}" | `;
+      }
+      line += `${mem.title ? mem.title + ': ' : ''}${mem.content || mem.description || ''}`;
 
       const lineTokens = TokenBudgetManager.estimateTokens(line);
       if (usedEpisodicTokens + lineTokens > budget.episodicMemory) break;
 
       episodicContextText += line;
       usedEpisodicTokens += lineTokens;
+      injectedCount++;
     }
 
-    if (usedEpisodicTokens > 0) {
+    if (injectedCount > 0) {
       systemPrompt += episodicContextText;
     }
 
@@ -101,12 +151,12 @@ export class ContextBuilder {
     const contextMessages = [];
     let usedWmTokens = 0;
 
-    // Recorrer los mensajes de más reciente a más antiguo para respetar el budget
     const reversed = [...recentMessages].reverse();
     const selectedMessages = [];
 
     for (const msg of reversed) {
-      const msgTokens = TokenBudgetManager.estimateTokens(msg.content || '');
+      const text = msg.content || msg.text || '';
+      const msgTokens = TokenBudgetManager.estimateTokens(text);
       if (usedWmTokens + msgTokens > budget.workingMemory) break;
 
       selectedMessages.push(msg);
@@ -116,8 +166,8 @@ export class ContextBuilder {
     // Reordenar cronológicamente
     selectedMessages.reverse().forEach(m => {
       contextMessages.push({
-        role: m.role || (m.sender === 'patient' ? 'user' : 'assistant'),
-        content: m.content || ''
+        role: m.role || (m.sender === 'user' || m.isUser ? 'user' : 'assistant'),
+        content: m.content || m.text || ''
       });
     });
 
@@ -127,7 +177,7 @@ export class ContextBuilder {
       telemetry: {
         estimatedSystemTokens: TokenBudgetManager.estimateTokens(systemPrompt),
         estimatedWmTokens: usedWmTokens,
-        injectedMemoriesCount: scoredMemories.length,
+        injectedMemoriesCount: injectedCount,
         budget
       }
     };

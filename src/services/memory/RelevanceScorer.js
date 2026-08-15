@@ -16,38 +16,74 @@ export class RelevanceScorer {
    * @returns {number} Valor entre 0.25 y 1.00.
    */
   static computeRecency(daysSinceEvent) {
-    const dt = Math.max(0, daysSinceEvent);
-    const alpha = ASYMPTOTIC_RECENCY_FLOOR;
-    const tau = HALF_LIFE_DAYS;
+    const dt = Math.max(0, Number(daysSinceEvent) || 0);
+    const alpha = ASYMPTOTIC_RECENCY_FLOOR; // 0.25
+    const tau = HALF_LIFE_DAYS;             // 30 días
     
     return alpha + (1 - alpha) / (1 + Math.log(1 + dt / tau));
   }
 
   /**
    * Calcula el factor de refuerzo clínico basado en repeticiones y validaciones.
-   * Reinf = tanh(0.15 * n_recalls + 0.5 * n_validated)
+   * Reinf = tanh(0.15 * n_recalls + 0.50 * n_validated)
    * 
    * @param {number} recalls Número de veces que el recuerdo ha sido reactivado.
    * @param {number} validations Número de veces que el psicólogo ha validado el hecho.
    * @returns {number} Valor entre 0.00 y 1.00.
    */
   static computeReinforcement(recalls = 0, validations = 0) {
-    return Math.tanh(0.15 * recalls + 0.50 * validations);
+    const r = Math.max(0, Number(recalls) || 0);
+    const v = Math.max(0, Number(validations) || 0);
+    return Math.tanh(0.15 * r + 0.50 * v);
+  }
+
+  /**
+   * Calcula la resonancia con el estado emocional activo del paciente.
+   * @param {Object} memory 
+   * @param {Object} [emotionalState] { anxiety: 1-10, impulsivity: 1-10, risk: 'low'|'moderate'|'high' }
+   * @returns {number}
+   */
+  static computeStateResonance(memory, emotionalState = null) {
+    if (!emotionalState) {
+      return Number(memory.clinicalRelevance ?? memory.clinical_relevance ?? 0.65);
+    }
+
+    let resonance = Number(memory.clinicalRelevance ?? memory.clinical_relevance ?? 0.65);
+    const text = `${memory.title || ''} ${memory.content || ''} ${memory.description || ''} ${memory.category || ''}`.toLowerCase();
+
+    // Si el paciente tiene ansiedad alta (>6), dar mayor peso a recuerdos somáticos y de pánico
+    if ((emotionalState.anxiety || emotionalState.anxiety_level) >= 6) {
+      if (text.includes('pánico') || text.includes('ansiedad') || text.includes('taquicardia') || text.includes('freeze') || text.includes('respiración')) {
+        resonance = Math.min(1.0, resonance + 0.25);
+      }
+    }
+
+    // Si hay riesgo o impulsividad alta (>6), priorizar límites de seguridad y trading
+    if ((emotionalState.impulsivity || emotionalState.impulsivity_level) >= 6) {
+      if (text.includes('trading') || text.includes('deuda') || text.includes('impulso') || text.includes('dinero') || text.includes('mercado')) {
+        resonance = Math.min(1.0, resonance + 0.25);
+      }
+    }
+
+    return resonance;
   }
 
   /**
    * Calcula la similitud léxica/semántica aproximada entre la consulta y el texto.
-   * (En producción con embeddings, se sustituye por CosineSimilarity de vectores).
+   * (En producción con embeddings se sustituye por CosineSimilarity de vectores).
    * 
    * @param {string} query Consulta del paciente o contexto actual.
    * @param {string} text Contenido del recuerdo.
    * @returns {number} Valor entre 0.00 y 1.00.
    */
   static computeSemanticSimilarity(query, text) {
-    if (!query || !text) return 0.1;
+    if (!query || !text) return 0.2;
 
-    const qTokens = new Set(query.toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/).filter(w => w.length > 3));
-    const tTokens = new Set(text.toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/).filter(w => w.length > 3));
+    const qClean = query.toLowerCase().replace(/[^\w\sáéíóúüñ]/g, '');
+    const tClean = text.toLowerCase().replace(/[^\w\sáéíóúüñ]/g, '');
+
+    const qTokens = new Set(qClean.split(/\s+/).filter(w => w.length > 2));
+    const tTokens = new Set(tClean.split(/\s+/).filter(w => w.length > 2));
 
     if (qTokens.size === 0) return 0.2;
 
@@ -57,8 +93,8 @@ export class RelevanceScorer {
     }
 
     const jaccard = matchCount / (qTokens.size + tTokens.size - matchCount);
-    // Asignar base mínima de 0.15 si hay términos médicos o clínicos coincidentes
-    return Math.min(1.0, Math.max(0.15, jaccard * 2.5));
+    // Asignar base mínima de 0.15 si hay coincidencia parcial
+    return Math.min(1.0, Math.max(0.15, jaccard * 2.8));
   }
 
   /**
@@ -67,34 +103,39 @@ export class RelevanceScorer {
    * 
    * @param {Object} memory Objeto de memoria clínica.
    * @param {string} query Texto de la consulta o mensaje reciente.
+   * @param {Object} [emotionalState] Estado emocional actual del paciente.
    * @returns {number} Score entre 0.00 y 1.00.
    */
-  static scoreMemory(memory, query = '') {
-    const memoryText = `${memory.title || ''} ${memory.content || ''} ${memory.verbatimQuote || ''}`;
+  static scoreMemory(memory, query = '', emotionalState = null) {
+    if (!memory) return 0;
+
+    const memoryText = `${memory.title || ''} ${memory.content || ''} ${memory.description || ''} ${memory.verbatimQuote || memory.verbatim_quote || ''}`;
     
-    // 1. Similitud semántica
+    // 1. Similitud semántica (peso 0.30)
     const sim = memory.embeddingSimilarity !== undefined 
       ? memory.embeddingSimilarity 
       : this.computeSemanticSimilarity(query, memoryText);
 
-    // 2. Importancia intrínseca (I)
-    const importance = memory.importance !== undefined ? memory.importance : 0.70;
+    // 2. Importancia intrínseca (I) (peso 0.20)
+    const importance = memory.importance !== undefined ? Number(memory.importance) : 0.70;
 
-    // 3. Resonancia clínica / emocional (CR)
-    const clinicalRelevance = memory.clinicalRelevance !== undefined ? memory.clinicalRelevance : 0.65;
+    // 3. Resonancia clínica / emocional (CR) (peso 0.20)
+    const clinicalRelevance = this.computeStateResonance(memory, emotionalState);
 
-    // 4. Recencia con suelo no destructivo
-    const eventDate = new Date(memory.recordedAt || memory.createdAt || Date.now());
+    // 4. Recencia con suelo no destructivo (peso 0.10)
+    const eventDate = new Date(memory.occurredAt || memory.occurred_at || memory.recordedAt || memory.createdAt || memory.created_at || Date.now());
     const days = (Date.now() - eventDate.getTime()) / (1000 * 60 * 60 * 24);
     const recency = this.computeRecency(days);
 
-    // 5. Refuerzo
-    const reinforcement = this.computeReinforcement(memory.recallCount || 0, memory.psychologistValidated ? 1 : 0);
+    // 5. Refuerzo Hebbiano (peso 0.10)
+    const validations = (memory.psychologistValidated || memory.authorityLevel === 1 || memory.authority_level === 1) ? 1 : 0;
+    const reinforcement = this.computeReinforcement(memory.recallCount || 0, validations);
 
-    // 6. Autoridad clínica
-    const authWeight = AuthorityWeights[memory.authorityLevel] || AuthorityWeights[3];
+    // 6. Autoridad clínica (peso 0.10)
+    const authLevel = Number(memory.authorityLevel || memory.authority_level || 3);
+    const authWeight = AuthorityWeights[authLevel] || AuthorityWeights[3];
 
-    // Ponderación multifactorial
+    // Ponderación multifactorial de 6 factores
     const finalScore = (0.30 * sim) +
                        (0.20 * importance) +
                        (0.20 * clinicalRelevance) +
@@ -102,6 +143,6 @@ export class RelevanceScorer {
                        (0.10 * reinforcement) +
                        (0.10 * authWeight);
 
-    return Number(finalScore.toFixed(4));
+    return Number(Math.min(1.0, Math.max(0.0, finalScore)).toFixed(4));
   }
 }

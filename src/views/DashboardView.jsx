@@ -154,7 +154,7 @@ export default function DashboardView({ user, profile, dailyMoodToday, totalDebt
                 <span className="badge badge-amber" style={{ marginBottom: '6px' }}>Cribado Clínico Obligatorio</span>
                 <h2 style={{ fontSize: '1.25rem', marginBottom: '4px', color: '#ffffff', fontWeight: 800 }}>Bienvenido a ÁNCORA: Onboarding Clínico</h2>
                 <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.45 }}>
-                  Tu espacio privado de salud mental está listo. Para completar tu diagnóstico inicial de ansiedad (**GAD-7**) y depresión (**PHQ-9**), por favor inicia tu triaje conversacional chateando con Walter.
+                  Tu espacio privado de salud mental está listo. Para completar tu diagnóstico inicial de ansiedad (**GAD-7**) y depresión (**PHQ-9**), por favor inicia tu triaje conversacional chateando con Ánquer.
                 </p>
               </div>
             </div>
@@ -164,7 +164,7 @@ export default function DashboardView({ user, profile, dailyMoodToday, totalDebt
                 <span className="badge badge-cyan" style={{ marginBottom: '12px' }}>Contexto</span>
                 <h3 style={{ fontSize: '0.9rem', fontWeight: '700' }}>Añade tu base</h3>
                 <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '6px', lineHeight: 1.35 }}>
-                  Sube notas, PDF, imágenes o texto para construir un resumen útil y privado para que Walter trabaje contigo.
+                  Sube notas, PDF, imágenes o texto para construir un resumen útil y privado para que Ánquer trabaje contigo.
                 </p>
               </div>
 
@@ -172,7 +172,7 @@ export default function DashboardView({ user, profile, dailyMoodToday, totalDebt
                 <span className="badge badge-emerald" style={{ marginBottom: '12px' }}>Chat</span>
                 <h3 style={{ fontSize: '0.9rem', fontWeight: '700' }}>Inicia tu triaje</h3>
                 <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '6px', lineHeight: 1.35 }}>
-                  Habla de tus niveles de estrés y sueño. Walter guiará las preguntas de triaje de forma discreta y empática.
+                  Habla de tus niveles de estrés y sueño. Ánquer guiará las preguntas de triaje de forma discreta y empática.
                 </p>
               </div>
 
@@ -277,7 +277,7 @@ export default function DashboardView({ user, profile, dailyMoodToday, totalDebt
                   </div>
                   <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                     <Star size={14} color="var(--color-emerald)" />
-                    <span>Incluye una semana completa de Diario IA guiado por Walter.</span>
+                    <span>Incluye una semana completa de Diario IA guiado por Ánquer.</span>
                   </div>
                   <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                     <Star size={14} color="var(--color-emerald)" />
@@ -463,7 +463,7 @@ export default function DashboardView({ user, profile, dailyMoodToday, totalDebt
                   
                   <ul style={{ paddingLeft: '14px', margin: 0, fontSize: '0.72rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     <li>Practicar 10 min de respiración diafragmática al levantarse.</li>
-                    <li>Registrar el Diario de Sensaciones a diario con Walter.</li>
+                    <li>Registrar el Diario de Sensaciones a diario con Ánquer.</li>
                     <li>Evitar estímulos estresores en las 2 horas previas a dormir.</li>
                   </ul>
                 </div>
@@ -495,8 +495,8 @@ export default function DashboardView({ user, profile, dailyMoodToday, totalDebt
                   </h3>
                   <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', margin: '0 0 12px 0', lineHeight: 1.35 }}>
                     {dailyMoodToday 
-                      ? 'Has completado tu registro de sensaciones diario. Walter ha actualizado tu gráfica clínica.' 
-                      : 'Pendiente de registrar hoy. Walter necesita supervisar tu ansiedad clínica.'}
+                      ? 'Has completado tu registro de sensaciones diario. Ánquer ha actualizado tu gráfica clínica.' 
+                      : 'Pendiente de registrar hoy. Ánquer necesita supervisar tu ansiedad clínica.'}
                   </p>
 
                   {dailyMoodToday ? (
@@ -612,8 +612,8 @@ export default function DashboardView({ user, profile, dailyMoodToday, totalDebt
           </h3>
           <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', margin: '0 0 12px 0', lineHeight: 1.35 }}>
             {dailyMoodToday 
-              ? 'Has completado el registro del día. Walter ha integrado tus datos en la base clínica.' 
-              : 'Pendiente de registrar hoy. Walter necesita supervisar tu amígdala antes de que operes.'}
+              ? 'Has completado el registro del día. Ánquer ha integrado tus datos en la base clínica.' 
+              : 'Pendiente de registrar hoy. Ánquer necesita supervisar tu amígdala antes de que operes.'}
           </p>
 
           {dailyMoodToday ? (

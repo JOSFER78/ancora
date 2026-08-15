@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
+import { MemoryRepositoryFactory } from './infrastructure/storage/MemoryRepositoryFactory';
+import { CognitiveMemoryEngine } from './services/memory/CognitiveMemoryEngine';
 import { App as CapApp } from '@capacitor/app';
 import './App.css';
 import './index.css';
@@ -15,6 +17,7 @@ import EscudoLegalView from './views/EscudoLegalView';
 import AjustesView from './views/AjustesView';
 import ChatView from './views/ChatView';
 import AgentesView from './views/AgentesView';
+import LoginView from './views/LoginView';
 
 // Patient Modular Views
 import PacienteHoyView from './views/paciente/PacienteHoyView';
@@ -59,88 +62,71 @@ import {
 
 
 const MOCK_PROFILES = {
-  // Paciente Pedro Sanz (sin psicólogo asignado, entra por primera vez)
+  // 1. Paciente Emilio (Pruebas con Dataset Clínico Real)
   'tisute@gmail.com': {
-    id: 'tisute-id',
+    id: 'C9aHCBohV7dC5q5oB0u7y49LIEx1',
     role: 'paciente',
-    display_name: 'Pedro',
-    avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=150&h=150',
+    display_name: 'Emilio',
+    avatar: 'https://lh3.googleusercontent.com/a/ACg8ocKwdrtZUzAQ-8ZRmjfpqBk_ItBtYhQQJ1n1V6BvNklS_butsq7LFw=s96-c',
     contexto_terapeutico: {
-      displayName: 'Pedro',
-      name: 'Pedro Sanz',
-      avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=150&h=150',
+      displayName: 'Emilio',
+      name: 'Emilio Naranjo',
+      avatar: 'https://lh3.googleusercontent.com/a/ACg8ocKwdrtZUzAQ-8ZRmjfpqBk_ItBtYhQQJ1n1V6BvNklS_butsq7LFw=s96-c',
       triaje: null,
       assigned_psychologist_id: null,
       paymentStatus: 'free_trial'
     },
     app_config: { verified: true }
   },
-  // Paciente David Sevilla (sin psicólogo asignado, entra por primera vez)
-  'davidsevilla10@gmail.com': {
-    id: 'davidsevilla10-id',
-    role: 'paciente',
-    display_name: 'David',
-    avatar: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&q=80&w=150&h=150',
-    contexto_terapeutico: {
-      displayName: 'David',
-      name: 'David Sevilla',
-      avatar: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&q=80&w=150&h=150',
-      triaje: null,
-      assigned_psychologist_id: null,
-      paymentStatus: 'free_trial'
-    },
-    app_config: { verified: true }
-  },
-  // Psicólogo Ana Ramos (verificado, sin historial de pacientes previo)
-  'tisutet@hormail.com': {
-    id: '19057a26-ebcb-4d42-a668-80250299912a', // Coincide con mockPsychologists[0].id
-    role: 'psicologo',
-    display_name: 'Ana Ramos',
-    avatar: 'https://images.unsplash.com/photo-1594824813573-246434de83fb?auto=format&fit=crop&q=80&w=150&h=150',
-    contexto_terapeutico: {
-      fullName: 'Ana Ramos',
-      name: 'Ana Ramos',
-      avatar: 'https://images.unsplash.com/photo-1594824813573-246434de83fb?auto=format&fit=crop&q=80&w=150&h=150',
-      licenseNumber: 'M-19057',
-      sessionPrice: 49
-    },
-    app_config: {
-      verified: true,
-      license_number: 'M-19057',
-      qualification: 'MPGS (Psicólogo General Sanitario)',
-      rc_insurance: 'Seguro RC Activo (Axa)'
-    }
-  },
-  // Psicólogo José Fernández (verificado, sin historial de pacientes previo)
+  // 2. Psicólogos Clínicos Colegiados
   'usajosefernan@gmail.com': {
-    id: '49ccc6ae-e064-49c3-9951-4678c46b175a', // Coincide con mockPsychologists[1].id
+    id: '2TOfkVIRccgIgz5WamAIVmUPtD63',
     role: 'psicologo',
     display_name: 'José Fernández',
-    avatar: 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&q=80&w=150&h=150',
+    avatar: 'https://lh3.googleusercontent.com/a/ACg8ocKTiCRCGtON7UckYXir1hkqxQPP9jHgd0A8aQx3mqswe2yNcA=s96-c',
     contexto_terapeutico: {
       fullName: 'José Fernández',
       name: 'José Fernández',
-      avatar: 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&q=80&w=150&h=150',
+      avatar: 'https://lh3.googleusercontent.com/a/ACg8ocKTiCRCGtON7UckYXir1hkqxQPP9jHgd0A8aQx3mqswe2yNcA=s96-c',
       licenseNumber: 'M-49ccc',
       sessionPrice: 55
     },
     app_config: {
       verified: true,
       license_number: 'M-49ccc',
-      qualification: 'Especialista Clínico Generalista',
+      qualification: 'Especialista Clínico Sanitario',
       rc_insurance: 'Seguro RC Activo (Mapfre)'
     }
   },
-  // Super Admin / Supervisor (José Naranjo)
+  'davidsevilla101@gmail.com': {
+    id: 'davidsevilla101_uid',
+    role: 'psicologo',
+    display_name: 'David Sevilla',
+    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=150&h=150',
+    contexto_terapeutico: {
+      fullName: 'David Sevilla',
+      name: 'David Sevilla',
+      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=150&h=150',
+      licenseNumber: 'M-41029',
+      sessionPrice: 55
+    },
+    app_config: {
+      verified: true,
+      license_number: 'M-41029',
+      qualification: 'Psicología Infanto-Juvenil y Mediación Familiar',
+      rc_insurance: 'Seguro RC Activo (Mapfre)'
+    }
+  },
+  // 3. Super Admin / Supervisor (José Fernández)
   'josferestudio@gmail.com': {
-    id: 'josferestudio-id',
+    id: '4TG5w9rwZVa6jikp5PKVOduFKNg2',
     role: 'supervisor',
-    display_name: 'José Naranjo',
-    avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&q=80&w=150&h=150',
+    display_name: 'José Fernández',
+    avatar: 'https://lh3.googleusercontent.com/a/ACg8ocJaqYt0GdVkc44Ee-ZqsB6IzBica6mdZprmCIFlXU7V3QNenXo=s96-c',
     contexto_terapeutico: {
       displayName: 'José',
-      name: 'José Naranjo Fernández',
-      avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&q=80&w=150&h=150'
+      name: 'José Fernández',
+      avatar: 'https://lh3.googleusercontent.com/a/ACg8ocJaqYt0GdVkc44Ee-ZqsB6IzBica6mdZprmCIFlXU7V3QNenXo=s96-c'
     },
     app_config: { verified: true }
   }
@@ -165,18 +151,22 @@ export default function App() {
   const [adminViewRole, setAdminViewRole] = useState(null); // null | 'paciente' | 'psicologo' | 'admin' | 'supervisor'
 
 
-  const isSuperAdmin = user?.email?.toLowerCase() === 'josferestudio@gmail.com';
+  const userEmail = user?.email?.toLowerCase() || '';
+  const isSuperAdmin = userEmail === 'josferestudio@gmail.com';
+  const isPsicologoUser = userEmail === 'usajosefernan@gmail.com' || userEmail === 'davidsevilla101@gmail.com' || profile?.role === 'psicologo';
   
   let activeRole = profile?.role;
-  if (isSuperAdmin && adminViewRole) {
-    activeRole = adminViewRole;
+  if (isPsicologoUser) {
+    activeRole = 'psicologo';
+  } else if (isSuperAdmin) {
+    activeRole = adminViewRole || 'supervisor';
   }
 
   const appMode = {
     isOwner: isSuperAdmin,
-    isPsicologo: activeRole === 'psicologo',
-    isSupervisor: activeRole === 'supervisor' || activeRole === 'admin' || (isSuperAdmin && !adminViewRole),
-    isGeneric: activeRole === 'paciente' || (!isSuperAdmin && activeRole !== 'psicologo' && activeRole !== 'supervisor' && activeRole !== 'admin'),
+    isPsicologo: activeRole === 'psicologo' || isPsicologoUser,
+    isSupervisor: (activeRole === 'supervisor' || activeRole === 'admin' || isSuperAdmin) && !adminViewRole,
+    isGeneric: !isPsicologoUser && (activeRole === 'paciente' || (!isSuperAdmin && activeRole !== 'psicologo' && activeRole !== 'supervisor' && activeRole !== 'admin')),
     showPersonalModules: isSuperAdmin && !adminViewRole
   };
 
@@ -262,7 +252,7 @@ export default function App() {
     try {
       let { data, error } = await supabase
         .from('profiles')
-        .select('id, role, updated_at, contexto_terapeutico, app_config')
+        .select('*')
         .eq('id', currentUser.id)
         .single();
 
@@ -365,42 +355,6 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, [isVirtualDemo]);
 
-  // Capa 1: Blindaje Conductual Ciego (Ocultamiento de valores monetarios para Emilio)
-  useEffect(() => {
-    const isEmilio = user?.email?.toLowerCase() === 'josferestudio@gmail.com';
-    if (!isEmilio) return;
-
-    const replaceMonetaryValues = () => {
-      const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
-      let node;
-      while (node = walk.nextNode()) {
-        const text = node.nodeValue;
-        // Detecta patrones de dinero tipo: $120.50, 450.00 USDT, -15.40$, 1000€
-        if (/\$?[-+]?\d{1,3}(,\d{3})*(\.\d+)?\s*(USDT|USD|\$|EUR|€)/i.test(text)) {
-          // Reemplaza por notación abstracta de Riesgo R
-          node.nodeValue = text.replace(/\$?[-+]?\d{1,3}(,\d{3})*(\.\d+)?\s*(USDT|USD|\$|EUR|€)/ig, " [X.X R] ");
-        }
-      }
-    };
-
-    // Primera ejecución
-    replaceMonetaryValues();
-
-    // Monitorear cambios dinámicos en el DOM (MutationObserver)
-    const observer = new MutationObserver(() => {
-      replaceMonetaryValues();
-    });
-
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true
-    });
-
-    return () => {
-      observer.disconnect();
-    };
-  }, [user, activeTab]);
-
   // Controlar el botón "Atrás" de Android
   useEffect(() => {
     const handlerPromise = CapApp.addListener('backButton', (data) => {
@@ -420,8 +374,37 @@ export default function App() {
     setBottomMenuHidden(false);
   }, [activeTab]);
 
-  const handleMoodSaved = (newMood) => {
+  const handleMoodSaved = async (newMood) => {
     setDailyMoodToday(newMood);
+    if (user?.id) {
+      try {
+        await supabase.from('daily_moods').upsert([{
+          user_id: user.id,
+          date: newMood.date || new Date().toISOString().split('T')[0],
+          anxiety_level: newMood.anxiety_level,
+          impulsivity_level: newMood.impulsivity_level,
+          energy_level: newMood.energy_level,
+          notes: newMood.notes || '',
+          sleep_hours: newMood.sleep_hours || null,
+          triggers: newMood.triggers || [],
+          updated_at: new Date().toISOString()
+        }]);
+
+        // Sincronizar captura episódica en CognitiveMemoryEngine
+        const repo = MemoryRepositoryFactory.getRepository();
+        const engine = new CognitiveMemoryEngine({ repository: repo });
+        await engine.capture({
+          patientId: user.id,
+          rawMessage: `Check-in de hoy: Ansiedad ${newMood.anxiety_level}/10, Estrés/Impulsividad ${newMood.impulsivity_level}/10. ${newMood.notes ? 'Notas: ' + newMood.notes : ''}`,
+          verbatimQuote: newMood.notes || '',
+          authorityLevel: 3,
+          category: 'DAILY_CHECKIN',
+          emotionalValence: ((10 - (newMood.anxiety_level || 5)) / 10) * 2 - 1
+        });
+      } catch (err) {
+        console.warn('Error al persistir/capturar diario emocional en memoria:', err.message);
+      }
+    }
   };
 
   const handleDebtsUpdated = (newSum) => {
@@ -553,10 +536,10 @@ export default function App() {
       },
       {
         id: 'chat_menu',
-        label: 'Walter',
+        label: 'Ánquer',
         icon: MessageSquare,
         subItems: [
-          { id: 'chat', label: 'Walter Chat', icon: MessageSquare },
+          { id: 'chat', label: 'Ánquer Chat', icon: MessageSquare },
           { id: 'privacidad', label: 'Privacidad', icon: Shield }
         ]
       },
@@ -574,6 +557,56 @@ export default function App() {
 
   if (!session) {
     return <LandingView onAuthSuccess={(u) => setUser(u)} onEnterDemo={handleEnterDemoMode} />;
+  }
+
+  // 1. Gating Clínico para Pacientes (Triaje Obligatorio)
+  // Un paciente autenticado (por Google o email) que aún no ha completado el triaje clínico debe completar la ficha/entrevista inicial
+  const isRealPatientWithoutTriage = 
+    !isVirtualDemo && 
+    !isSuperAdmin && 
+    !appMode.isSupervisor && 
+    !appMode.isPsicologo && 
+    (activeRole === 'paciente' || !activeRole) && 
+    !profile?.triaje_completed && 
+    !profile?.contexto_terapeutico?.triaje;
+
+  if (isRealPatientWithoutTriage) {
+    return (
+      <LoginView 
+        currentUser={user} 
+        initialRole="paciente" 
+        initialMode="register" 
+        initialStep={2} 
+        onAuthSuccess={(updatedUser) => {
+          fetchUserProfile(updatedUser || user);
+        }} 
+      />
+    );
+  }
+
+  // 2. Gating Sanitario para Psicólogos (Colegiación y KYC Sanitario Obligatorio)
+  // Un psicólogo sanitario que aún no ha completado su colegiación o documentación oficial
+  const isRealPsychologistWithoutKYC = 
+    !isVirtualDemo && 
+    !isSuperAdmin && 
+    !appMode.isSupervisor && 
+    (activeRole === 'psicologo' || appMode.isPsicologo) && 
+    !profile?.colegiado?.numero_colegiado && 
+    !profile?.app_config?.license_number &&
+    !profile?.app_config?.verified;
+
+  if (isRealPsychologistWithoutKYC) {
+    return (
+      <LoginView 
+        currentUser={user} 
+        initialRole="psicologo" 
+        initialMode="register" 
+        initialStep={2} 
+        onAuthSuccess={(updatedUser) => {
+          fetchUserProfile(updatedUser || user);
+        }} 
+      />
+    );
   }
 
   return (

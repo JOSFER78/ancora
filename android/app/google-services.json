@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "375420549895",
+    "project_id": "ayuda-emilio-83261",
+    "storage_bucket": "ayuda-emilio-83261.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:375420549895:android:b4b7f949df3607473d63a2",
+        "android_client_info": {
+          "package_name": "com.ancora.health"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "375420549895-l12jqook2bd8ll46fjd8m83l8odujjpe.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.ancora.health",
+            "certificate_hash": "8579965d3f03e7187b791431f483e364f39d049d"
+          }
+        },
+        {
+          "client_id": "375420549895-dqr8ldav4uqv3pc9pi8vtj09iqul5jsg.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyARKtqjxau2Cb_H68JnAmcSDo1aaNG-3Kk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "375420549895-4n2op7sq2sntvfj2s2n5kpq0nf5h3r4o.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

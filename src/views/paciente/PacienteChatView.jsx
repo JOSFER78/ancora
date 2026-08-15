@@ -229,7 +229,7 @@ export default function PacienteChatView({ profile, user, onProfileUpdated, side
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, agentStatus]);
 
-  // Cargar/crear conversación activa en Supabase
+  // Cargar/crear conversación activa en Áncora
   const loadConversations = async () => {
     try {
       const { data, error: fetchErr } = await supabase
@@ -401,7 +401,7 @@ export default function PacienteChatView({ profile, user, onProfileUpdated, side
     checkCredits();
   }, [profile?.id, refreshCreditsFlag]);
 
-  // Enviar mensaje real a Supabase & Edge Function
+  // Enviar mensaje real a Áncora & Edge Function
   const handleSend = async (textToSend) => {
     if (!textToSend.trim() || isSendingRef.current || !activeConversationId) return;
 
@@ -449,9 +449,11 @@ export default function PacienteChatView({ profile, user, onProfileUpdated, side
       abortControllerRef.current = controller;
       
       const resData = await invokeChatTerapeuta({
+        patientId: user?.id || profile?.id,
+        patientProfile: profile,
         conversationId: activeConversationId,
         messages: dbHistory || [],
-        model: 'free'
+        model: 'auto'
       }, controller.signal);
 
       if (resData && resData.reply) {
@@ -617,7 +619,7 @@ export default function PacienteChatView({ profile, user, onProfileUpdated, side
     md += `---\n\n`;
     
     messages.forEach(m => {
-      const role = m.sender === 'user' ? 'Paciente' : 'IA Áncora (Walter)';
+      const role = m.sender === 'user' ? 'Paciente' : 'IA Áncora (Ánquer)';
       md += `**${role}** [${m.time}]:\n${m.text}\n\n`;
     });
     
@@ -1371,15 +1373,15 @@ export default function PacienteChatView({ profile, user, onProfileUpdated, side
                 <span className="animate-pulse" style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'currentColor', display: 'inline-block' }} />
                 {isRecording && 'Escuchando tu voz...'}
                 {transcribingAudio && 'Procesando transcripción...'}
-                {agentStatus !== 'online' && 'Walter está elaborando respuesta...'}
+                {agentStatus !== 'online' && 'Ánquer está elaborando respuesta...'}
                 {!isRecording && !transcribingAudio && agentStatus === 'online' && 'Modo de voz activo'}
               </div>
               
               <p className="voice-status-text">
-                {isRecording && 'Cuéntale a Walter tus preocupaciones o cómo te sientes. El micrófono está abierto.'}
+                {isRecording && 'Cuéntale a Ánquer tus preocupaciones o cómo te sientes. El micrófono está abierto.'}
                 {transcribingAudio && 'Transcribiendo tu audio con inteligencia artificial...'}
                 {agentStatus !== 'online' && 'Generando la respuesta clínica adaptada a tu perfil...'}
-                {!isRecording && !transcribingAudio && agentStatus === 'online' && 'Pulsa el botón circular para empezar a hablar con Walter.'}
+                {!isRecording && !transcribingAudio && agentStatus === 'online' && 'Pulsa el botón circular para empezar a hablar con Ánquer.'}
               </p>
             </div>
 

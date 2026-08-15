@@ -89,7 +89,7 @@ export default function AjustesView({ user, profile, onLogout, onProfileUpdated 
         .from('profiles')
         .upsert({
           id: user.id,
-          role: profile?.role || 'emilio',
+          role: profile?.role || 'paciente',
           app_config: nextConfig,
           updated_at: new Date().toISOString()
         });
@@ -101,7 +101,7 @@ export default function AjustesView({ user, profile, onLogout, onProfileUpdated 
       setMsg({
         type: 'success',
         text: authUpdates.email
-          ? 'Perfil guardado. Supabase puede pedir confirmar el nuevo correo por email.'
+          ? 'Perfil guardado. Se ha enviado un correo para verificar el nuevo email.'
           : 'Perfil guardado correctamente.'
       });
       onProfileUpdated?.({ ...profile, app_config: nextConfig });
@@ -153,8 +153,8 @@ export default function AjustesView({ user, profile, onLogout, onProfileUpdated 
       total: 49.00,
       saasPart: 18.15, // SaaS: 15€ + 21% IVA
       clinicPart: 30.85,
-      psicologo: 'Walter IA & Dra. Lucía Gómez García',
-      colegiado: 'COP-M-31415'
+      psicologo: 'Ánquer IA & Dr. José Fernández',
+      colegiado: 'COP-M-49ccc'
     });
   }
 
@@ -256,7 +256,7 @@ export default function AjustesView({ user, profile, onLogout, onProfileUpdated 
                 <select className="form-input" value={defaultStartTab} onChange={(e) => setDefaultStartTab(e.target.value)}>
                   <option value="dashboard">Panel de Control</option>
                   <option value="mente">Contexto Terapéutico</option>
-                  <option value="chat">Chat con Walter</option>
+                  <option value="chat">Chat con Ánquer</option>
                   <option value="diary">Diario Personal</option>
                   <option value="documents">Mis Documentos</option>
                 </select>
@@ -279,7 +279,7 @@ export default function AjustesView({ user, profile, onLogout, onProfileUpdated 
               </h4>
               
               <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', lineHeight: 1.45 }}>
-                Toda la información del perfil y del contexto clínico está blindada por las políticas de seguridad a nivel de fila (**Row Level Security**) en la base de datos de Supabase. Nadie excepto tú y tu terapeuta asignado puede acceder a estos datos.
+                Toda la información del perfil y del contexto clínico está blindada por las políticas de seguridad a nivel de fila (**Row Level Security**) en la base de datos de Áncora. Nadie excepto tú y tu terapeuta asignado puede acceder a estos datos.
               </p>
 
               <div style={{ background: 'rgba(0,0,0,0.25)', padding: '16px', borderRadius: '8px', border: '1px solid var(--border)' }}>

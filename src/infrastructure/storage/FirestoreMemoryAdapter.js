@@ -5,6 +5,7 @@
  */
 
 import { IMemoryRepository } from './IMemoryRepository.js';
+import { MemoryState } from '../../domain/memory/MemoryTypes.js';
 
 export class FirestoreMemoryAdapter extends IMemoryRepository {
   /**
@@ -20,15 +21,25 @@ export class FirestoreMemoryAdapter extends IMemoryRepository {
    * @param {string} patientId 
    */
   async getSemanticProfile(patientId) {
-    if (!patientId) return null;
-    if (!this.db) return null;
+    if (!patientId || !this.db) return null;
 
     try {
-      // En Firestore Web SDK v9 modular: doc(db, 'patients', patientId, 'semanticProfile', 'current')
-      // O en SDK compat: db.collection('patients').doc(patientId).collection('semanticProfile').doc('current')
       if (typeof this.db.collection === 'function') {
         const docSnap = await this.db.collection('patients').doc(patientId).collection('semanticProfile').doc('current').get();
-        return docSnap.exists ? docSnap.data() : null;
+        if (docSnap.exists) {
+          const data = docSnap.data();
+          return {
+            id: docSnap.id,
+            patientId,
+            currentSummary: data.currentSummary || data.summary || '',
+            activeTriggers: data.activeTriggers || data.triggers || [],
+            protectiveAnchors: data.protectiveAnchors || data.anchors || [],
+            coreBeliefs: data.coreBeliefs || [],
+            riskTrajectory: data.riskTrajectory || { currentRisk: 'low', crisesInLast30Days: 0 },
+            lastConsolidatedAt: data.lastConsolidatedAt || data.updatedAt,
+            version: data.version || 1
+          };
+        }
       }
       return null;
     } catch (err) {
@@ -64,23 +75,45 @@ export class FirestoreMemoryAdapter extends IMemoryRepository {
   /**
    * Obtiene los episodios clínicos activos.
    * @param {string} patientId 
-   * @param {{ limit?: number, categories?: string[] }} [options] 
+   * @param {{ limit?: number, categories?: string[], states?: string[] }} [options] 
    */
   async getEpisodes(patientId, options = {}) {
     if (!patientId || !this.db) return [];
 
     try {
       if (typeof this.db.collection === 'function') {
-        let query = this.db.collection('patients').doc(patientId).collection('episodes')
-          .where('state', '==', 'ACTIVE');
+        let query = this.db.collection('patients').doc(patientId).collection('episodes');
         
+        if (options.states && options.states.length === 1) {
+          query = query.where('state', '==', options.states[0]);
+        } else if (!options.states) {
+          query = query.where('state', '==', MemoryState.ACTIVE);
+        }
+
         if (options.limit) {
           query = query.limit(options.limit);
         }
 
         const snapshot = await query.get();
         const results = [];
-        snapshot.forEach(doc => results.push({ id: doc.id, ...doc.data() }));
+        snapshot.forEach(doc => {
+          const d = doc.data();
+          results.push({
+            id: doc.id,
+            patientId,
+            content: d.content || d.narrative || '',
+            verbatimQuote: d.verbatimQuote || d.verbatim_quote || '',
+            authorityLevel: Number(d.authorityLevel || d.authority_level || 3),
+            category: d.category || 'USER_EXPRESSION',
+            state: d.state || MemoryState.ACTIVE,
+            importance: Number(d.importance ?? 0.7),
+            clinicalRelevance: Number(d.clinicalRelevance ?? d.clinical_relevance ?? 0.65),
+            emotionalValence: Number(d.emotionalValence ?? 0),
+            occurredAt: d.occurredAt || d.createdAt,
+            createdAt: d.createdAt,
+            updatedAt: d.updatedAt
+          });
+        });
         return results;
       }
       return [];
@@ -100,7 +133,7 @@ export class FirestoreMemoryAdapter extends IMemoryRepository {
       return episode.id || 'ep_' + Date.now();
     }
 
-    const docId = episode.id || 'ep_' + Date.now();
+    const docId = episode.id || 'ep_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
     const data = {
       ...episode,
       id: docId,
@@ -139,7 +172,23 @@ export class FirestoreMemoryAdapter extends IMemoryRepository {
 
         const snapshot = await query.get();
         const results = [];
-        snapshot.forEach(doc => results.push({ id: doc.id, ...doc.data() }));
+        snapshot.forEach(doc => {
+          const d = doc.data();
+          results.push({
+            id: doc.id,
+            patientId,
+            category: d.category,
+            title: d.title,
+            description: d.description || d.content || '',
+            authorityLevel: Number(d.authorityLevel || 3),
+            emotionalValence: Number(d.emotionalValence ?? 0),
+            salienceWeight: Number(d.salienceWeight ?? 0.7),
+            verbatimQuotes: d.verbatimQuotes || [],
+            status: d.status || 'ACTIVE',
+            createdAt: d.createdAt,
+            updatedAt: d.updatedAt
+          });
+        });
         return results;
       }
       return [];
@@ -157,7 +206,7 @@ export class FirestoreMemoryAdapter extends IMemoryRepository {
   async saveLifeTreeNode(patientId, node) {
     if (!patientId || !this.db) return node.id || 'node_' + Date.now();
 
-    const docId = node.id || 'node_' + Date.now();
+    const docId = node.id || 'node_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
     const data = {
       ...node,
       id: docId,
@@ -177,6 +226,22 @@ export class FirestoreMemoryAdapter extends IMemoryRepository {
   }
 
   /**
+   * Elimina un nodo del Árbol Vital.
+   * @param {string} patientId 
+   * @param {string} nodeId 
+   */
+  async deleteLifeTreeNode(patientId, nodeId) {
+    if (!patientId || !nodeId || !this.db) return;
+    try {
+      if (typeof this.db.collection === 'function') {
+        await this.db.collection('patients').doc(patientId).collection('lifeTree').doc(nodeId).delete();
+      }
+    } catch (err) {
+      console.error('[FirestoreMemoryAdapter] Error al eliminar nodo LifeTree:', err.message);
+    }
+  }
+
+  /**
    * Obtiene directivas clínicas activas.
    * @param {string} patientId 
    */
@@ -190,13 +255,57 @@ export class FirestoreMemoryAdapter extends IMemoryRepository {
           .get();
 
         const results = [];
-        snapshot.forEach(doc => results.push({ id: doc.id, ...doc.data() }));
+        snapshot.forEach(doc => {
+          const d = doc.data();
+          results.push({
+            id: doc.id,
+            patientId,
+            psychologistId: d.psychologistId,
+            category: d.category || 'SAFETY_LIMIT',
+            directive: d.directive || d.instruction || '',
+            priority: Number(d.priority || 1),
+            authorityLevel: 1,
+            status: d.status || 'ACTIVE',
+            validFrom: d.validFrom || d.createdAt,
+            validUntil: d.validUntil || null,
+            createdAt: d.createdAt
+          });
+        });
         return results;
       }
       return [];
     } catch (err) {
       console.warn('[FirestoreMemoryAdapter] Error al leer directivas:', err.message);
       return [];
+    }
+  }
+
+  /**
+   * Guarda una directiva clínica.
+   * @param {string} patientId 
+   * @param {Object} directive 
+   */
+  async saveDirective(patientId, directive) {
+    if (!patientId || !this.db) return directive.id || 'dir_' + Date.now();
+
+    const docId = directive.id || 'dir_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
+    const data = {
+      ...directive,
+      id: docId,
+      patientId,
+      status: directive.status || 'ACTIVE',
+      createdAt: directive.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    try {
+      if (typeof this.db.collection === 'function') {
+        await this.db.collection('patients').doc(patientId).collection('directives').doc(docId).set(data, { merge: true });
+      }
+      return docId;
+    } catch (err) {
+      console.error('[FirestoreMemoryAdapter] Error al guardar directiva:', err.message);
+      throw err;
     }
   }
 
@@ -220,6 +329,35 @@ export class FirestoreMemoryAdapter extends IMemoryRepository {
       }
     } catch (err) {
       console.warn('[FirestoreMemoryAdapter] No se pudo escribir auditLog:', err.message);
+    }
+  }
+
+  /**
+   * Obtiene el log de auditoría.
+   * @param {string} patientId 
+   * @param {{ limit?: number }} [options] 
+   */
+  async getAuditLogs(patientId, options = {}) {
+    if (!this.db) return [];
+
+    try {
+      if (typeof this.db.collection === 'function') {
+        let query = this.db.collection('auditLogs');
+        if (patientId) {
+          query = query.where('patientId', '==', patientId);
+        }
+        if (options.limit) {
+          query = query.limit(options.limit);
+        }
+        const snapshot = await query.get();
+        const results = [];
+        snapshot.forEach(doc => results.push({ id: doc.id, ...doc.data() }));
+        return results;
+      }
+      return [];
+    } catch (err) {
+      console.warn('[FirestoreMemoryAdapter] Error al leer auditLogs:', err.message);
+      return [];
     }
   }
 }

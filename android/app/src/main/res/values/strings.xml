@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">WebAyudaTra</string>
-    <string name="title_activity_main">WebAyudaTra</string>
-    <string name="package_name">com.ayudatra.app</string>
-    <string name="custom_url_scheme">com.ayudatra.app</string>
+    <string name="app_name">Áncora</string>
+    <string name="title_activity_main">Áncora</string>
+    <string name="package_name">com.ancora.health</string>
+    <string name="custom_url_scheme">com.ancora.health</string>
 </resources>

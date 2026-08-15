@@ -55,7 +55,7 @@ export default function PacientePrivacidadView({ user, onProfileUpdated, profile
     }
     
     try {
-      // Borrar perfil en Supabase
+      // Borrar perfil en Áncora
       const { error } = await supabase
         .from('profiles')
         .delete()
@@ -124,7 +124,7 @@ export default function PacientePrivacidadView({ user, onProfileUpdated, profile
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px' }}>
               <div style={{ textAlign: 'left' }}>
                 <strong style={{ fontSize: '0.82rem', color: '#ffffff', display: 'block' }}>Compartir diario con mi psicólogo</strong>
-                <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>Permite a tu terapeuta ver tus check-ins de ánimo, horas de sueño y notas de Walter.</span>
+                <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>Permite a tu terapeuta ver tus check-ins de ánimo, horas de sueño y notas de Ánquer.</span>
               </div>
               <input 
                 type="checkbox" 
@@ -134,7 +134,7 @@ export default function PacientePrivacidadView({ user, onProfileUpdated, profile
               />
             </div>
 
-            {/* Toggle 2: IA Walter */}
+            {/* Toggle 2: IA Ánquer */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px' }}>
               <div style={{ textAlign: 'left' }}>
                 <strong style={{ fontSize: '0.82rem', color: '#ffffff', display: 'block' }}>Utilizar IA para resumir y ordenar contexto</strong>

@@ -1,0 +1,153 @@
+Áncora
+Documento unificado de propuestas UX/UI para el desarrollador
+Versión reorientada: más abierta, más clínica, menos prescriptiva
+Propósito del documento
+No pretende decirle al desarrollador exactamente qué debe implementar. Su objetivo es ofrecerle criterios, hipótesis, alternativas y tensiones de diseño para que pueda razonar, decidir y proponer soluciones propias desde la lógica de producto, tecnología y experiencia terapéutica.
+Este documento parte de una corrección importante de enfoque: Áncora no debe tratarse como una app de bienestar genérica ni como una herramienta expuesta a terceros. Debe entenderse como una extensión digital del espacio terapéutico: privada, contenida, vinculada al psicólogo y diseñada para que el paciente pueda expresarse entre sesiones con la misma confianza con la que hablaría en consulta.
+También se asume una premisa técnica relevante: el sistema funciona en un entorno privado, sin servidores externos ni inteligencias artificiales externas. Por tanto, el debate de privacidad no debería formularse desde el miedo a que una empresa ajena lea o explote los datos, sino desde el encuadre terapéutico: qué se convierte en material clínico, cómo se organiza, cómo se destaca y cómo ayuda al profesional a acompañar mejor.
+
+Fuentes de partida
+El documento sintetiza y reformula las mejores ideas de los dos borradores aportados sobre la experiencia paciente de Áncora, manteniendo la mirada emocional pero convirtiéndola en un brief más útil para diseño y desarrollo.
+
+
+Índice de trabajo
+* 1. Cambio de enfoque: de instrucciones cerradas a propuestas razonadas
+* 2. Premisas clínicas y técnicas de Áncora
+* 3. Principios UX que deberían guiar la interfaz
+* 4. Propuestas por pantalla: Semana, Historia, Chat, Sesiones y Privacidad
+* 5. Ideas de interacción emocional y visual
+* 6. IA interna: asistente de orden, no sustituto terapéutico
+* 7. Microcopy sugerido: tono clínico-humano
+* 8. Roadmap propuesto por impacto y esfuerzo
+* 9. Criterios para que el desarrollador valore cambios
+* 10. Preguntas abiertas para decidir en equipo
+1. Cambio de enfoque: de instrucciones cerradas a propuestas razonadas
+El documento anterior tenía muchas recomendaciones formuladas como decisiones cerradas: "implementar", "ocultar", "garantizar", "suprimir". Ese tipo de redacción puede ser útil cuando ya existe una especificación funcional aprobada, pero puede limitar la reflexión si el desarrollador todavía está en fase de valoración.
+Para esta nueva versión se propone un cambio de lenguaje: pasar de órdenes de ejecución a marcos de decisión. La idea no es eliminar la ambición UX, sino presentarla de forma que invite al desarrollador a pensar alternativas, estimar impacto, detectar restricciones y proponer soluciones más inteligentes que una ejecución literal.
+AntesAhoraEfecto esperado"Ocultar alertas clínicas al paciente""Valorar si las alertas clínicas deberían traducirse a lenguaje de apoyo en la vista paciente"Permite debatir qué necesita ver el paciente y qué necesita ver el terapeuta."Implementar modo crisis con dos botones""Explorar un modo de baja carga cognitiva para momentos de saturación o crisis"Abre espacio a decidir disparadores, diseño, accesos y límites clínicos."Crear permisos granulares para todo""Definir el encuadre de visibilidad: qué se considera material terapéutico y qué puede quedar como borrador privado"Evita convertir la privacidad en fricción innecesaria dentro de una relación terapéutica."La IA debe detectar distorsiones""La IA interna podría ayudar a ordenar señales, resumir patrones y preparar la sesión, siempre como apoyo revisable"Reduce riesgo de parecer una IA que diagnostica o reemplaza al psicólogo.
+Idea clave para el desarrollador
+El valor no está en copiar una lista de funciones. Está en entender qué tensión terapéutica resuelve cada función: calma frente a información, autonomía frente a acompañamiento, privacidad frente a continuidad clínica, síntesis frente a sobreinterpretación.
+2. Premisas clínicas y técnicas de Áncora
+Estas premisas deberían estar claras antes de valorar cualquier cambio de interfaz, porque modifican por completo el modo de diseñar la experiencia:
+* Áncora no es una app pública de bienestar. Es una herramienta clínica vinculada a un proceso terapéutico real.
+* El usuario ya está dentro de la app porque mantiene una relación con su psicólogo o centro. No llega como consumidor anónimo que está probando una herramienta cualquiera.
+* El paciente sabe que lo que escribe puede ser leído por su psicólogo, igual que sabe que lo que dice en terapia forma parte del proceso.
+* El sistema se entiende como privado, sin servidores externos ni IAs externas. La confianza debe explicarse desde esa arquitectura cerrada.
+* La IA, si existe, debe funcionar como capa interna de organización y apoyo, no como tercero externo ni como terapeuta autónomo.
+* La privacidad no debe convertirse en una pantalla de miedo. Debe convertirse en una explicación serena del encuadre terapéutico.
+Replanteamiento de privacidad
+No conviene diseñar Áncora como si el paciente tuviera que protegerse de su terapeuta. El punto más útil es otro: ayudar al paciente a entender que lo que deja en Áncora es material de trabajo terapéutico, organizado de forma segura, privada y útil para la sesión.
+Esto no significa que deba desaparecer cualquier control. Significa que los controles deben ser coherentes con una app clínica. No hacen falta diez interruptores que hagan sentir al usuario que está cediendo datos a una plataforma comercial. Sí puede ser útil diferenciar entre "nota terapéutica", "borrador personal todavía no compartido", "marcar para sesión" o "guardar solo como registro propio", siempre que esta diferenciación no complique el uso ni contradiga el encuadre del servicio.
+Una frase que podría guiar la experiencia sería: "Áncora es parte de tu espacio terapéutico. Lo que escribes aquí ayuda a tu psicólogo a acompañarte mejor. Si necesitas guardar una idea todavía sin trabajarla, puedes dejarla como borrador personal".
+3. Principios UX que deberían guiar la interfaz
+PrincipioQué significa en ÁncoraDecisión que ayuda a tomar1. Refugio antes que panel de controlLa primera impresión del paciente debe ser de contención, no de auditoría.Qué información aparece en primer nivel y qué se deja para profundidad.2. Material terapéutico, no expediente fríoLa app debe ordenar la experiencia del paciente sin convertirla en inventario de síntomas.Cómo nombrar secciones, eventos, patrones y resúmenes.3. Menos exactitud visual, más orientación emocionalNo todo dato clínico necesita aparecer como etiqueta, porcentaje o alarma.Cuándo usar lenguaje narrativo, iconos suaves o síntesis cualitativa.4. La IA como organizador silenciosoLa IA interna ayuda a resumir y detectar señales, pero no se presenta como autoridad clínica.Dónde mostrar inferencias, con qué nivel de confianza y quién las valida.5. Continuidad con el psicólogoEl valor principal es mejorar la sesión y el trabajo entre sesiones.Qué interacciones preparan, cierran o enriquecen la consulta.6. Control simple, no burocráticoEl paciente debe sentir que entiende el encuadre sin gestionar permisos como un administrador.Qué opciones son globales y cuáles deberían existir por contenido.7. Libertad de uso en baja energíaLa app debe funcionar incluso si el usuario solo puede tocar un botón, hablar o dejar una frase.Qué flujos tienen modo rápido, voz, borrador o acción mínima.
+3.1. Cómo redactar propuestas para no bloquear la reflexión técnica
+Para este desarrollador concreto parece más eficaz formular cambios con una estructura de exploración. Cada idea debería responder a cuatro preguntas:
+* Qué problema emocional o funcional intenta resolver.
+* Qué alternativas de interfaz podrían explorarse.
+* Qué señales indicarían que funciona.
+* Qué riesgos o costes técnicos conviene valorar antes de implementarla.
+Estructura recomendadaEjemploHipótesisSi reducimos la densidad inicial del panel semanal, el paciente podría volver con menos resistencia y más regularidad.Posibles solucionesVista "Hoy", tarjetas plegadas, resumen semanal narrativo, capa clínica bajo demanda.ValidaciónProbar si el paciente entiende qué hacer en menos de 10 segundos y si no se siente evaluado.RiesgoOcultar demasiado podría hacer que el terapeuta o el paciente pierdan trazabilidad. Necesita un segundo nivel claro.
+4. Propuestas por pantalla
+Las siguientes propuestas están redactadas como posibilidades de diseño. No buscan imponer una solución única, sino dar al desarrollador suficientes criterios para pensar la interfaz desde la experiencia del paciente y desde la utilidad clínica.
+4.1. Semana terapéutica: de tablero de tareas a brújula semanal
+La Semana Terapéutica podría ser la pantalla más importante de la app porque es el lugar al que el paciente vuelve entre sesiones. La tensión principal es clara: la app necesita mostrar seguimiento, pero el paciente no debe sentir que entra a un tablero de rendimiento emocional.
+Hipótesis de diseño
+Si la Semana se presenta como una brújula con pocos focos, el paciente puede orientarse mejor y sentirse menos evaluado. La información clínica no desaparece; se jerarquiza.
+Zona posibleFunciónAlternativas de interfazEstado de llegadaPermitir que el paciente diga cómo entra hoy a la app.Selector de energía/ánimo; frase libre; botón "no sé, solo quiero entrar".Resumen amableTraducir la semana a una lectura comprensible."Lo que pesó", "lo que ayudó", "lo que conviene mirar".Siguiente paso pequeñoEvitar que el usuario vea muchas tareas simultáneas.Una acción esencial + una opcional + una de autocuidado.Capa de profundidadMantener trazabilidad sin saturar.Botón "ver detalles" con evidencias, cambios detectados, notas profesionales.Señal de terapeutaMostrar continuidad humana."Tu psicólogo revisará esto", "esto puede llevarse a sesión", "nota ya leída".
+En lugar de decir "ocultar alertas", conviene plantear una pregunta de producto: ¿qué necesita ver el paciente para cuidarse y qué necesita ver el terapeuta para intervenir? La vista paciente podría traducir señales de riesgo a lenguaje de apoyo, mientras que la vista profesional conserva la precisión clínica.
+Ejemplo de traducción: en vez de "riesgo alto" o "deterioro severo", la app podría decir: "Parece que esta semana ha sido especialmente difícil. Puedes marcar esto para hablarlo con tu psicólogo o usar una ayuda breve ahora".
+Preguntas para que el desarrollador razone
+* ¿Qué información debe estar visible siempre y cuál puede vivir en una segunda capa?
+* ¿Puede la pantalla responder a distintos niveles de energía sin duplicar demasiada lógica?
+* ¿Qué datos necesita el terapeuta que el paciente no necesita ver como etiqueta clínica?
+* ¿Cómo se evita que la simplificación parezca infantil o poco rigurosa?
+4.2. Mi Historia Viva: de archivo de episodios a narrativa terapéutica
+La historia personal es una zona delicada. Puede ayudar mucho si permite encontrar sentido, pero puede sentirse invasiva si aparece como un inventario de eventos, vínculos, patrones y evidencias. La oportunidad está en convertir la historia en una narrativa viva, no en una base de datos emocional.
+Hipótesis de diseño
+Si la historia se organiza como capítulos revisables y no como expediente cerrado, el paciente puede reconocerse mejor sin sentirse reducido a etiquetas o eventos pasados.
+EnfoqueQué aportaRiesgoCómo mitigarloCapítulos de procesoMás humano que una línea temporal clínica.Puede perder precisión.Permitir abrir cronología y evidencias bajo demanda.Mapa vitalMuestra relaciones, recursos y temas sin obligar a leer mucho.Puede ser abstracto.Usar leyenda simple y filtros por intensidad/tema.Tarjetas de eventosPermiten resumir y ampliar.Pueden parecer fichas clínicas.Titulares humanos, contexto, "por qué aparece".Fortalezas asociadasEquilibra trauma con recursos.Puede sonar forzado si se automatiza mal.Dejarlo editable y validable en sesión.
+Una dirección interesante sería que cada elemento de la historia tuviera tres preguntas visibles, no como permisos pesados, sino como transparencia terapéutica: "¿de dónde sale?", "¿por qué aparece?" y "¿cómo lo trabajamos?".
+También se podría explorar una función "llevar a sesión". No todo lo que aparece en la historia tiene que resolverse dentro de la pantalla. A veces la mejor interfaz es la que detecta que algo merece conversación humana y lo prepara para el encuentro con el psicólogo.
+4.3. Chat / Diario: de caja de texto a espacio de expresión clínica
+El Chat/Diario debería sentirse como el espacio más natural de Áncora. Si el paciente ya sabe que su psicólogo puede leer lo que escribe, la interfaz no necesita pedir disculpas por ello. Debe explicarlo con claridad y convertirlo en valor: escribir aquí ayuda a que la terapia no dependa solo de lo que el paciente recuerda en sesión.
+Encuadre recomendado
+Lo escrito en Áncora forma parte del espacio terapéutico. La promesa no debería ser "nadie lo verá", sino "esto queda dentro de tu proceso clínico privado y ayuda a tu psicólogo a entender mejor lo que ocurre entre sesiones".
+Modo de entradaCuándo ayudaPosible diseñoDesahogarmeCuando el paciente quiere soltar algo sin estructura.Pantalla limpia, voz o texto, sin demasiadas preguntas.Ordenar lo que pasóCuando necesita convertir caos en relato.La IA interna devuelve un resumen editable y preguntas suaves.Preparar sesiónCuando quiere recordar temas importantes.Botón "marcar para hablarlo" y carpeta de sesión.Necesito ayuda ahoraCuando hay saturación o crisis.Modo de baja carga con guía, contacto y plan de seguridad.Borrador personalCuando quiere escribir algo que aún no está listo para compartir.Opción secundaria, no protagonista, para no romper el encuadre terapéutico.
+Aquí conviene evitar una privacidad excesivamente fragmentada. Si cada entrada pide decidir quién la ve, si la lee la IA o si se comparte, el paciente puede sentir que está gestionando un contrato. En cambio, se puede plantear una regla simple: por defecto, el diario es material terapéutico dentro de Áncora. Si el paciente necesita escribir algo "todavía no compartido", puede guardarlo como borrador personal.
+La IA interna podría actuar después de la escritura, no antes. En vez de interrumpir, puede ofrecer: "He organizado esto en tres ideas. ¿Quieres guardarlo así, modificarlo o llevarlo a sesión?".
+4.4. Sesiones: puente entre lo vivido y lo hablado
+El panel de Sesiones puede ser el lugar donde Áncora demuestre más claramente que no sustituye al psicólogo, sino que mejora la calidad del encuentro. El objetivo no es llenar al paciente de tareas, sino ayudarle a llegar menos bloqueado y salir con más claridad.
+MomentoPropuesta abiertaValor terapéuticoAntes de la sesión"Lo que quiero hablar hoy": urgente, difícil de decir, pregunta central.Reduce bloqueo y olvido.Durante la semanaGuardar clips desde chat, historia o semana para llevarlos a sesión.Conecta experiencia real con conversación clínica.Después de la sesiónResumen en tres capas: lo entendido, lo acordado, experimento pequeño.Evita que el paciente salga desorientado.Entre sesionesRecordatorios suaves del foco acordado, no tareas punitivas.Mantiene continuidad sin presión.
+Sería útil distinguir visualmente entre tres tipos de contenido: resumen validado por el psicólogo, síntesis asistida por IA interna y notas privadas del paciente. No para generar miedo, sino para que cada pieza tenga un estatuto claro dentro del proceso.
+Una microinteracción potente podría ser: "¿Cómo sales de la sesión?". Opciones: más calmado, removido, confundido, acompañado, con tarea clara, sin saber por dónde seguir. Esta señal puede ayudar al psicólogo a ajustar el vínculo y no solo medir síntomas.
+4.5. Privacidad y encuadre: menos contrato, más claridad clínica
+El panel de privacidad debería cambiar de tono. En vez de parecer una consola de protección frente a terceros, puede presentarse como el encuadre del espacio terapéutico digital. Esto es especialmente importante si Áncora no usa servidores externos ni IAs externas.
+Mensaje central
+Áncora funciona como una extensión privada de la terapia. Tu información permanece dentro del entorno clínico de Áncora y puede ser utilizada por tu psicólogo para acompañarte mejor. No se envía a IAs externas ni a servicios ajenos.
+ElementoCómo podría formularsePor qué ayudaPrivacidad del sistema"Entorno clínico privado de Áncora".Evita lenguaje de app comercial.Lectura por el psicólogo"Tu psicólogo puede revisar lo que compartes aquí como parte de tu proceso".Alinea expectativas desde el principio.IA interna"La IA de Áncora organiza y resume dentro del sistema; no consulta servicios externos".Convierte la arquitectura privada en confianza visible.Borradores personales"Puedes guardar una nota todavía no compartida si necesitas escribir antes de trabajarlo".Da libertad sin negar el encuadre clínico.Exportación/supresión"Puedes solicitar copia o cierre de tu información clínica digital".Mantiene derechos sin dramatizar.
+La pregunta de diseño no debería ser "¿cómo ocultamos todo al psicólogo?", sino "¿cómo hacemos comprensible que esto es un espacio terapéutico compartido y seguro?". Si el paciente no quiere que algo forme parte de la terapia, probablemente no debería escribirlo en el flujo principal; para casos de ambivalencia puede existir una zona de borrador, claramente diferenciada.
+4.6. Modo ayuda / crisis: acceso discreto, respuesta clara
+El modo de ayuda no debe dominar toda la experiencia ni convertir la app en una alarma permanente. Pero sí debería estar disponible de forma constante y reconocible. El enfoque podría ser "ayuda ahora" más que "modo crisis", porque resulta menos estigmatizante.
+SituaciónPosible respuesta de interfazCriterio de diseñoSaturación emocionalPantalla de baja carga: respirar, nombrar emoción, contactar.Menos opciones, botones grandes, texto breve.Entrada con lenguaje preocupanteSugerencia discreta: "¿Quieres activar ayuda ahora?"Evitar dramatizar o diagnosticar automáticamente.Crisis explícitaPlan de seguridad, contacto de confianza y recursos profesionales.Priorizar contacto humano y seguridad.
+5. Ideas de interacción emocional y visual
+Estas ideas son deliberadamente más libres. No son especificaciones cerradas; son direcciones para inspirar al desarrollador y al diseñador.
+IdeaDescripciónDónde aplicaríaModo brújulaLa app muestra solo orientación: estado, foco y siguiente paso.Semana y pantalla inicial.Modo refugioInterfaz reducida para días de ansiedad o baja energía.Chat, ayuda, semana.Anclas de continuidadPequeñas señales de que lo escrito llega al proceso terapéutico.Chat, sesiones, semana.Capítulos vivosLa historia se organiza como etapas revisables, no expedientes cerrados.Mi Historia.Llevar a sesiónCualquier fragmento puede marcarse para hablarlo con el psicólogo.Chat, historia, semana.Resumen con estatutoCada resumen indica si es del paciente, de IA interna o validado por psicólogo.Sesiones e historia.Borrador personalEspacio de escritura temporal antes de convertirlo en material terapéutico.Chat/diario.Cierre de sesión emocionalEl paciente indica cómo sale de la sesión.Sesiones.
+5.1. Lenguaje visual sugerido
+* Paleta desaturada y estable: verdes salvia, azul grisáceo, tonos tierra y fondos cálidos.
+* Evitar rojos intensos salvo situaciones de acción urgente real. Incluso ahí, usarlo con moderación.
+* Jerarquía clara: una idea principal por pantalla, profundidad bajo demanda.
+* Tipografía legible, aire suficiente y tarjetas con bordes suaves.
+* Gráficas como patrones y ciclos, no como rendimiento lineal.
+* Iconografía sobria: brújula, ancla, cuaderno, hilo, mapa, respiración; evitar estética de productividad.
+6. IA interna: asistente de orden, no sustituto terapéutico
+Dado que el sistema no usa IAs externas, la IA puede presentarse como una capacidad interna de Áncora. Aun así, la interfaz debería evitar que parezca una autoridad clínica autónoma. Su función más valiosa no es "terapizar", sino ordenar, resumir, detectar señales y preparar mejor la relación paciente-psicólogo.
+Uso posible de IA internaCómo mostrarlo al pacienteLímite recomendadoResumir diarios"He agrupado lo escrito en tres ideas editables".No convertirlo en diagnóstico.Detectar temas recurrentes"Esto aparece varias veces esta semana".Mostrarlo como señal, no como verdad cerrada.Preparar sesión"Podrías llevar estos puntos a consulta".Dejar que paciente y psicólogo validen.Ordenar historia"Este evento podría relacionarse con este tema".Diferenciar inferencia de hecho.Reducir carga en crisis"Puedo ayudarte a simplificar ahora".Priorizar ayuda humana si hay riesgo.
+Una regla útil de interfaz: toda inferencia de IA debería ser editable, explicable y desactivable en su impacto visual. No hace falta pedir permiso para cada microproceso si el encuadre del sistema ya es clínico y privado, pero sí conviene mostrar cuándo algo es una síntesis automática y cuándo ha sido validado por el profesional.
+7. Microcopy sugerido: tono clínico-humano
+El microcopy debe sonar como una extensión de terapia: claro, cálido, adulto y sin exceso de dramatización. No debe infantilizar, vender bienestar ni sonar a app corporativa.
+SituaciónCopy menos adecuadoCopy sugeridoEntrada a la app"Completa tus tareas pendientes"."Vamos paso a paso. ¿Cómo llegas hoy?"Semana difícil"Riesgo alto detectado"."Parece que esta semana ha pesado más. Podemos marcarlo para trabajarlo."Diario"Escribe una entrada"."Puedes soltarlo tal como venga. Luego lo ordenamos si quieres."IA interna"La IA analizará tu texto"."Áncora puede organizar tus notas dentro del sistema para ayudarte a prepararlas."Psicólogo lee contenido"Tus datos serán compartidos con el profesional"."Esto forma parte de tu espacio terapéutico y puede ayudar a tu psicólogo a acompañarte mejor."Borrador"Ocultar al terapeuta"."Guardar como borrador personal por ahora."Sesión"Preparar agenda"."¿Qué te gustaría no olvidar en la próxima sesión?"Post-sesión"Tareas asignadas"."Lo que acordamos probar hasta la próxima vez."
+7.1. Frases marco para la pantalla de privacidad
+* "Áncora es un entorno privado de acompañamiento terapéutico."
+* "No enviamos tus notas a IAs externas ni a servicios ajenos."
+* "Tu psicólogo puede revisar lo que compartes en la app para comprender mejor tu proceso entre sesiones."
+* "Si necesitas escribir algo antes de compartirlo, puedes guardarlo como borrador personal."
+* "Siempre que una síntesis sea generada por Áncora, te lo indicaremos de forma clara."
+8. Roadmap propuesto por impacto y esfuerzo
+Este roadmap no pretende cerrar prioridades definitivas. Sirve para orientar la conversación técnica separando mejoras de lenguaje, ajustes visuales y cambios funcionales más profundos.
+FaseObjetivoCambios sugeridosImpacto esperadoFase 1 - Reencuadre rápidoCambiar percepción sin rehacer arquitectura.Microcopy, jerarquía de semana, privacidad como encuadre clínico, etiquetas menos alarmantes.Alto impacto emocional con bajo coste relativo.Fase 2 - Flujo terapéuticoConectar diario, semana y sesión."Llevar a sesión", resumen pre-sesión, cierre post-sesión, clips fijados.Aumenta valor clínico percibido.Fase 3 - Baja energíaHacer la app usable cuando el paciente está mal.Modo refugio, entrada por voz, acción mínima, ayuda ahora.Reduce abandono en semanas difíciles.Fase 4 - Historia vivaConvertir archivo en narrativa.Capítulos, mapa vital, tarjetas con origen y sentido, edición colaborativa.Profundiza vínculo y comprensión a largo plazo.Fase 5 - IA interna avanzadaOrdenar señales sin invadir.Resúmenes editables, patrones revisables, explicación de inferencias, validación profesional.Potencia clínica con control y claridad.
+8.1. Matriz de valoración rápida
+CambioImpacto pacienteImpacto clínicoEsfuerzo técnico estimadoComentarioReescritura de microcopysAltoMedioBajoPrimera mejora recomendable.Jerarquía nueva del panel semanalAltoAltoMedioPuede requerir reorganizar componentes existentes.Botón "llevar a sesión"AltoAltoMedioFunción puente muy potente.Borrador personalMedioMedioMedioÚtil, pero no debe complicar el encuadre.Modo refugioAltoAltoMedio/AltoImportante para crisis o baja energía.Mapa vital narrativoMedio/AltoMedioAltoMejor fase posterior.IA interna con explicabilidadAltoAltoAltoNecesita diseño cuidadoso y validación clínica.
+9. Criterios para que el desarrollador valore cambios
+Antes de implementar una propuesta, conviene evaluarla con criterios que combinen experiencia emocional, utilidad clínica y coste técnico.
+CriterioPregunta de evaluaciónSeñal positivaClaridad¿El paciente entiende qué puede hacer en menos de 10 segundos?No necesita leer mucho ni explorar menús.Contención¿La pantalla baja ansiedad o aumenta sensación de examen?El usuario describe la app como clara, amable o útil.Continuidad clínica¿Esto mejora la conversación con el psicólogo?Aparecen mejores temas, recuerdos y acuerdos en sesión.Trazabilidad¿El terapeuta mantiene suficiente contexto?La simplificación paciente no empobrece la vista profesional.Encaje técnico¿Se puede resolver con componentes actuales?No obliga a rediseñar todo el sistema para validar la hipótesis.Explicabilidad¿El usuario sabe cuándo algo lo escribió él, la IA o el psicólogo?No hay confusión sobre autoría o estatuto clínico.Baja energía¿Puede usarse en un mal día?Hay flujos de un toque, voz o acción mínima.
+9.1. Test cualitativo recomendado
+Para validar el rediseño no bastaría con medir clics. Se debería escuchar cómo se siente el paciente ante cada pantalla. Algunas preguntas útiles:
+* ¿Esta pantalla te hace sentir acompañado o evaluado?
+* ¿Qué mirarías primero si entras en un día difícil?
+* ¿Entiendes qué verá tu psicólogo y por qué?
+* ¿Sientes que la IA te ayuda a ordenar o que interpreta demasiado?
+* ¿Te gustaría volver a esta pantalla entre sesiones?
+* ¿Qué cambiarías para que se sintiera más como terapia y menos como aplicación administrativa?
+10. Preguntas abiertas para decidir en equipo
+Estas preguntas son especialmente importantes porque no tienen una única respuesta correcta. Dependen del posicionamiento de Áncora, de la relación con el profesional, de la regulación interna del servicio y de la madurez técnica del producto.
+1. ¿Queremos que todo lo escrito en el diario principal sea material terapéutico por defecto?
+2. ¿Debe existir un borrador personal o eso puede crear una falsa expectativa de separación dentro del proceso?
+3. ¿Qué diferencia visual habrá entre contenido del paciente, síntesis de IA interna y validación del psicólogo?
+4. ¿Hasta qué punto debe ver el paciente las señales clínicas de riesgo?
+5. ¿Qué se muestra en la vista paciente y qué queda solo en la vista profesional?
+6. ¿Cómo explicamos la arquitectura privada sin sobrecargar la interfaz con discurso técnico?
+7. ¿Qué parte del valor de Áncora está en registrar y qué parte está en preparar mejores conversaciones?
+8. ¿Qué cambios podemos probar primero sin rehacer la arquitectura actual?
+Conclusión de producto
+La mejor versión de Áncora no debería sentirse como una app que vigila al paciente ni como una IA que intenta hacer terapia. Debería sentirse como una sala clínica extendida: privada, segura, ordenadora, humana y conectada al psicólogo. El desarrollador no necesita una lista cerrada de órdenes; necesita entender esta tensión para decidir qué interfaz la resuelve mejor.
+Anexo: propuestas formuladas como historias de usuario
+Como paciente...Quiero...Para...Como paciente que llega cansadover solo una orientación pequeña y clarano sentir que tengo que gestionar mi salud mental como una lista de tareas.Como paciente entre sesionesmarcar algo del diario para hablarlo con mi psicólogono olvidarlo cuando llegue la sesión.Como paciente que escribe algo confusoque Áncora lo ordene en un resumen editablepoder entenderme sin sentir que la IA decide por mí.Como paciente que acepta el encuadre terapéuticosaber que lo escrito ayuda a mi psicólogosentir que la app forma parte de mi proceso y no de una plataforma externa.Como paciente que aún no está listo para compartir una ideaguardarla como borrador personal por ahorapoder escribir sin bloquearme, pero sabiendo que el flujo principal es terapéutico.Como terapeutarecibir señales organizadas y no ruidollegar a sesión con más contexto sin perder criterio clínico.Como desarrolladortrabajar con hipótesis y criterios de aceptaciónno limitarme a ejecutar órdenes sino proponer la mejor solución técnica.
+Anexo: aceptación por pantalla
+PantallaCriterio mínimoCriterio excelenteSemanaEl usuario entiende su siguiente paso sin leer todo.Siente orientación y continuidad con la terapia.HistoriaPuede abrir y cerrar información sin saturarse.Se reconoce en una narrativa revisable y no en un expediente.Chat/DiarioPuede escribir o hablar con baja fricción.Siente que lo expresado se convierte en material útil para sesión.SesionesPuede preparar y cerrar la consulta.La sesión mejora porque la app rescata lo importante de la semana.PrivacidadEntiende que el entorno es clínico y privado.Confía en que no hay terceros externos y comprende qué ve el psicólogo.Ayuda ahoraEncuentra apoyo sin navegar demasiado.La interfaz baja carga cognitiva y facilita contacto humano.
+
+Nota final: este documento no sustituye la validación con pacientes reales ni el criterio clínico del equipo. Su función es traducir la mirada emocional del paciente a un lenguaje que permita al desarrollador valorar cambios con libertad, criterio y sensibilidad terapéutica.
+Áncora UX - Propuestas abiertas para evolución de interfaz
+
+Documento de trabajo · Página 1
+

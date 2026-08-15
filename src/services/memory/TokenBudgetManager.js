@@ -1,61 +1,66 @@
 /**
  * @file TokenBudgetManager.js
- * @description Gestor Elástico de Presupuesto de Tokens para el Context Builder.
- * Elimina la ventana fija de W=10 mensajes y asigna cuotas proporcionales seguras.
+ * @description Gestor Elástico de Presupuesto de Tokens para el Áncora Cognitive Memory Engine.
+ * Previene el 'Lost in the Middle' y el desbordamiento de contexto mediante particionamiento dinámico.
  */
+
+import { DEFAULT_TOKEN_BUDGET } from '../../domain/memory/MemoryTypes.js';
 
 export class TokenBudgetManager {
   /**
-   * @param {number} totalContextWindow Tamaño total de la ventana del modelo (por defecto 16,384 tokens).
+   * @param {number} [totalBudget=16384] Presupuesto total de tokens de la ventana de contexto.
    */
-  constructor(totalContextWindow = 16384) {
-    this.totalWindow = totalContextWindow;
+  constructor(totalBudget = DEFAULT_TOKEN_BUDGET) {
+    this.totalBudget = totalBudget;
   }
 
   /**
-   * Estima el número de tokens de un texto (aproximación 4 caracteres = 1 token para español/inglés).
+   * Distribución presupuestaria porcentual según especificación clínica:
+   * - System & Seguridad: 12%
+   * - Directivas Clínicas N1: 10%
+   * - Estado Clínico del Paciente: 8%
+   * - Memoria Episódica y Hechos: 25%
+   * - Working Memory (Diálogo Reciente): 30%
+   * - Reserva de Generación Salida: 10%
+   * - Margen de Seguridad: 5%
+   * 
+   * @returns {{ systemCore: number, directives: number, patientState: number, episodicMemory: number, workingMemory: number, outputGeneration: number, safetyMargin: number }}
+   */
+  getBudgetDistribution() {
+    return {
+      systemCore: Math.floor(this.totalBudget * 0.12),
+      directives: Math.floor(this.totalBudget * 0.10),
+      patientState: Math.floor(this.totalBudget * 0.08),
+      episodicMemory: Math.floor(this.totalBudget * 0.25),
+      workingMemory: Math.floor(this.totalBudget * 0.30),
+      outputGeneration: Math.floor(this.totalBudget * 0.10),
+      safetyMargin: Math.floor(this.totalBudget * 0.05)
+    };
+  }
+
+  /**
+   * Estima el número de tokens para un texto dado (1 token ≈ 4 caracteres en promedio).
    * @param {string} text 
    * @returns {number}
    */
-  static estimateTokens(text = '') {
+  static estimateTokens(text) {
     if (!text) return 0;
-    return Math.ceil(text.length / 3.8);
+    return Math.ceil(text.length / 4);
   }
 
   /**
-   * Trunca un texto para ajustarlo a un presupuesto máximo de tokens.
+   * Trunca un texto para asegurar que no excede un límite de tokens sin cortar palabras.
    * @param {string} text 
    * @param {number} maxTokens 
    * @returns {string}
    */
-  static truncateToTokenLimit(text = '', maxTokens = 500) {
-    const maxChars = Math.floor(maxTokens * 3.8);
+  static truncateToTokenLimit(text, maxTokens) {
+    if (!text) return '';
+    const maxChars = maxTokens * 4;
     if (text.length <= maxChars) return text;
-    return text.substring(0, maxChars) + '... [Contexto ajustado por límite de tokens]';
-  }
-
-  /**
-   * Calcula la distribución de cuotas de tokens disponibles.
-   * @returns {{
-   *   system: number,
-   *   directives: number,
-   *   patientState: number,
-   *   episodicMemory: number,
-   *   workingMemory: number,
-   *   outputReserve: number
-   * }}
-   */
-  getBudgetDistribution() {
-    const reserve = Math.floor(this.totalWindow * 0.15); // 15% reserva de respuesta
-    const available = this.totalWindow - reserve;
-
-    return {
-      system: Math.floor(available * 0.15),        // 15% System Prompt e identidad
-      directives: Math.floor(available * 0.12),    // 12% Directivas clínicas N1 activas
-      patientState: Math.floor(available * 0.10),  // 10% Estado y perfil actual
-      episodicMemory: Math.floor(available * 0.28),// 28% Memorias episódicas y Life Tree
-      workingMemory: Math.floor(available * 0.35), // 35% Historial de diálogo reciente
-      outputReserve: reserve
-    };
+    
+    const truncated = text.substring(0, maxChars);
+    const lastSpace = truncated.lastIndexOf(' ');
+    return (lastSpace > 0 ? truncated.substring(0, lastSpace) : truncated) + '...';
   }
 }

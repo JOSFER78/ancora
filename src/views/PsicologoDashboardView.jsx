@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
+import { db } from '../firebaseClient';
+import { collection, getDocs } from 'firebase/firestore';
 import ChatView from './ChatView';
 import AjustesView from './AjustesView';
 import { 
@@ -8,6 +10,9 @@ import {
   getTimelineEvents, addTimelineEvent, 
   AuthorityLevels, AuthorityLabels 
 } from '../lib/clinicalEngine';
+import { MemoryRepositoryFactory } from '../infrastructure/storage/MemoryRepositoryFactory';
+import { CognitiveMemoryEngine } from '../services/memory/CognitiveMemoryEngine';
+import { DirectiveCategory, LifeTreeCategory, LifeTreeCategoryLabels, AuthorityLevel } from '../domain/memory/MemoryTypes';
 import { 
   Users, 
   Activity, 
@@ -456,12 +461,12 @@ export default function PsicologoDashboardView({
             subjective: "Sufre crisis de pánico anticipatorio ante salidas de su domicilio habitual.",
             objective: "Hipervigilancia al hablar de situaciones exteriores. Tono de voz defensivo.",
             assessment: "Trastorno de pánico con agorafobia en fase aguda. Adherencia media del 55%.",
-            plan: "Continuar desensibilización sistemática imaginada. Registro diario de Walter IA."
+            plan: "Continuar desensibilización sistemática imaginada. Registro diario de Ánquer IA."
           },
           briefing: {
             time: 'Mañana - 10:00 (50 min)',
             temas: ['Agorafobia', 'Encuadre de seguridad', 'Fisiología de la ansiedad'],
-            explorar: ['Primeros síntomas físicos', 'Factores mantenedores del pánico', 'Diario de Walter'],
+            explorar: ['Primeros síntomas físicos', 'Factores mantenedores del pánico', 'Diario de Ánquer'],
             riesgos: ['Evitación de espacios públicos severa', 'Baja motivación por recaída'],
             riskLevel: 'Riesgo alto'
           }
@@ -584,7 +589,7 @@ export default function PsicologoDashboardView({
       }
     } : p));
 
-    // Guardar en Supabase si es modo real
+    // Guardar en Áncora si es modo real
     if (!isVirtualDemo && patientId && !patientId.toString().startsWith('p-')) {
       try {
         const { data: currentP } = await supabase.from('profiles').select('contexto_terapeutico').eq('id', patientId).single();
@@ -612,6 +617,20 @@ export default function PsicologoDashboardView({
   const [timelineEvents, setTimelineEvents] = useState([]);
   const [loadingClinical, setLoadingClinical] = useState(false);
 
+  // Estados de Memoria Cognitiva (Directivas N1 y Árbol Vital)
+  const [patientDirectives, setPatientDirectives] = useState([]);
+  const [patientLifeTree, setPatientLifeTree] = useState([]);
+  const [newDirectiveCategory, setNewDirectiveCategory] = useState('SAFETY_LIMIT');
+  const [newDirectiveInstruction, setNewDirectiveInstruction] = useState('');
+  const [newDirectivePriority, setNewDirectivePriority] = useState(1);
+  const [savingDirective, setSavingDirective] = useState(false);
+
+  const [newTreeNodeCategory, setNewTreeNodeCategory] = useState('PROTECTIVE_ANCHORS');
+  const [newTreeNodeTitle, setNewTreeNodeTitle] = useState('');
+  const [newTreeNodeDesc, setNewTreeNodeDesc] = useState('');
+  const [newTreeNodeValence, setNewTreeNodeValence] = useState(0.5);
+  const [savingTreeNode, setSavingTreeNode] = useState(false);
+
   // Estados para la edición en caliente de propuestas de la IA
   const [editingProposalId, setEditingProposalId] = useState(null);
   const [editedProposalData, setEditedProposalData] = useState({});
@@ -626,10 +645,88 @@ export default function PsicologoDashboardView({
       setProposals(dbProps);
       setMeds(dbMeds);
       setTimelineEvents(dbEvents);
+
+      // Cargar Directivas N1 y Árbol Vital desde CognitiveMemoryEngine
+      const repo = MemoryRepositoryFactory.getRepository();
+      const engine = new CognitiveMemoryEngine({ repository: repo });
+      const [dirs, tree] = await Promise.all([
+        engine.getDirectives(patientId).catch(() => []),
+        engine.getLifeTree(patientId).catch(() => [])
+      ]);
+      setPatientDirectives(dirs || []);
+      setPatientLifeTree(tree || []);
     } catch (err) {
       console.error("Error loading clinical data from engine:", err);
     } finally {
       setLoadingClinical(false);
+    }
+  };
+
+  const handleCreateDirective = async (e) => {
+    if (e) e.preventDefault();
+    if (!selectedPatientId || !newDirectiveInstruction.trim()) return;
+
+    setSavingDirective(true);
+    try {
+      const repo = MemoryRepositoryFactory.getRepository();
+      const engine = new CognitiveMemoryEngine({ repository: repo });
+      await engine.saveDirective(selectedPatientId, {
+        patientId: selectedPatientId,
+        psychologistId: profile?.id || 'psicologo_actual',
+        category: newDirectiveCategory,
+        directive: newDirectiveInstruction.trim(),
+        instruction: newDirectiveInstruction.trim(),
+        priority: Number(newDirectivePriority || 1),
+        status: 'ACTIVE'
+      });
+      setNewDirectiveInstruction('');
+      await loadClinicalEngineData(selectedPatientId);
+    } catch (err) {
+      console.error("Error guardando directiva clínica:", err);
+      alert("Error al guardar directiva: " + err.message);
+    } finally {
+      setSavingDirective(false);
+    }
+  };
+
+  const handleCreateLifeTreeNode = async (e) => {
+    if (e) e.preventDefault();
+    if (!selectedPatientId || !newTreeNodeTitle.trim()) return;
+
+    setSavingTreeNode(true);
+    try {
+      const repo = MemoryRepositoryFactory.getRepository();
+      const engine = new CognitiveMemoryEngine({ repository: repo });
+      await engine.saveLifeTreeNode(selectedPatientId, {
+        patientId: selectedPatientId,
+        category: newTreeNodeCategory,
+        title: newTreeNodeTitle.trim(),
+        description: newTreeNodeDesc.trim(),
+        authorityLevel: AuthorityLevel.LEVEL_1_PSYCHOLOGIST,
+        emotionalValence: Number(newTreeNodeValence),
+        salienceWeight: 0.85,
+        status: 'ACTIVE'
+      });
+      setNewTreeNodeTitle('');
+      setNewTreeNodeDesc('');
+      await loadClinicalEngineData(selectedPatientId);
+    } catch (err) {
+      console.error("Error guardando nodo en Árbol Vital:", err);
+      alert("Error al guardar nodo: " + err.message);
+    } finally {
+      setSavingTreeNode(false);
+    }
+  };
+
+  const handleDeleteLifeTreeNode = async (nodeId) => {
+    if (!selectedPatientId || !nodeId) return;
+    try {
+      const repo = MemoryRepositoryFactory.getRepository();
+      const engine = new CognitiveMemoryEngine({ repository: repo });
+      await engine.deleteLifeTreeNode(selectedPatientId, nodeId);
+      await loadClinicalEngineData(selectedPatientId);
+    } catch (err) {
+      console.error("Error borrando nodo de Árbol Vital:", err);
     }
   };
 
@@ -740,14 +837,53 @@ export default function PsicologoDashboardView({
       if (!profile?.id) return;
       try {
         setLoadingReal(true);
-        // Load profiles
-        const { data: profilesData, error: profError } = await supabase
-          .from('profiles')
-          .select('*')
-          .in('role', ['paciente', 'emilio'])
-          .eq('contexto_terapeutico->>assigned_psychologist_id', profile.id);
+        const patMap = new Map();
 
-        if (profError) throw profError;
+        // 1. Supabase
+        try {
+          const { data: supaProfiles } = await supabase
+            .from('profiles')
+            .select('*')
+            .in('role', ['paciente', 'emilio']);
+
+          (supaProfiles || []).forEach(p => {
+            patMap.set(p.id, p);
+          });
+        } catch (e) {
+          console.warn("Supabase fetch pacientes error:", e);
+        }
+
+        // 2. Firestore
+        try {
+          const fireSnap = await getDocs(collection(db, 'profiles'));
+          fireSnap.forEach(docSnap => {
+            const data = docSnap.data();
+            if (data.role !== 'psicologo') {
+              const current = patMap.get(docSnap.id) || {};
+              patMap.set(docSnap.id, {
+                ...current,
+                ...data,
+                id: docSnap.id
+              });
+            }
+          });
+        } catch (e) {
+          console.warn("Firestore fetch pacientes error:", e);
+        }
+
+        let profilesData = Array.from(patMap.values());
+
+        // Filtrar pacientes asignados al psicólogo o sin asignar
+        if (profilesData && profilesData.length > 0) {
+          const assigned = profilesData.filter(p => 
+            p.contexto_terapeutico?.assigned_psychologist_id === profile.id || 
+            !p.contexto_terapeutico?.assigned_psychologist_id ||
+            p.email === 'tisute@gmail.com'
+          );
+          if (assigned.length > 0) {
+            profilesData = assigned;
+          }
+        }
 
         // Load consents
         const { data: consentsData } = await supabase
@@ -806,13 +942,13 @@ export default function PsicologoDashboardView({
               {
                 id: `log-${p.id}`,
                 time: 'Reciente',
-                text: 'Expediente clínico sincronizado desde la base de datos de Supabase de ÁNCORA.',
+                text: 'Expediente clínico sincronizado desde la base de datos de Áncora de ÁNCORA.',
                 context: 'Plataforma · Sincronizada',
                 sleep: '7h'
               }
             ],
             soapDraft: {
-              subjective: "Sincronizado desde Supabase.",
+              subjective: "Sincronizado desde Áncora.",
               objective: "Constantes estables en telemetría de diario.",
               assessment: "Evolución clínica supervisada.",
               plan: "Continuar con pautas activas de ÁNCORA."
@@ -868,7 +1004,7 @@ export default function PsicologoDashboardView({
       riskLevel: '--'
     },
     sintesisClinica: 'No hay datos clínicos acumulados para este expediente.',
-    recomendacionAbordaje: 'En cuanto el paciente comparta sus diarios conductuales, Walter IA generará pautas de abordaje sugeridas.'
+    recomendacionAbordaje: 'En cuanto el paciente comparta sus diarios conductuales, Ánquer IA generará pautas de abordaje sugeridas.'
   };
 
   const selectedPatient = (patients.find(p => p.id === selectedPatientId) || patients[0]) || emptyPatient;
@@ -1517,6 +1653,8 @@ export default function PsicologoDashboardView({
               <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', gap: '16px', overflowX: 'auto', paddingBottom: '2px', marginBottom: '14px' }}>
                 {[
                   { id: 'resumen', label: 'Resumen Clínico' },
+                  { id: 'directivas', label: 'Directivas Clínicas (N1)' },
+                  { id: 'arbol_vital', label: 'Árbol Vital (Life Tree)' },
                   { id: 'raw', label: 'Datos en Bruto' },
                   { id: 'notas', label: 'Notas SOAP' },
                   { id: 'sesiones', label: 'Sesiones y Citas' },
@@ -1560,7 +1698,7 @@ export default function PsicologoDashboardView({
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '10px', marginBottom: '14px' }}>
                         <h4 style={{ fontSize: '0.85rem', fontWeight: 800, color: '#ffffff', margin: 0, display: 'flex', gap: '6px', alignItems: 'center' }}>
                           <Sparkles size={16} color="var(--color-cyan)" className="animate-pulse-soft" />
-                          <span>Bandeja de Propuestas IA (Walter IA Copilot)</span>
+                          <span>Bandeja de Propuestas IA (Ánquer IA Copilot)</span>
                         </h4>
                         <span className="badge badge-cyan" style={{ fontSize: '0.62rem', padding: '2px 8px' }}>
                           {proposals.length} Pendiente{proposals.length !== 1 ? 's' : ''}
@@ -1577,7 +1715,7 @@ export default function PsicologoDashboardView({
                           <CheckCircle size={32} color="var(--color-emerald)" style={{ opacity: 0.6 }} />
                           <h5 style={{ margin: 0, color: '#fff', fontSize: '0.8rem', fontWeight: 'bold' }}>Expediente Clínico al Día</h5>
                           <p style={{ color: 'var(--text-secondary)', fontSize: '0.7rem', margin: 0, maxWidth: '380px', lineHeight: 1.45 }}>
-                            No hay propuestas pendientes de la IA para {selectedPatient.name}. Cuando el paciente suba nuevos informes o complete diarios emocionales, Walter IA analizará el contenido y sugerirá actualizaciones aquí.
+                            No hay propuestas pendientes de la IA para {selectedPatient.name}. Cuando el paciente suba nuevos informes o complete diarios emocionales, Ánquer IA analizará el contenido y sugerirá actualizaciones aquí.
                           </p>
                         </div>
                       ) : (
@@ -1916,8 +2054,8 @@ export default function PsicologoDashboardView({
                     {/* Resumen Clínico Asistido por IA (Raw-first Guard) */}
                     <div className="glass-panel" style={{ padding: '20px', position: 'relative', overflow: 'hidden', minHeight: '130px' }}>
                       <h4 style={{ fontSize: '0.85rem', fontWeight: 800, color: '#ffffff', marginBottom: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span>Análisis Clínico Asistido (Walter IA)</span>
-                        <span className="badge badge-cyan" style={{ fontSize: '0.62rem' }}>Walter IA</span>
+                        <span>Análisis Clínico Asistido (Ánquer IA)</span>
+                        <span className="badge badge-cyan" style={{ fontSize: '0.62rem' }}>Ánquer IA</span>
                       </h4>
 
                       <div style={{ 
@@ -2105,7 +2243,7 @@ export default function PsicologoDashboardView({
                     </label>
                   </div>
                   <p style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', margin: 0, textAlign: 'left', lineHeight: 1.45 }}>
-                    Este listado muestra las transcripciones e ingresos textuales volcados por el paciente en sus diarios de autocheckin con Walter. El terapeuta debe revisar este material cualitativo para comprender el contexto vivencial sin intermediación.
+                    Este listado muestra las transcripciones e ingresos textuales volcados por el paciente en sus diarios de autocheckin con Ánquer. El terapeuta debe revisar este material cualitativo para comprender el contexto vivencial sin intermediación.
                   </p>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '8px' }}>
@@ -2153,7 +2291,7 @@ export default function PsicologoDashboardView({
                             setSoapPlan(prev => prev || selectedPatient.soapDraft.plan);
                           }
                           setSoapAssessment(prev => prev + " [Foco clínico IA: Ansiedad por perfeccionismo laboral.]");
-                          setSoapPlan(prev => prev + "\n- Pauta de diario emocional con Walter.\n- Ejercicios de respiración controlada.");
+                          setSoapPlan(prev => prev + "\n- Pauta de diario emocional con Ánquer.\n- Ejercicios de respiración controlada.");
                         }}
                         className="btn btn-outline" 
                         style={{ height: '24px', fontSize: '0.62rem', padding: '0 8px', color: 'var(--color-cyan)', borderColor: 'rgba(6,182,212,0.2)' }}
@@ -2629,7 +2767,7 @@ export default function PsicologoDashboardView({
                       Auditoría Clínico-Tecnológica
                     </h4>
                     <p style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.4 }}>
-                      El acceso a este panel de Paciente 360 genera logs de auditoría inmutables en Supabase en cumplimiento estricto con las normativas sanitarias.
+                      El acceso a este panel de Paciente 360 genera logs de auditoría inmutables en Áncora en cumplimiento estricto con las normativas sanitarias.
                     </p>
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.68rem', color: 'var(--text-tertiary)', marginTop: '6px' }}>
@@ -2657,6 +2795,301 @@ export default function PsicologoDashboardView({
                   </div>
                 </div>
               )}
+
+              {/* 8. DIRECTIVAS CLÍNICAS (NIVEL 1 MÁXIMA AUTORIDAD) */}
+              {patientSubTab === 'directivas' && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '20px' }} className="grid-responsive-detail">
+                  {/* Lista de Directivas Activas */}
+                  <div className="glass-panel" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px', textAlign: 'left' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '10px' }}>
+                      <h4 style={{ fontSize: '0.9rem', fontWeight: 800, color: '#ffffff', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <ShieldCheck size={18} color="var(--color-cyan)" />
+                        Directivas Clínicas Activas (Nivel 1)
+                      </h4>
+                      <span className="badge badge-cyan" style={{ fontSize: '0.68rem' }}>
+                        {patientDirectives.length} Activas
+                      </span>
+                    </div>
+
+                    <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.4 }}>
+                      Las directivas clínicas fijadas por el psicólogo colegiado tienen prioridad epistemológica absoluta sobre cualquier inferencia de IA. Se inyectan en el Fast Path para modular la conducta y límites de contención de Áncora.
+                    </p>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxHeight: '420px', overflowY: 'auto' }}>
+                      {patientDirectives.length === 0 ? (
+                        <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: '0.75rem', border: '1px dashed var(--border)', borderRadius: '8px' }}>
+                          No hay directivas clínicas activas para este paciente. Añade una directiva desde el formulario lateral.
+                        </div>
+                      ) : (
+                        patientDirectives.map((dir, idx) => (
+                          <div 
+                            key={dir.id || idx}
+                            style={{ 
+                              background: 'rgba(255,255,255,0.02)', 
+                              border: '1px solid rgba(6,182,212,0.2)', 
+                              borderRadius: '8px', 
+                              padding: '14px',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '6px'
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span className="badge badge-cyan" style={{ fontSize: '0.62rem' }}>
+                                {dir.category}
+                              </span>
+                              <span style={{ fontSize: '0.65rem', color: 'var(--color-amber)', fontWeight: 700 }}>
+                                Prioridad: {dir.priority === 1 ? '1 (Inviolable)' : dir.priority}
+                              </span>
+                            </div>
+                            <p style={{ fontSize: '0.78rem', color: '#ffffff', margin: '4px 0', lineHeight: 1.4, fontWeight: 500 }}>
+                              "{dir.directive || dir.instruction}"
+                            </p>
+                            <span style={{ fontSize: '0.62rem', color: 'var(--text-tertiary)' }}>
+                              Fijada: {new Date(dir.createdAt || dir.validFrom || Date.now()).toLocaleDateString('es-ES')} · Nivel de Autoridad: N1 (Psicólogo)
+                            </span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Formulario Nueva Directiva */}
+                  <div className="glass-panel" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '14px', textAlign: 'left' }}>
+                    <h4 style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--color-cyan)', margin: 0 }}>
+                      + Fijar Nueva Directiva Clínica N1
+                    </h4>
+
+                    <form onSubmit={handleCreateDirective} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                      <div>
+                        <label style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>
+                          Ámbito / Categoría:
+                        </label>
+                        <select 
+                          value={newDirectiveCategory}
+                          onChange={(e) => setNewDirectiveCategory(e.target.value)}
+                          className="input-base"
+                          style={{ width: '100%', height: '36px', fontSize: '0.76rem', background: 'rgba(0,0,0,0.4)' }}
+                        >
+                          <option value="SAFETY_LIMIT">SAFETY_LIMIT (Límites de Seguridad y Riesgo)</option>
+                          <option value="SOMATIC_ANCHOR">SOMATIC_ANCHOR (Anclajes Somáticos / Freeze Protocol)</option>
+                          <option value="COGNITIVE_FRAME">COGNITIVE_FRAME (Encuadre Cognitivo / Distorsiones)</option>
+                          <option value="BEHAVIORAL_TASK">BEHAVIORAL_TASK (Tareas Conductuales entre Sesiones)</option>
+                          <option value="COMMUNICATION_STYLE">COMMUNICATION_STYLE (Tono y Estilo Asistente)</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>
+                          Prioridad:
+                        </label>
+                        <select 
+                          value={newDirectivePriority}
+                          onChange={(e) => setNewDirectivePriority(Number(e.target.value))}
+                          className="input-base"
+                          style={{ width: '100%', height: '36px', fontSize: '0.76rem', background: 'rgba(0,0,0,0.4)' }}
+                        >
+                          <option value={1}>1 - Crítica / Inviolable (Prioridad Máxima)</option>
+                          <option value={2}>2 - Alta</option>
+                          <option value={3}>3 - Media</option>
+                          <option value={4}>4 - Baja</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>
+                          Instrucción Clínica Exacta:
+                        </label>
+                        <textarea 
+                          value={newDirectiveInstruction}
+                          onChange={(e) => setNewDirectiveInstruction(e.target.value)}
+                          placeholder="Ej: Si el paciente reporta ansiedad >= 8, guiar de inmediato al Protocolo de Congelación (30s en rostro). Prohibido validar operativa de trading."
+                          className="input-base"
+                          rows={4}
+                          style={{ width: '100%', fontSize: '0.75rem', padding: '10px', background: 'rgba(0,0,0,0.4)', resize: 'vertical' }}
+                          required
+                        />
+                      </div>
+
+                      <button 
+                        type="submit"
+                        className="btn btn-cyan flex-center animate-glow-cyan"
+                        disabled={savingDirective || !newDirectiveInstruction.trim()}
+                        style={{ height: '38px', fontSize: '0.78rem', fontWeight: 700 }}
+                      >
+                        {savingDirective ? 'Fijando Directiva...' : '🔒 Inyectar Directiva Nivel 1'}
+                      </button>
+                    </form>
+                  </div>
+                </div>
+              )}
+
+              {/* 9. ÁRBOL VITAL (LIFE TREE) */}
+              {patientSubTab === 'arbol_vital' && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '20px' }} className="grid-responsive-detail">
+                  {/* Visualización del Grafo y Nodos */}
+                  <div className="glass-panel" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px', textAlign: 'left' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '10px' }}>
+                      <h4 style={{ fontSize: '0.9rem', fontWeight: 800, color: '#ffffff', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Activity size={18} color="var(--color-cyan)" />
+                        Árbol Vital (Life Tree) del Paciente
+                      </h4>
+                      <span className="badge badge-emerald" style={{ fontSize: '0.68rem' }}>
+                        {patientLifeTree.length} Nodos Estructurados
+                      </span>
+                    </div>
+
+                    <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.4 }}>
+                      Estructura troncal biográfica, relacional y anclajes somáticos. Los nodos son recuperados quirúrgicamente por similitud semántica en el Fast Path sin saturar la ventana de tokens.
+                    </p>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '12px', maxHeight: '420px', overflowY: 'auto' }}>
+                      {patientLifeTree.length === 0 ? (
+                        <div style={{ gridColumn: '1 / -1', padding: '24px', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: '0.75rem', border: '1px dashed var(--border)', borderRadius: '8px' }}>
+                          No hay nodos en el Árbol Vital. Añade nodos biográficos o anclajes somáticos desde el panel lateral.
+                        </div>
+                      ) : (
+                        patientLifeTree.map((node, idx) => (
+                          <div 
+                            key={node.id || idx}
+                            style={{ 
+                              background: 'rgba(255,255,255,0.02)', 
+                              border: '1px solid rgba(255,255,255,0.06)', 
+                              borderRadius: '8px', 
+                              padding: '12px',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              justifyContent: 'space-between',
+                              gap: '8px'
+                            }}
+                          >
+                            <div>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                <span className="badge badge-purple" style={{ fontSize: '0.6rem' }}>
+                                  {node.category}
+                                </span>
+                                <span style={{ fontSize: '0.62rem', color: node.emotionalValence >= 0 ? 'var(--color-emerald)' : 'var(--color-rose)' }}>
+                                  Val: {node.emotionalValence > 0 ? `+${node.emotionalValence}` : node.emotionalValence}
+                                </span>
+                              </div>
+                              <strong style={{ fontSize: '0.8rem', color: '#ffffff', display: 'block' }}>
+                                {node.title}
+                              </strong>
+                              <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', margin: '4px 0 0 0', lineHeight: 1.3 }}>
+                                {node.description}
+                              </p>
+                            </div>
+
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid rgba(255,255,255,0.03)', paddingTop: '6px' }}>
+                              <span style={{ fontSize: '0.6rem', color: 'var(--text-tertiary)' }}>
+                                Nivel {node.authorityLevel || 1}
+                              </span>
+                              <button
+                                onClick={() => handleDeleteLifeTreeNode(node.id)}
+                                className="btn btn-outline"
+                                style={{ height: '22px', padding: '0 6px', fontSize: '0.62rem', color: 'var(--color-rose)' }}
+                              >
+                                Eliminar
+                              </button>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Formulario Nuevo Nodo Árbol Vital */}
+                  <div className="glass-panel" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '14px', textAlign: 'left' }}>
+                    <h4 style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--color-cyan)', margin: 0 }}>
+                      + Añadir Nodo al Árbol Vital
+                    </h4>
+
+                    <form onSubmit={handleCreateLifeTreeNode} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      <div>
+                        <label style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                          Categoría:
+                        </label>
+                        <select 
+                          value={newTreeNodeCategory}
+                          onChange={(e) => setNewTreeNodeCategory(e.target.value)}
+                          className="input-base"
+                          style={{ width: '100%', height: '34px', fontSize: '0.74rem', background: 'rgba(0,0,0,0.4)' }}
+                        >
+                          <option value="PROTECTIVE_ANCHORS">PROTECTIVE_ANCHORS (Anclajes y Recursos Protectores)</option>
+                          <option value="HEALTH_SOMATIC">HEALTH_SOMATIC (Salud y Síntomas Somáticos)</option>
+                          <option value="CAREER_FINANCE">CAREER_FINANCE (Trabajo, Finanzas y Deudas)</option>
+                          <option value="TRAUMA_CRISIS">TRAUMA_CRISIS (Eventos Traumáticos y Pérdidas)</option>
+                          <option value="RELATIONSHIPS">RELATIONSHIPS (Pareja y Red Social)</option>
+                          <option value="FAMILY">FAMILY (Familia de Origen)</option>
+                          <option value="INFANCY">INFANCY (Infancia y Desarrollo)</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                          Título del Nodo:
+                        </label>
+                        <input 
+                          type="text"
+                          value={newTreeNodeTitle}
+                          onChange={(e) => setNewTreeNodeTitle(e.target.value)}
+                          placeholder="Ej: Choque térmico con hielo facial"
+                          className="input-base"
+                          style={{ width: '100%', height: '34px', fontSize: '0.75rem', background: 'rgba(0,0,0,0.4)' }}
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                          Descripción / Protocolo:
+                        </label>
+                        <textarea 
+                          value={newTreeNodeDesc}
+                          onChange={(e) => setNewTreeNodeDesc(e.target.value)}
+                          placeholder="Ej: Aplicar agua helada 30s en rostro ante pico de ansiedad nocturna."
+                          className="input-base"
+                          rows={3}
+                          style={{ width: '100%', fontSize: '0.74rem', padding: '8px', background: 'rgba(0,0,0,0.4)', resize: 'vertical' }}
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                          <span>Valencia Emocional:</span>
+                          <strong style={{ color: newTreeNodeValence >= 0 ? 'var(--color-emerald)' : 'var(--color-rose)' }}>
+                            {newTreeNodeValence > 0 ? `+${newTreeNodeValence}` : newTreeNodeValence}
+                          </strong>
+                        </label>
+                        <input 
+                          type="range"
+                          min="-1"
+                          max="1"
+                          step="0.1"
+                          value={newTreeNodeValence}
+                          onChange={(e) => setNewTreeNodeValence(parseFloat(e.target.value))}
+                          style={{ width: '100%' }}
+                        />
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.62rem', color: 'var(--text-tertiary)' }}>
+                          <span>-1.0 (Traumático / Crisis)</span>
+                          <span>+1.0 (Muy Protector)</span>
+                        </div>
+                      </div>
+
+                      <button 
+                        type="submit"
+                        className="btn btn-cyan flex-center animate-glow-cyan"
+                        disabled={savingTreeNode || !newTreeNodeTitle.trim()}
+                        style={{ height: '36px', fontSize: '0.76rem', fontWeight: 700, marginTop: '4px' }}
+                      >
+                        {savingTreeNode ? 'Guardando Nodo...' : '🌿 Guardar Nodo en Árbol Vital'}
+                      </button>
+                    </form>
+                  </div>
+                </div>
+              )}
+
 
             </div>
           )}
@@ -2776,7 +3209,7 @@ export default function PsicologoDashboardView({
                       onChange={(e) => setSoapPlan(e.target.value)}
                       disabled={selectedPatient.id === 'empty-id'}
                       style={{ height: '80px', fontSize: '0.75rem', resize: 'none', lineHeight: 1.4 }}
-                      placeholder="Ej. Tareas intersesiones, pautas activas de Walter, fecha de próxima consulta síncrona..."
+                      placeholder="Ej. Tareas intersesiones, pautas activas de Ánquer, fecha de próxima consulta síncrona..."
                     />
                   </div>
 
@@ -3322,7 +3755,7 @@ export default function PsicologoDashboardView({
                         Agenda de Sesiones Clínicas
                       </h3>
                       <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>
-                        Sincronizado con Supabase en tiempo real
+                        Sincronizado con Áncora en tiempo real
                       </span>
                     </div>
                   </div>
@@ -3466,7 +3899,7 @@ export default function PsicologoDashboardView({
                       type="button"
                       className="btn btn-outline"
                       style={{ height: '32px', fontSize: '0.65rem', paddingInline: '12px', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', background: 'transparent' }}
-                      title="Refrescar citas desde Supabase"
+                      title="Refrescar citas desde Áncora"
                     >
                       <RefreshCw size={12} className={loadingAppts ? 'animate-spin' : ''} />
                       <span>Sincronizar</span>
@@ -3478,7 +3911,7 @@ export default function PsicologoDashboardView({
                 {loadingAppts ? (
                   <div style={{ textAlign: 'center', padding: '60px 0', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
                     <RefreshCw size={28} className="animate-spin" style={{ marginBottom: '10px', opacity: 0.7, color: 'var(--color-cyan)' }} />
-                    <p>Sincronizando agenda clínica desde Supabase...</p>
+                    <p>Sincronizando agenda clínica desde Áncora...</p>
                   </div>
                 ) : (
                   <div style={{ minHeight: '400px' }}>
@@ -4213,7 +4646,7 @@ export default function PsicologoDashboardView({
                         await fetchDbAppointments();
                         setQuickAddPatientId('');
                       } catch (err) {
-                        alert("Error al insertar la cita en Supabase: " + err.message);
+                        alert("Error al insertar la cita en Áncora: " + err.message);
                       }
                     }}
                     style={{

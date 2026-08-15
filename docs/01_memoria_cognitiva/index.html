@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>⚓ Áncora Cognitive Memory Engine — Dossier de Arquitectura & Especificación Técnica</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-base: #06080e;
+      --bg-surface: #0b0f19;
+      --bg-surface-elevated: #111827;
+      --glass-bg: rgba(17, 24, 39, 0.7);
+      --glass-border: rgba(255, 255, 255, 0.08);
+      --glass-border-focus: rgba(6, 182, 212, 0.4);
+      --text-primary: #f8fafc;
+      --text-secondary: #94a3b8;
+      --text-muted: #64748b;
+      --cyan: #06b6d4;
+      --cyan-glow: rgba(6, 182, 212, 0.25);
+      --emerald: #10b981;
+      --emerald-glow: rgba(16, 185, 129, 0.25);
+      --indigo: #6366f1;
+      --indigo-glow: rgba(99, 102, 241, 0.25);
+      --amber: #f59e0b;
+      --amber-glow: rgba(245, 158, 11, 0.25);
+      --crimson: #ef4444;
+      --crimson-glow: rgba(239, 68, 68, 0.25);
+      --radius-sm: 8px;
+      --radius-md: 14px;
+      --radius-lg: 20px;
+      --shadow-glass: 0 8px 32px 0 rgba(0, 0, 0, 0.45);
+      --transition-smooth: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: var(--bg-base);
+      color: var(--text-primary);
+      line-height: 1.6;
+      min-height: 100vh;
+      overflow-x: hidden;
+      background-image: 
+        radial-gradient(circle at 15% 15%, rgba(6, 182, 212, 0.08) 0%, transparent 40%),
+        radial-gradient(circle at 85% 85%, rgba(99, 102, 241, 0.08) 0%, transparent 45%),
+        radial-gradient(circle at 50% 50%, rgba(16, 185, 129, 0.04) 0%, transparent 50%);
+      background-attachment: fixed;
+    }
+
+    .app-container { display: flex; min-height: 100vh; }
+
+    .sidebar {
+      width: 300px;
+      background: var(--bg-surface);
+      border-right: 1px solid var(--glass-border);
+      padding: 24px 18px;
+      display: flex;
+      flex-direction: column;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      z-index: 100;
+      backdrop-filter: blur(12px);
+    }
+
+    .brand-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--glass-border);
+      margin-bottom: 20px;
+    }
+
+    .brand-icon {
+      width: 42px;
+      height: 42px;
+      background: linear-gradient(135deg, #06b6d4, #6366f1);
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      box-shadow: 0 0 20px var(--cyan-glow);
+    }
+
+    .brand-text h1 {
+      font-family: 'Outfit', sans-serif;
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      color: #fff;
+    }
+
+    .brand-text .badge-pill {
+      font-size: 11px;
+      background: rgba(6, 182, 212, 0.15);
+      color: var(--cyan);
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(6, 182, 212, 0.3);
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .nav-section-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-muted);
+      margin: 14px 8px 6px;
+    }
+
+    .nav-menu {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      flex-grow: 1;
+      overflow-y: auto;
+    }
+
+    .nav-btn {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+      padding: 9px 12px;
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: var(--radius-sm);
+      color: var(--text-secondary);
+      font-family: 'Inter', sans-serif;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      text-align: left;
+      transition: var(--transition-smooth);
+    }
+
+    .nav-btn:hover { background: rgba(255, 255, 255, 0.04); color: var(--text-primary); }
+
+    .nav-btn.active {
+      background: rgba(6, 182, 212, 0.12);
+      color: var(--cyan);
+      border-color: rgba(6, 182, 212, 0.3);
+      box-shadow: inset 0 0 12px rgba(6, 182, 212, 0.1);
+      font-weight: 600;
+    }
+
+    .sidebar-footer {
+      padding-top: 16px;
+      border-top: 1px solid var(--glass-border);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .toggle-raw-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      padding: 9px;
+      background: rgba(99, 102, 241, 0.15);
+      border: 1px solid rgba(99, 102, 241, 0.35);
+      border-radius: var(--radius-sm);
+      color: #a5b4fc;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: var(--transition-smooth);
+    }
+
+    .toggle-raw-btn:hover { background: rgba(99, 102, 241, 0.25); color: #fff; }
+
+    .main-content {
+      flex: 1;
+      padding: 32px 40px;
+      max-width: 1350px;
+      margin: 0 auto;
+    }
+
+    .header-banner {
+      background: linear-gradient(135deg, rgba(15, 23, 42, 0.85) 0%, rgba(6, 182, 212, 0.15) 100%);
+      border: 1px solid var(--glass-border);
+      border-radius: var(--radius-lg);
+      padding: 28px 32px;
+      margin-bottom: 28px;
+      position: relative;
+      overflow: hidden;
+      box-shadow: var(--shadow-glass);
+      backdrop-filter: blur(16px);
+    }
+
+    .header-banner h2 {
+      font-family: 'Outfit', sans-serif;
+      font-size: 30px;
+      font-weight: 800;
+      letter-spacing: -0.8px;
+      margin-bottom: 8px;
+      background: linear-gradient(to right, #ffffff, #94a3b8);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .meta-pills-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+
+    .meta-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid var(--glass-border);
+      border-radius: 999px;
+      font-size: 11.5px;
+      color: var(--text-secondary);
+    }
+
+    .tab-pane { display: none; animation: fadeIn 0.3s ease-in-out; }
+    .tab-pane.active { display: block; }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .glass-card {
+      background: var(--glass-bg);
+      border: 1px solid var(--glass-border);
+      border-radius: var(--radius-md);
+      padding: 24px;
+      margin-bottom: 20px;
+      box-shadow: var(--shadow-glass);
+      backdrop-filter: blur(12px);
+    }
+
+    .card-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 19px;
+      font-weight: 700;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: #fff;
+    }
+
+    .card-subtitle {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-top: -6px;
+      margin-bottom: 16px;
+    }
+
+    .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+
+    @media (max-width: 950px) {
+      .app-container { flex-direction: column; }
+      .sidebar { width: 100%; height: auto; position: static; }
+      .grid-2, .grid-3 { grid-template-columns: 1fr; }
+    }
+
+    .authority-card {
+      background: rgba(15, 23, 42, 0.65);
+      border: 1px solid var(--glass-border);
+      border-radius: var(--radius-sm);
+      padding: 18px;
+      position: relative;
+    }
+
+    .authority-card.level-1 { border-top: 4px solid var(--emerald); }
+    .authority-card.level-2 { border-top: 4px solid var(--cyan); }
+    .authority-card.level-3 { border-top: 4px solid var(--amber); }
+    .authority-card.level-4 { border-top: 4px solid var(--indigo); }
+
+    .authority-badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+    }
+
+    .badge-1 { background: rgba(16, 185, 129, 0.15); color: var(--emerald); border: 1px solid var(--emerald); }
+    .badge-2 { background: rgba(6, 182, 212, 0.15); color: var(--cyan); border: 1px solid var(--cyan); }
+    .badge-3 { background: rgba(245, 158, 11, 0.15); color: var(--amber); border: 1px solid var(--amber); }
+    .badge-4 { background: rgba(99, 102, 241, 0.15); color: var(--indigo); border: 1px solid var(--indigo); }
+
+    .verbatim-box {
+      background: rgba(0, 0, 0, 0.45);
+      border-left: 3px solid var(--cyan);
+      padding: 8px 12px;
+      border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+      font-size: 11.5px;
+      font-style: italic;
+      color: #cbd5e1;
+      margin-top: 8px;
+    }
+
+    pre, code { font-family: 'JetBrains Mono', monospace; }
+
+    pre {
+      background: #030712;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: var(--radius-sm);
+      padding: 14px 18px;
+      overflow-x: auto;
+      font-size: 12px;
+      line-height: 1.5;
+      color: #e2e8f0;
+      margin: 12px 0;
+    }
+
+    .calculator-panel {
+      background: rgba(11, 15, 25, 0.9);
+      border: 1px solid rgba(6, 182, 212, 0.3);
+      border-radius: var(--radius-md);
+      padding: 20px;
+    }
+
+    .slider-control { margin-bottom: 14px; }
+    .slider-header { display: flex; justify-content: space-between; font-size: 12.5px; margin-bottom: 4px; }
+    input[type="range"] { width: 100%; height: 6px; accent-color: var(--cyan); }
+
+    .score-meter-container {
+      padding: 18px;
+      background: #030712;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--glass-border);
+      text-align: center;
+    }
+
+    .score-display {
+      font-family: 'Outfit', sans-serif;
+      font-size: 36px;
+      font-weight: 800;
+      color: var(--emerald);
+      text-shadow: 0 0 20px var(--emerald-glow);
+    }
+
+    .teleprompter-hud {
+      background: #020617;
+      border: 1px solid rgba(16, 185, 129, 0.4);
+      border-radius: var(--radius-md);
+      padding: 20px;
+    }
+
+    .raw-md-container {
+      background: #020617;
+      border: 1px solid var(--glass-border);
+      border-radius: var(--radius-md);
+      padding: 20px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12.5px;
+      line-height: 1.6;
+      color: #cbd5e1;
+      white-space: pre-wrap;
+      max-height: 70vh;
+      overflow-y: auto;
+    }
+
+    .raw-file-selector { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+
+    .file-tab-btn {
+      padding: 5px 12px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--glass-border);
+      border-radius: var(--radius-sm);
+      color: var(--text-secondary);
+      font-size: 11.5px;
+      cursor: pointer;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .file-tab-btn.active {
+      background: rgba(6, 182, 212, 0.2);
+      border-color: var(--cyan);
+      color: var(--cyan);
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+
+<div class="app-container">
+  <aside class="sidebar">
+    <div class="brand-header">
+      <div class="brand-icon">⚓</div>
+      <div class="brand-text">
+        <h1>ÁNCORA ENGINE</h1>
+        <span class="badge-pill">Cognitive v3.0</span>
+      </div>
+    </div>
+
+    <div class="nav-section-title">Investigación & Arquitectura</div>
+    <ul class="nav-menu">
+      <li><button class="nav-btn active" data-tab="tab-overview"><span>🔄</span> Flujo Dual & Visión</button></li>
+      <li><button class="nav-btn" data-tab="tab-firestore"><span>🗄️</span> Persistencia Firestore</button></li>
+      <li><button class="nav-btn" data-tab="tab-lifetree"><span>🌳</span> Árbol Vital & Patient 360</button></li>
+      <li><button class="nav-btn" data-tab="tab-authority"><span>⚖️</span> 4 Niveles de Autoridad</button></li>
+      <li><button class="nav-btn" data-tab="tab-contracts"><span>📜</span> Contratos & 5 Core</button></li>
+      <li><button class="nav-btn" data-tab="tab-scoring"><span>🧮</span> Scoring & Token Budget</button></li>
+      <li><button class="nav-btn" data-tab="tab-dataset"><span>👤</span> Banco de Pruebas Emilio</button></li>
+      <li><button class="nav-btn" data-tab="tab-teleprompter"><span>📹</span> Smart Teleprompter</button></li>
+      <li><button class="nav-btn" data-tab="tab-phases"><span>🗺️</span> Roadmap Fases (0-13)</button></li>
+      <li><button class="nav-btn" data-tab="tab-raw"><span>📄</span> Visor Markdown Raw (10 Docs)</button></li>
+    </ul>
+
+    <div class="sidebar-footer">
+      <button class="toggle-raw-btn" id="quick-toggle-raw">
+        <span>⚡</span> Alternar Vista Raw / UI
+      </button>
+    </div>
+  </aside>
+
+  <main class="main-content">
+    <header class="header-banner">
+      <h2>Áncora Cognitive Memory Engine</h2>
+      <p>Especificación técnica completa y verificada para la memoria clínica bi-temporal con tolerancia a fallos, cero complacencia y supervisión asíncrona de psicólogos colegiados.</p>
+      <div class="meta-pills-row">
+        <span class="meta-pill">🛡️ <strong>RGPD / HIPAA:</strong> Cumplimiento estricto</span>
+        <span class="meta-pill">⚡ <strong>SLA Latencia:</strong> &lt; 2.0s (Fast Path)</span>
+        <span class="meta-pill">⚖️ <strong>Autoridad:</strong> 4 Niveles Clínicos</span>
+        <span class="meta-pill">🧠 <strong>Suelo Recencia:</strong> &alpha; = 0.25 (No Destructivo)</span>
+        <span class="meta-pill">🌳 <strong>Life Tree:</strong> Nodos Biográficos</span>
+      </div>
+    </header>
+
+    <!-- TAB 1: VISIÓN & FLUJO DUAL -->
+    <section id="tab-overview" class="tab-pane active">
+      <div class="glass-card">
+        <h3 class="card-title"><span>🔄</span> Arquitectura de Procesamiento Dual</h3>
+        <p class="card-subtitle">Separación estricta entre el Fast Path de respuesta instantánea y el Deep Path cognitivo.</p>
+        <div class="grid-2">
+          <div class="glass-card" style="border-left: 4px solid var(--cyan);">
+            <h4 style="color: var(--cyan); font-family: 'Outfit', sans-serif; font-size: 17px; margin-bottom: 6px;">⚡ Fast Path (&lt; 2s SLA)</h4>
+            <p style="font-size: 13px; color: var(--text-secondary);">El chat nunca se bloquea. Si Firestore se satura, conmuta por Circuit Breaker (350ms) a caché local.</p>
+          </div>
+          <div class="glass-card" style="border-left: 4px solid var(--indigo);">
+            <h4 style="color: var(--indigo); font-family: 'Outfit', sans-serif; font-size: 17px; margin-bottom: 6px;">🧠 Deep Path (Asíncrono)</h4>
+            <p style="font-size: 13px; color: var(--text-secondary);">Extracción de hechos con citas verbatim, resolución temporal y borradores SOAP fuera de banda.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 2: PERSISTENCIA FIRESTORE -->
+    <section id="tab-firestore" class="tab-pane">
+      <div class="glass-card">
+        <h3 class="card-title"><span>🗄️</span> Esquema Firestore & Security Rules</h3>
+        <pre><code>// Pacientes sólo leen/escriben sus mensajes; perfil semántico bloqueado
+match /patients/{patientId}/semanticProfile/current {
+  allow read: if isPatientOwner(patientId) || hasClinicalAccess(patientId);
+  allow write: if hasClinicalAccess(patientId); // Paciente BLOQUEADO
+}</code></pre>
+      </div>
+    </section>
+
+    <!-- TAB 3: ÁRBOL VITAL & PATIENT 360 -->
+    <section id="tab-lifetree" class="tab-pane">
+      <div class="glass-card">
+        <h3 class="card-title"><span>🌳</span> Árbol Vital (*Life Tree*) y Patient 360</h3>
+        <p class="card-subtitle">Grafo biográfico jerárquico que modela las áreas nodales del paciente.</p>
+        <div class="grid-3">
+          <div class="authority-card">
+            <h4>Infancia & Desarrollo</h4>
+            <p>Vínculos tempranos, exigencias paternas y primeros anclajes de valor.</p>
+          </div>
+          <div class="authority-card">
+            <h4>Familia & Relaciones</h4>
+            <p>Pareja actual, soporte social percibido y conflictos activos.</p>
+          </div>
+          <div class="authority-card">
+            <h4>Trabajo & Economía</h4>
+            <p>Estrés laboral, quiebra 2022, trading de futuros y deudas actuales.</p>
+          </div>
+          <div class="authority-card">
+            <h4>Salud & Traumas</h4>
+            <p>Episodios de pánico, síntomas somáticos a las 23:00h e insomnio.</p>
+          </div>
+          <div class="authority-card">
+            <h4>Anclajes Protectores</h4>
+            <p>Natación matinal, respiración diafragmática y red de seguridad.</p>
+          </div>
+          <div class="authority-card">
+            <h4>Patient 360 Dashboard</h4>
+            <p>Ficha clínica unificada para que el psicólogo prepare la sesión en 3 minutos.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 4: AUTORIDAD CLÍNICA -->
+    <section id="tab-authority" class="tab-pane">
+      <div class="glass-card">
+        <h3 class="card-title"><span>⚖️</span> Los 4 Niveles de Autoridad Clínica</h3>
+        <div class="grid-2">
+          <div class="authority-card level-1">
+            <span class="authority-badge badge-1">Nivel 1 — Psicólogo</span>
+            <h4>Validado por Terapeuta Colegiado</h4>
+            <div class="verbatim-box">"Diagnóstico: Trastorno Adaptativo con Ansiedad Mixta."</div>
+          </div>
+          <div class="authority-card level-2">
+            <span class="authority-badge badge-2">Nivel 2 — Médico / Documental</span>
+            <h4>Evidencia Oficial en Informes/PDFs</h4>
+            <div class="verbatim-box">"Informe Médico: Tratamiento farmacológico activo."</div>
+          </div>
+          <div class="authority-card level-3">
+            <span class="authority-badge badge-3">Nivel 3 — Paciente</span>
+            <h4>Expresión Fenoménica Subjetiva</h4>
+            <div class="verbatim-box">"Siento que me falta el aire al abrir el correo bancario."</div>
+          </div>
+          <div class="authority-card level-4">
+            <span class="authority-badge badge-4">Nivel 4 — Inferencia IA</span>
+            <h4>Hipótesis en Cuarentena Profesional</h4>
+            <div class="verbatim-box">"Patrón: Crisis tras pérdidas en trading (Confianza: 0.82)."</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 5: CONTRATOS -->
+    <section id="tab-contracts" class="tab-pane">
+      <div class="glass-card">
+        <h3 class="card-title"><span>📜</span> 5 Métodos Core del MemoryEngine</h3>
+        <p class="card-subtitle">capture(), retrieve(), consolidate(), update(), audit().</p>
+      </div>
+    </section>
+
+    <!-- TAB 6: SCORING & TOKEN BUDGET -->
+    <section id="tab-scoring" class="tab-pane">
+      <div class="glass-card">
+        <h3 class="card-title"><span>🧮</span> Calculador de Retrieval Score No Destructivo</h3>
+        <div class="grid-2">
+          <div class="calculator-panel">
+            <div class="slider-control">
+              <div class="slider-header"><span>Similitud Semántica:</span> <strong id="val-sim">0.85</strong></div>
+              <input type="range" id="slider-sim" min="0" max="1" step="0.05" value="0.85">
+            </div>
+            <div class="slider-control">
+              <div class="slider-header"><span>Importancia Intrínseca:</span> <strong id="val-imp">0.90</strong></div>
+              <input type="range" id="slider-imp" min="0" max="1" step="0.05" value="0.90">
+            </div>
+            <div class="slider-control">
+              <div class="slider-header"><span>Días Transcurridos:</span> <strong id="val-days">120 días</strong></div>
+              <input type="range" id="slider-days" min="0" max="1800" step="15" value="120">
+            </div>
+          </div>
+          <div>
+            <div class="score-meter-container">
+              <div style="font-size: 12px; color: var(--text-muted);">Retrieval Score Resultante (&alpha; = 0.25)</div>
+              <div class="score-display" id="final-score">0.824</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 7: BANCO DE PRUEBAS EMILIO -->
+    <section id="tab-dataset" class="tab-pane">
+      <div class="glass-card">
+        <h3 class="card-title"><span>👤</span> Banco de Pruebas Clínico Real (Dataset Emilio)</h3>
+        <p class="card-subtitle">Validación con las 4 fuentes documentales reales de <code>docs/dataset_clinico_test/</code>.</p>
+        <div class="grid-2">
+          <div class="glass-card">
+            <h4 style="color: var(--cyan); font-family: 'Outfit', sans-serif;">Extracción de Citas Verbatim</h4>
+            <div class="verbatim-box">
+              "❝Siento que me falta el aire cuando abro el correo bancario por la noche y veo los números rojos.❞"
+            </div>
+            <p style="font-size: 12.5px; color: var(--text-muted); margin-top: 8px;">
+              Clasificado como Nivel 3 (Declarado Paciente). Dispara el anclaje somático pautado por el psicólogo.
+            </p>
+          </div>
+          <div class="glass-card">
+            <h4 style="color: var(--emerald); font-family: 'Outfit', sans-serif;">Resolución Temporal de Contradicciones</h4>
+            <p style="font-size: 12.5px; color: var(--text-secondary);">
+              Enero 2026 (Pánico a correr) &rarr; Agosto 2026 (Natación matinal 45 min). El registro antiguo no se borra, pasa a <code>superseded</code> con <code>possible_change_over_time</code>.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 8: SMART TELEPROMPTER -->
+    <section id="tab-teleprompter" class="tab-pane">
+      <div class="glass-card">
+        <h3 class="card-title"><span>📹</span> Smart SOAP Teleprompter — Interfaz del Psicólogo</h3>
+        <div class="teleprompter-hud">
+          <div style="color: var(--crimson); font-weight: 700; margin-bottom: 10px;">● REC 04:12 / 08:00 — Video-Briefing Emilio R.</div>
+          <div style="font-size: 14px; font-style: italic; color: #f1f5f9; background: rgba(0,0,0,0.5); padding: 14px; border-left: 4px solid var(--emerald);">
+            "❝Siento que me falta el aire cuando abro el correo bancario por la noche a las 23:00.❞"<br><br>
+            <strong>Pauta:</strong> Validar agotamiento &rarr; Freeze Protocol (30s agua fría) &rarr; Apagado de pantallas a las 20:00h.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 9: ROADMAP FASES -->
+    <section id="tab-phases" class="tab-pane">
+      <div class="glass-card">
+        <h3 class="card-title"><span>🗺️</span> Plan de Fases (0 a 13)</h3>
+        <p style="font-size: 13px; color: var(--text-secondary);">Desde la Auditoría & Freeze (Fase 0) hasta el Cutover 100% Firestore (Fase 13).</p>
+      </div>
+    </section>
+
+    <!-- TAB 10: VISOR RAW -->
+    <section id="tab-raw" class="tab-pane">
+      <div class="glass-card">
+        <h3 class="card-title"><span>📄</span> Visor de Documentos de Investigación (.md Raw)</h3>
+        <div class="raw-file-selector">
+          <button class="file-tab-btn active" data-file="01">01_auditoria</button>
+          <button class="file-tab-btn" data-file="02">02_firestore</button>
+          <button class="file-tab-btn" data-file="03">03_contratos</button>
+          <button class="file-tab-btn" data-file="04">04_jerarquia</button>
+          <button class="file-tab-btn" data-file="05">05_budgeting</button>
+          <button class="file-tab-btn" data-file="06">06_migracion</button>
+          <button class="file-tab-btn" data-file="07">07_life_tree</button>
+          <button class="file-tab-btn" data-file="08">08_banco_emilio</button>
+          <button class="file-tab-btn" data-file="plan">PLAN_IMPLEMENTACION</button>
+          <button class="file-tab-btn" data-file="09">09_copy_marketing</button>
+          <button class="file-tab-btn" data-file="master">INFORME_MAESTRO</button>
+        </div>
+        <div class="raw-md-container" id="raw-md-viewer">Cargando documento...</div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+  const navBtns = document.querySelectorAll('.nav-btn');
+  const tabPanes = document.querySelectorAll('.tab-pane');
+
+  navBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      navBtns.forEach(b => b.classList.remove('active'));
+      tabPanes.forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      const targetTab = btn.getAttribute('data-tab');
+      document.getElementById(targetTab).classList.add('active');
+    });
+  });
+
+  const rawFileMap = {
+    '01': '01_auditoria_arquitectura_actual.md',
+    '02': '02_persistencia_firebase_firestore_seguridad.md',
+    '03': '03_nucleo_cognitivo_contratos_dominio.md',
+    '04': '04_jerarquia_autoridad_clinica_flujos.md',
+    '05': '05_working_memory_retrieval_token_budgeting.md',
+    '06': '06_estrategia_migracion_feature_flags_roadmap.md',
+    '07': '07_arbol_vital_life_tree_y_patient_360.md',
+    '08': '08_banco_pruebas_clinico_real_emilio.md',
+    '09': '09_copys_marketing_pacientes_y_psicologos.md',
+    'plan': 'PLAN_IMPLEMENTACION_MEMORIA_COGNITIVA.md',
+    'master': 'INFORME_MAESTRO_ARQUITECTURA_MEMORIA_ANCORA.md'
+  };
+
+  const fileBtns = document.querySelectorAll('.file-tab-btn');
+  const rawViewer = document.getElementById('raw-md-viewer');
+
+  async function loadRawFile(fileKey) {
+    const fileName = rawFileMap[fileKey];
+    rawViewer.textContent = 'Cargando ' + fileName + '...';
+    try {
+      const res = await fetch(fileName);
+      if (res.ok) {
+        rawViewer.textContent = await res.text();
+      } else {
+        rawViewer.textContent = '# Archivo disponible en docs/01_memoria_cognitiva/' + fileName;
+      }
+    } catch (e) {
+      rawViewer.textContent = '# Archivo en docs/01_memoria_cognitiva/' + fileName;
+    }
+  }
+
+  fileBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      fileBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      loadRawFile(btn.getAttribute('data-file'));
+    });
+  });
+
+  loadRawFile('01');
+
+  document.getElementById('quick-toggle-raw').addEventListener('click', () => {
+    document.querySelector('[data-tab="tab-raw"]').click();
+  });
+</script>
+
+</body>
+</html>

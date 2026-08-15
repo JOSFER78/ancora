@@ -1,13 +1,13 @@
 /**
  * @file useClinicalMemory.js
  * @description Custom Hook de React para acceder y operar sobre la memoria clínica de Áncora.
- * Desacopla las vistas (MenteView, PsicologoDashboardView) de la capa de persistencia.
+ * Desacopla las vistas (MenteView, PsicologoDashboardView) de la capa de persistencia mediante MemoryRepositoryFactory.
  */
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { CognitiveMemoryEngine } from '../services/memory/CognitiveMemoryEngine.js';
-import { SupabaseMemoryAdapter } from '../infrastructure/storage/SupabaseMemoryAdapter.js';
-import { supabase } from '../supabaseClient.js';
+import { MemoryRepositoryFactory } from '../infrastructure/storage/MemoryRepositoryFactory.js';
+import { AuthorityLevel } from '../domain/memory/MemoryTypes.js';
 
 export function useClinicalMemory(patientId) {
   const [profile, setProfile] = useState(null);
@@ -16,10 +16,10 @@ export function useClinicalMemory(patientId) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Instanciar el adaptador de almacenamiento y el motor cognitivo
+  // Instanciar el motor cognitivo a través de la fábrica de repositorios
   const memoryEngine = useMemo(() => {
-    const adapter = new SupabaseMemoryAdapter(supabase);
-    return new CognitiveMemoryEngine({ repository: adapter });
+    const repository = MemoryRepositoryFactory.getRepository();
+    return new CognitiveMemoryEngine({ repository });
   }, []);
 
   const loadMemoryData = useCallback(async () => {
@@ -34,7 +34,7 @@ export function useClinicalMemory(patientId) {
 
       const [prof, eps, dirs] = await Promise.all([
         memoryEngine.repo.getSemanticProfile(patientId),
-        memoryEngine.repo.getEpisodes(patientId, { limit: 20 }),
+        memoryEngine.repo.getEpisodes(patientId, { limit: 30 }),
         memoryEngine.repo.getActiveDirectives(patientId)
       ]);
 
@@ -53,29 +53,48 @@ export function useClinicalMemory(patientId) {
     loadMemoryData();
   }, [loadMemoryData]);
 
-  const addEpisode = useCallback(async (content, verbatimQuote, authorityLevel = 3) => {
-    if (!patientId) return;
+  const addEpisode = useCallback(async (content, verbatimQuote = '', authorityLevel = AuthorityLevel.LEVEL_3_DECLARED, category = 'USER_EXPRESSION') => {
+    if (!patientId) return null;
     try {
-      await memoryEngine.capture({
+      const ep = await memoryEngine.capture({
         patientId,
         rawMessage: content,
         verbatimQuote,
-        authorityLevel
+        authorityLevel,
+        category
       });
       await loadMemoryData();
+      return ep;
     } catch (err) {
       console.error('[useClinicalMemory] Error agregando episodio:', err);
+      throw err;
+    }
+  }, [patientId, memoryEngine, loadMemoryData]);
+
+  const saveDirective = useCallback(async (directiveData) => {
+    if (!patientId) return null;
+    try {
+      const id = await memoryEngine.saveDirective(patientId, directiveData);
+      await loadMemoryData();
+      return id;
+    } catch (err) {
+      console.error('[useClinicalMemory] Error guardando directiva:', err);
+      throw err;
     }
   }, [patientId, memoryEngine, loadMemoryData]);
 
   const triggerConsolidation = useCallback(async () => {
-    if (!patientId) return;
+    if (!patientId) return null;
     try {
+      setLoading(true);
       const result = await memoryEngine.consolidate(patientId);
       await loadMemoryData();
       return result;
     } catch (err) {
       console.error('[useClinicalMemory] Error en consolidación:', err);
+      throw err;
+    } finally {
+      setLoading(false);
     }
   }, [patientId, memoryEngine, loadMemoryData]);
 
@@ -87,6 +106,10 @@ export function useClinicalMemory(patientId) {
     error,
     reload: loadMemoryData,
     addEpisode,
-    triggerConsolidation
+    saveDirective,
+    triggerConsolidation,
+    engine: memoryEngine
   };
 }
+
+export default useClinicalMemory;

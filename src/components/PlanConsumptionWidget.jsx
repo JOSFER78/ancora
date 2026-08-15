@@ -203,7 +203,7 @@ export default function PlanConsumptionWidget({ patientId, forceRefreshFlag, min
                 <div style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', lineHeight: '1.4', textAlign: 'left' }}>
                   <div style={{ fontWeight: 700, color: '#ffffff', marginBottom: '4px' }}>Este saldo equivale a:</div>
                   <div style={{ display: 'flex', gap: '6px', marginBottom: '2px' }}>
-                    <span>📝</span> <span>~15 min diarios de chat escrito con Walter.</span>
+                    <span>📝</span> <span>~15 min diarios de chat escrito con Ánquer.</span>
                   </div>
                   <div style={{ display: 'flex', gap: '6px' }}>
                     <span>🎙️</span> <span>~2 horas de voz interactiva real por tokens (equivalente a 4 horas de conversación por turnos y silencios).</span>
@@ -237,7 +237,7 @@ export default function PlanConsumptionWidget({ patientId, forceRefreshFlag, min
                   </div>
                   <div className="modal-info-content">
                     <h4>Chat Escrito y Guiado</h4>
-                    <p>Ideal para realizar diarios guiados y reportes clínicos con tu acompañante virtual Walter.</p>
+                    <p>Ideal para realizar diarios guiados y reportes clínicos con tu acompañante virtual Ánquer.</p>
                   </div>
                 </div>
 
@@ -280,7 +280,7 @@ export default function PlanConsumptionWidget({ patientId, forceRefreshFlag, min
               </div>
               <div className="modal-card-body" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', textAlign: 'left', margin: 0 }}>
-                  Añade créditos adicionales de IA al instante para expandir tus sesiones de chat o voz con Walter. Se añadirán a tu cuenta actual de forma permanente.
+                  Añade créditos adicionales de IA al instante para expandir tus sesiones de chat o voz con Ánquer. Se añadirán a tu cuenta actual de forma permanente.
                 </p>
 
                 <div className="upgrade-packages-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginTop: '4px' }}>
@@ -452,7 +452,7 @@ export default function PlanConsumptionWidget({ patientId, forceRefreshFlag, min
                 </div>
                 <div className="modal-info-content">
                   <h4>Chat Escrito (Diario)</h4>
-                  <p>Corresponde a un cupo de **450.000 tokens al mes**. Equivale a unos **15 minutos diarios de conversación real** para completar tus registros y diarios con Walter sin cobro por inactividad.</p>
+                  <p>Corresponde a un cupo de **450.000 tokens al mes**. Equivale a unos **15 minutos diarios de conversación real** para completar tus registros y diarios con Ánquer sin cobro por inactividad.</p>
                 </div>
               </div>
 
@@ -495,7 +495,7 @@ export default function PlanConsumptionWidget({ patientId, forceRefreshFlag, min
             </div>
             <div className="modal-card-body" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', textAlign: 'left', margin: 0 }}>
-                Añade créditos adicionales de IA al instante para expandir tus sesiones de chat o voz con Walter. Se añadirán a tu cuenta actual de forma permanente.
+                Añade créditos adicionales de IA al instante para expandir tus sesiones de chat o voz con Ánquer. Se añadirán a tu cuenta actual de forma permanente.
               </p>
 
               <div className="upgrade-packages-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginTop: '4px' }}>

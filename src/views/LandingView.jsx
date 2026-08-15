@@ -4,20 +4,40 @@ import {
   ArrowRight, Brain, FileText, MessageSquare, ShieldCheck, Sparkles, Check, 
   Heart, User, ClipboardList, Lock, Award, Search, Calendar, Star, 
   DollarSign, HelpCircle, ChevronRight, Activity, TrendingUp, Info, 
-  Shield, CheckCircle2, UserPlus, Laptop, Smartphone, Mail, AlertTriangle
+  Shield, CheckCircle2, UserPlus, Laptop, Smartphone, Mail, AlertTriangle,
+  Download, ChevronUp, X
 } from 'lucide-react';
 import LoginView from './LoginView';
+import ApkDownloadGuideModal from '../components/ApkDownloadGuideModal';
+import CookieBannerModal from '../components/CookieBannerModal';
+import LegalModals from '../components/LegalModals';
 
 export default function LandingView({ onAuthSuccess, onEnterDemo }) {
   const accessRef = useRef(null);
   const marketplaceRef = useRef(null);
   const planesRef = useRef(null);
+  const pacientesRef = useRef(null);
+  const psicologosRef = useRef(null);
+  const comoFuncionaRef = useRef(null);
+  const dropdownRef = useRef(null);
   
+  // Estado para el modal de login/registro directo encima de la app
+  const [showAuthModal, setShowAuthModal] = useState(false);
+
+  // Estados para modales legales y cookies
+  const [activeLegalModal, setActiveLegalModal] = useState(null); // 'privacy' | 'terms' | 'help' | 'resources' | 'about' | 'contact' | null
+  const [forceOpenCookies, setForceOpenCookies] = useState(false);
+
+  // Estado para el desplegable y guía de la APK de Android en el footer
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [isGuideOpen, setIsGuideOpen] = useState(false);
+
   // Estado de la consola de demostración
   const [showDemoConsole, setShowDemoConsole] = useState(false);
 
-  // Estado para el rol de registro seleccionado
+  // Estado para el rol y modo de acceso seleccionado
   const [selectedRole, setSelectedRole] = useState('paciente'); // 'paciente' | 'psicologo'
+  const [selectedAuthMode, setSelectedAuthMode] = useState('register'); // 'register' | 'login'
 
   // Estado para las tarifas interactiva (paciente vs psicólogo)
   const [pricingTab, setPricingTab] = useState('paciente'); // 'paciente' | 'psicologo'
@@ -25,7 +45,7 @@ export default function LandingView({ onAuthSuccess, onEnterDemo }) {
   // Estado para la sección interactiva de muestras de producto (dispositivos)
   const [activePreview, setActivePreview] = useState('diario'); // 'diario' | 'expediente' | 'soap'
 
-  // Estados del Marketplace (Terapeutas cargados desde Supabase)
+  // Estados del Marketplace (Terapeutas cargados desde Áncora)
   const [psychologists, setPsychologists] = useState([]);
   const [loadingPsychologists, setLoadingPsychologists] = useState(true);
   const [errorPsychologists, setErrorPsychologists] = useState(null);
@@ -60,11 +80,34 @@ export default function LandingView({ onAuthSuccess, onEnterDemo }) {
     };
 
     fetchPsychologists();
+
+    // Si se ejecuta en APK nativa o WebView de Android, abrir directamente el acceso encima de la app
+    try {
+      const isNative = typeof window !== 'undefined' && (
+        window.Capacitor?.isNativePlatform?.() || 
+        window.location.protocol === 'capacitor:' || 
+        (window.location.hostname === 'localhost' && window.navigator.userAgent.includes('Android'))
+      );
+      if (isNative) {
+        setShowAuthModal(true);
+      }
+    } catch (_) {}
   }, []);
 
-  const scrollToAccess = (role) => {
-    setSelectedRole(role);
-    accessRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const scrollToHome = () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const scrollToPacientes = () => {
+    pacientesRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const scrollToPsicologos = () => {
+    psicologosRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const scrollToComoFunciona = () => {
+    comoFuncionaRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
   const scrollToMarketplace = () => {
@@ -73,6 +116,14 @@ export default function LandingView({ onAuthSuccess, onEnterDemo }) {
 
   const scrollToPlanes = () => {
     planesRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const scrollToAccess = (role = 'paciente', mode = 'register') => {
+    setSelectedRole(role);
+    setSelectedAuthMode(mode);
+    if (accessRef.current) {
+      accessRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
   };
 
   // Filtrado de psicólogos en base a los criterios seleccionados
@@ -133,7 +184,13 @@ export default function LandingView({ onAuthSuccess, onEnterDemo }) {
         boxShadow: '0 4px 20px rgba(0,0,0,0.15)'
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', maxWidth: '1180px', margin: '0 auto', width: '100%' }}>
-          <div className="landing-logo-container" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div 
+            className="landing-logo-container" 
+            onClick={scrollToHome}
+            style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', transition: 'opacity 0.2s' }}
+            onMouseEnter={e => e.currentTarget.style.opacity = '0.85'}
+            onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+          >
             <img src="/ancora_logo.png" alt="ÁNCORA" style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover', border: '1.5px solid rgba(6, 182, 212, 0.4)', boxShadow: '0 0 10px rgba(6, 182, 212, 0.25)' }} />
             <span style={{ 
               fontWeight: 'bold', 
@@ -146,40 +203,45 @@ export default function LandingView({ onAuthSuccess, onEnterDemo }) {
             </span>
           </div>
 
-          <nav className="landing-nav" style={{ display: 'flex', gap: '28px', fontSize: '0.8rem', fontWeight: 600, color: '#9AA6AB', marginLeft: 'auto', marginRight: 'auto' }}>
-            <span style={{ cursor: 'pointer', transition: 'color 0.2s' }} onClick={() => scrollToAccess('paciente')} onMouseEnter={e => e.target.style.color = '#ffffff'} onMouseLeave={e => e.target.style.color = '#9AA6AB'}>Para pacientes</span>
-            <span style={{ cursor: 'pointer', transition: 'color 0.2s' }} onClick={() => scrollToAccess('psicologo')} onMouseEnter={e => e.target.style.color = '#ffffff'} onMouseLeave={e => e.target.style.color = '#9AA6AB'}>Para psicólogos</span>
-            <span style={{ cursor: 'pointer', transition: 'color 0.2s' }} onClick={scrollToMarketplace} onMouseEnter={e => e.target.style.color = '#ffffff'} onMouseLeave={e => e.target.style.color = '#9AA6AB'}>Cómo funciona</span>
-            <span style={{ cursor: 'pointer', transition: 'color 0.2s' }} onMouseEnter={e => e.target.style.color = '#ffffff'} onMouseLeave={e => e.target.style.color = '#9AA6AB'}>Recursos</span>
+          <nav className="landing-nav" style={{ display: 'flex', gap: '28px', fontSize: '0.8rem', fontWeight: 600, color: '#9AA6AB', marginLeft: 'auto', marginRight: 'auto', alignItems: 'center' }}>
+            <span style={{ cursor: 'pointer', transition: 'color 0.2s' }} onClick={scrollToPacientes} onMouseEnter={e => e.target.style.color = '#ffffff'} onMouseLeave={e => e.target.style.color = '#9AA6AB'}>Para pacientes</span>
+            <span style={{ cursor: 'pointer', transition: 'color 0.2s' }} onClick={scrollToPsicologos} onMouseEnter={e => e.target.style.color = '#ffffff'} onMouseLeave={e => e.target.style.color = '#9AA6AB'}>Para psicólogos</span>
+            <span style={{ cursor: 'pointer', transition: 'color 0.2s' }} onClick={scrollToComoFunciona} onMouseEnter={e => e.target.style.color = '#ffffff'} onMouseLeave={e => e.target.style.color = '#9AA6AB'}>Cómo funciona</span>
             <span style={{ cursor: 'pointer', transition: 'color 0.2s' }} onClick={scrollToPlanes} onMouseEnter={e => e.target.style.color = '#ffffff'} onMouseLeave={e => e.target.style.color = '#9AA6AB'}>Precios</span>
-            <span style={{ cursor: 'pointer', transition: 'color 0.2s' }} onClick={scrollToMarketplace} onMouseEnter={e => e.target.style.color = '#ffffff'} onMouseLeave={e => e.target.style.color = '#9AA6AB'}>Sobre nosotros</span>
           </nav>
 
           <div className="landing-actions" style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
-            <span 
-              onClick={() => scrollToAccess('paciente')} 
-              style={{ cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600, color: '#9AA6AB', transition: 'color 0.2s' }}
-              onMouseEnter={e => e.target.style.color = '#ffffff'}
-              onMouseLeave={e => e.target.style.color = '#9AA6AB'}
-            >
-              Iniciar sesión
-            </span>
             <button 
-              onClick={() => scrollToAccess('paciente')} 
+              onClick={() => scrollToAccess('paciente', 'register')} 
               className="btn" 
               style={{ 
-                height: '36px', 
-                fontSize: '0.75rem', 
+                height: '38px', 
+                fontSize: '0.78rem', 
                 borderRadius: '999px', 
                 background: '#7F9F88', 
-                color: '#ffffff',
-                paddingInline: '22px',
-                fontWeight: 'bold',
-                textTransform: 'none',
-                letterSpacing: 'normal'
+                color: '#ffffff', 
+                paddingInline: '22px', 
+                fontWeight: 'bold', 
+                textTransform: 'none', 
+                letterSpacing: 'normal',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                boxShadow: '0 2px 10px rgba(127, 159, 136, 0.35)',
+                transition: 'all 0.2s'
+              }}
+              onMouseEnter={e => {
+                e.currentTarget.style.background = '#6d8a75';
+                e.currentTarget.style.transform = 'translateY(-1px)';
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.background = '#7F9F88';
+                e.currentTarget.style.transform = 'translateY(0)';
               }}
             >
-              Empezar
+              <span>Iniciar sesión / Registro</span>
+              <ArrowRight size={14} />
             </button>
           </div>
         </div>
@@ -316,7 +378,7 @@ export default function LandingView({ onAuthSuccess, onEnterDemo }) {
       </section>
 
       {/* SECCIÓN "PARA PACIENTES" */}
-      <section style={{ padding: '80px 24px', background: '#F8F6F1' }}>
+      <section ref={pacientesRef} style={{ padding: '80px 24px', background: '#F8F6F1' }}>
         <div style={{ maxWidth: '1180px', margin: '0 auto' }} className="landing-section-grid">
           
           <div style={{ textAlign: 'left' }}>
@@ -394,7 +456,7 @@ export default function LandingView({ onAuthSuccess, onEnterDemo }) {
       </section>
 
       {/* SECCIÓN "PARA PSICÓLOGOS" */}
-      <section style={{ padding: '80px 24px', background: '#F8F6F1', borderTop: '1px solid rgba(5, 33, 58, 0.05)', borderBottom: '1px solid rgba(5, 33, 58, 0.05)' }}>
+      <section ref={psicologosRef} style={{ padding: '80px 24px', background: '#F8F6F1', borderTop: '1px solid rgba(5, 33, 58, 0.05)', borderBottom: '1px solid rgba(5, 33, 58, 0.05)' }}>
         <div style={{ maxWidth: '1180px', margin: '0 auto' }} className="landing-section-grid">
           
           <div style={{ textAlign: 'left' }}>
@@ -472,7 +534,7 @@ export default function LandingView({ onAuthSuccess, onEnterDemo }) {
       </section>
 
       {/* SECCIÓN "CÓMO FUNCIONA" */}
-      <section style={{ padding: '80px 24px', background: '#F8F6F1' }}>
+      <section ref={comoFuncionaRef} style={{ padding: '80px 24px', background: '#F8F6F1' }}>
         <div style={{ maxWidth: '1180px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '50px' }}>
           
           <div style={{ textAlign: 'center', maxWidth: '600px', margin: '0 auto' }}>
@@ -646,7 +708,7 @@ export default function LandingView({ onAuthSuccess, onEnterDemo }) {
                     <Brain size={14} />
                   </div>
                   <div>
-                    <strong style={{ fontSize: '0.72rem', color: '#ffffff', display: 'block' }}>Walter IA</strong>
+                    <strong style={{ fontSize: '0.72rem', color: '#ffffff', display: 'block' }}>Ánquer IA</strong>
                     <span style={{ fontSize: '0.52rem', color: '#7F9F88', fontWeight: 'bold' }}>Acompañamiento Activo</span>
                   </div>
                 </div>
@@ -1190,94 +1252,16 @@ export default function LandingView({ onAuthSuccess, onEnterDemo }) {
         </div>
       </section>
 
-      {/* SECCIÓN DE SELECCIÓN DE ROL */}
-      <section style={{ padding: '60px 24px 20px', background: '#ffffff', borderTop: '1px solid rgba(5, 33, 58, 0.05)' }}>
-        <div style={{ maxWidth: '900px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '24px' }}>
-          
-          <div style={{ textAlign: 'center' }}>
-            <h2 style={{ fontSize: '2.4rem', fontWeight: 'normal', color: '#05213A', fontFamily: serifFont }}>¿Cómo quieres unirte a ÁNCORA?</h2>
-            <p style={{ fontSize: '0.85rem', color: '#5F6F74', marginTop: '4px' }}>
-              Selecciona tu rol para registrarte o iniciar sesión de forma adaptada.
-            </p>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
-            
-            {/* Opción Paciente */}
-            <div 
-              onClick={() => scrollToAccess('paciente')}
-              style={{ 
-                background: selectedRole === 'paciente' ? 'rgba(68, 125, 130, 0.04)' : '#F8F6F1',
-                border: `1px solid ${selectedRole === 'paciente' ? '#447D82' : 'rgba(5, 33, 58, 0.08)'}`,
-                padding: '28px', 
-                borderRadius: '16px',
-                cursor: 'pointer',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '12px',
-                transition: 'all 0.2s ease',
-                boxShadow: selectedRole === 'paciente' ? '0 4px 25px rgba(68, 125, 130, 0.08)' : 'none'
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div className="flex-center" style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'rgba(68, 125, 130, 0.1)', color: '#447D82' }}>
-                  <Heart size={20} />
-                </div>
-                {selectedRole === 'paciente' && <Check size={18} color="#447D82" />}
-              </div>
-              <div>
-                <h4 style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#05213A', margin: 0, fontFamily: serifFont }}>Quiero recibir Terapia (Paciente)</h4>
-                <p style={{ fontSize: '0.82rem', color: '#5F6F74', marginTop: '6px', lineHeight: 1.5, margin: 0 }}>
-                  Inicia tu triaje clínico gratuito con Walter IA. Accede a tu espacio de diario de sensaciones, expediente portable cifrado y sesiones individuales con tu psicólogo clínico.
-                </p>
-              </div>
-              <button className="btn btn-cyan" style={{ height: '36px', fontSize: '0.72rem', marginTop: '14px', width: '100%', borderRadius: '6px', fontWeight: 'bold', textTransform: 'none', letterSpacing: 'normal' }}>
-                Registrarme como Paciente
-              </button>
-            </div>
-
-            {/* Opción Terapeuta */}
-            <div 
-              onClick={() => scrollToAccess('psicologo')}
-              style={{ 
-                background: selectedRole === 'psicologo' ? 'rgba(127, 159, 136, 0.04)' : '#F8F6F1',
-                border: `1px solid ${selectedRole === 'psicologo' ? '#7F9F88' : 'rgba(5, 33, 58, 0.08)'}`,
-                padding: '28px', 
-                borderRadius: '16px',
-                cursor: 'pointer',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '12px',
-                transition: 'all 0.2s ease',
-                boxShadow: selectedRole === 'psicologo' ? '0 4px 25px rgba(127, 159, 136, 0.08)' : 'none'
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div className="flex-center" style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'rgba(127, 159, 136, 0.1)', color: '#7F9F88' }}>
-                  <User size={20} />
-                </div>
-                {selectedRole === 'psicologo' && <Check size={18} color="#7F9F88" />}
-              </div>
-              <div>
-                <h4 style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#05213A', margin: 0, fontFamily: serifFont }}>Soy Psicólogo Sanitario Habilitado</h4>
-                <p style={{ fontSize: '0.82rem', color: '#5F6F74', marginTop: '6px', lineHeight: 1.5, margin: 0 }}>
-                  Optimiza tu consulta y reduce el tiempo administrativo. Redacta notas SOAP automáticas con Walter IA, gestiona tu agenda, recibe pacientes de Áncora y cobra por Stripe.
-                </p>
-              </div>
-              <button className="btn" style={{ height: '36px', fontSize: '0.72rem', marginTop: '14px', width: '100%', borderRadius: '6px', background: '#7F9F88', color: '#ffffff', fontWeight: 'bold', textTransform: 'none', letterSpacing: 'normal' }}>
-                Registrarme como Psicólogo
-              </button>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* REGISTRO / ACCESO INJECTED */}
-      <section ref={accessRef} style={{ padding: '40px 24px 80px', background: '#F8F6F1', borderTop: '1px solid rgba(5, 33, 58, 0.05)' }}>
+      {/* REGISTRO / ACCESO DIRECTO */}
+      <section ref={accessRef} id="acceso" style={{ padding: '70px 24px 90px', background: '#F8F6F1', borderTop: '1px solid rgba(5, 33, 58, 0.05)' }}>
         <div style={{ maxWidth: '1180px', margin: '0 auto' }}>
           <div style={{ display: 'flex', justifyContent: 'center' }}>
-            <div style={{ width: '100%', maxWidth: '440px' }}>
-              <LoginView onAuthSuccess={onAuthSuccess} initialRole={selectedRole} />
+            <div style={{ width: '100%', maxWidth: '540px' }}>
+              <LoginView 
+                onAuthSuccess={onAuthSuccess} 
+                initialRole={selectedRole} 
+                initialMode={selectedAuthMode} 
+              />
             </div>
           </div>
         </div>
@@ -1316,7 +1300,7 @@ export default function LandingView({ onAuthSuccess, onEnterDemo }) {
         </div>
       </section>
 
-      {/* FOOTER */}
+      {/* FOOTER PROFESIONAL Y COMPLETO ÁNCORA */}
       <footer style={{
         padding: '70px 24px 30px',
         background: '#05213A',
@@ -1324,67 +1308,95 @@ export default function LandingView({ onAuthSuccess, onEnterDemo }) {
         color: '#9AA6AB',
         borderTop: '1px solid rgba(255,255,255,0.05)'
       }}>
-        <div style={{ maxWidth: '1180px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '50px' }}>
+        <div style={{ maxWidth: '1180px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '45px' }}>
           
           <div className="footer-main-grid">
             
+            {/* Columna 1: Marca, Misión y Certificaciones */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', textAlign: 'left' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <img src="/ancora_logo.png" alt="ÁNCORA" style={{ width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover', border: '1.5px solid rgba(127, 159, 136, 0.4)', boxShadow: '0 0 8px rgba(127, 159, 136, 0.2)' }} />
-                <span style={{ fontWeight: 'bold', fontSize: '1.35rem', color: '#ffffff', fontFamily: serifFont }}>Áncora</span>
+              <div 
+                onClick={scrollToHome}
+                style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', transition: 'opacity 0.2s' }}
+                onMouseEnter={e => e.currentTarget.style.opacity = '0.85'}
+                onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+              >
+                <img src="/ancora_logo.png" alt="ÁNCORA" style={{ width: '34px', height: '34px', borderRadius: '50%', objectFit: 'cover', border: '1.5px solid rgba(127, 159, 136, 0.4)', boxShadow: '0 0 8px rgba(127, 159, 136, 0.2)' }} />
+                <span style={{ fontWeight: 'bold', fontSize: '1.4rem', color: '#ffffff', fontFamily: serifFont }}>Áncora</span>
               </div>
-              <p style={{ lineHeight: 1.6, maxWidth: '280px', margin: 0 }}>
-                La terapia con continuidad real. Hecha para pacientes. Diseñada para psicólogos. Guiada por lo humano.
+              <p style={{ lineHeight: 1.6, maxWidth: '280px', margin: 0, fontSize: '0.78rem' }}>
+                La terapia con continuidad clínica real. Hecha para pacientes. Diseñada para psicólogos sanitarios. Guiada por lo humano.
               </p>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '4px' }}>
+                <span style={{ fontSize: '0.65rem', padding: '3px 8px', borderRadius: '6px', background: 'rgba(61,220,132,0.1)', color: '#3DDC84', border: '1px solid rgba(61,220,132,0.25)', fontWeight: 600 }}>
+                  ✓ RGPD / LOPD-GDD
+                </span>
+                <span style={{ fontSize: '0.65rem', padding: '3px 8px', borderRadius: '6px', background: 'rgba(68,125,130,0.15)', color: '#7F9F88', border: '1px solid rgba(68,125,130,0.3)', fontWeight: 600 }}>
+                  ✓ Colegiado COP M-49ccc
+                </span>
+              </div>
             </div>
 
+            {/* Columna 2: Producto */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', textAlign: 'left' }}>
               <strong style={{ color: '#ffffff', fontSize: '0.85rem' }}>Producto</strong>
-              <span style={{ cursor: 'pointer' }} onClick={() => scrollToAccess('paciente')}>Para pacientes</span>
-              <span style={{ cursor: 'pointer' }} onClick={() => scrollToAccess('psicologo')}>Para psicólogos</span>
-              <span style={{ cursor: 'pointer' }} onClick={scrollToMarketplace}>Cómo funciona</span>
-              <span style={{ cursor: 'pointer' }} onClick={scrollToPlanes}>Tarifas</span>
+              <span style={{ cursor: 'pointer', transition: 'color 0.2s' }} onMouseEnter={e => e.currentTarget.style.color = '#ffffff'} onMouseLeave={e => e.currentTarget.style.color = '#9AA6AB'} onClick={scrollToPacientes}>Para pacientes</span>
+              <span style={{ cursor: 'pointer', transition: 'color 0.2s' }} onMouseEnter={e => e.currentTarget.style.color = '#ffffff'} onMouseLeave={e => e.currentTarget.style.color = '#9AA6AB'} onClick={scrollToPsicologos}>Para psicólogos</span>
+              <span style={{ cursor: 'pointer', transition: 'color 0.2s' }} onMouseEnter={e => e.currentTarget.style.color = '#ffffff'} onMouseLeave={e => e.currentTarget.style.color = '#9AA6AB'} onClick={scrollToComoFunciona}>Cómo funciona</span>
+              <span style={{ cursor: 'pointer', transition: 'color 0.2s' }} onMouseEnter={e => e.currentTarget.style.color = '#ffffff'} onMouseLeave={e => e.currentTarget.style.color = '#9AA6AB'} onClick={scrollToPlanes}>Tarifas y 0€ prueba</span>
+              <span style={{ cursor: 'pointer', transition: 'color 0.2s' }} onMouseEnter={e => e.currentTarget.style.color = '#ffffff'} onMouseLeave={e => e.currentTarget.style.color = '#9AA6AB'} onClick={() => setActiveLegalModal('privacy')}>Seguridad y Servidores UE</span>
             </div>
 
+            {/* Columna 3: Recursos y Salud Mental */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', textAlign: 'left' }}>
-              <strong style={{ color: '#ffffff', fontSize: '0.85rem' }}>Recursos</strong>
-              <span>Blog</span>
-              <span>Guías</span>
-              <span>Centro de ayuda</span>
-              <span>Webinars</span>
+              <strong style={{ color: '#ffffff', fontSize: '0.85rem' }}>Recursos Clínicos</strong>
+              <span style={{ cursor: 'pointer', transition: 'color 0.2s' }} onMouseEnter={e => e.currentTarget.style.color = '#ffffff'} onMouseLeave={e => e.currentTarget.style.color = '#9AA6AB'} onClick={() => setActiveLegalModal('help')}>Centro de Ayuda / FAQs</span>
+              <span style={{ cursor: 'pointer', transition: 'color 0.2s' }} onMouseEnter={e => e.currentTarget.style.color = '#ffffff'} onMouseLeave={e => e.currentTarget.style.color = '#9AA6AB'} onClick={() => setActiveLegalModal('resources')}>Guías de Salud Mental</span>
+              <span style={{ cursor: 'pointer', transition: 'color 0.2s' }} onMouseEnter={e => e.currentTarget.style.color = '#ffffff'} onMouseLeave={e => e.currentTarget.style.color = '#9AA6AB'} onClick={() => setActiveLegalModal('resources')}>Protocolo Anti-Pánico</span>
+              <span style={{ cursor: 'pointer', transition: 'color 0.2s' }} onMouseEnter={e => e.currentTarget.style.color = '#ffffff'} onMouseLeave={e => e.currentTarget.style.color = '#9AA6AB'} onClick={() => setActiveLegalModal('resources')}>Higiene del Sueño TCC</span>
+              <span style={{ cursor: 'pointer', color: '#3DDC84', fontWeight: 600 }} onClick={() => setActiveLegalModal('resources')}>Urgencias: 024 / 112</span>
             </div>
 
+            {/* Columna 4: Empresa y Ética */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', textAlign: 'left' }}>
-              <strong style={{ color: '#ffffff', fontSize: '0.85rem' }}>Empresa</strong>
-              <span>Sobre nosotros</span>
-              <span>Trabaja con nosotros</span>
-              <span>Prensa</span>
-              <span>Contacto</span>
+              <strong style={{ color: '#ffffff', fontSize: '0.85rem' }}>Empresa y Deontología</strong>
+              <span style={{ cursor: 'pointer', transition: 'color 0.2s' }} onMouseEnter={e => e.currentTarget.style.color = '#ffffff'} onMouseLeave={e => e.currentTarget.style.color = '#9AA6AB'} onClick={() => setActiveLegalModal('about')}>Sobre nosotros</span>
+              <span style={{ cursor: 'pointer', transition: 'color 0.2s' }} onMouseEnter={e => e.currentTarget.style.color = '#ffffff'} onMouseLeave={e => e.currentTarget.style.color = '#9AA6AB'} onClick={() => setActiveLegalModal('about')}>Dirección y Supervisión</span>
+              <span style={{ cursor: 'pointer', transition: 'color 0.2s' }} onMouseEnter={e => e.currentTarget.style.color = '#ffffff'} onMouseLeave={e => e.currentTarget.style.color = '#9AA6AB'} onClick={() => setActiveLegalModal('about')}>Código Deontológico</span>
+              <span style={{ cursor: 'pointer', transition: 'color 0.2s' }} onMouseEnter={e => e.currentTarget.style.color = '#ffffff'} onMouseLeave={e => e.currentTarget.style.color = '#9AA6AB'} onClick={() => setActiveLegalModal('contact')}>Contacto y Soporte</span>
             </div>
 
+            {/* Columna 5: Confidencialidad y Redes */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', textAlign: 'left' }}>
-              <strong style={{ color: '#ffffff', fontSize: '0.85rem' }}>Privacidad y calidad</strong>
-              <p style={{ margin: 0, lineHeight: 1.5 }}>
-                Comprometidos con tu privacidad y la calidad clínica.
+              <strong style={{ color: '#ffffff', fontSize: '0.85rem' }}>Confidencialidad Médica</strong>
+              <p style={{ margin: 0, lineHeight: 1.5, fontSize: '0.76rem' }}>
+                Datos cifrados bajo TLS 1.3 y AES-256. Custodia estricta bajo secreto profesional sanitario.
               </p>
-              <div style={{ display: 'flex', gap: '12px' }}>
-                <a href="#" style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'rgba(255,255,255,0.05)', color: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <span style={{ fontSize: '0.72rem', color: '#7F9F88' }}>Atención directa:</span>
+                <a href="mailto:soporte@ancora.health" style={{ color: '#ffffff', textDecoration: 'none', fontSize: '0.76rem', fontWeight: 600 }}>
+                  soporte@ancora.health
+                </a>
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <a href="https://instagram.com" target="_blank" rel="noopener noreferrer" style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'rgba(255,255,255,0.05)', color: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }} onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.15)'} onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-instagram">
                     <rect width="20" height="20" x="2" y="2" rx="5" ry="5"/>
                     <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/>
                     <line x1="17.5" x2="17.51" y1="6.5" y2="6.5"/>
                   </svg>
                 </a>
-                <a href="#" style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'rgba(255,255,255,0.05)', color: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <a href="https://linkedin.com" target="_blank" rel="noopener noreferrer" style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'rgba(255,255,255,0.05)', color: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }} onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.15)'} onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-linkedin">
                     <path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"/>
                     <rect width="4" height="12" x="2" y="9"/>
                     <circle cx="4" cy="4" r="2"/>
                   </svg>
                 </a>
-                <a href="#" style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'rgba(255,255,255,0.05)', color: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <a href="https://youtube.com" target="_blank" rel="noopener noreferrer" style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'rgba(255,255,255,0.05)', color: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }} onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.15)'} onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-youtube">
-                    <path d="M2.5 17a24.12 24.12 0 0 1 0-10 2 2 0 0 1 1.4-1.4 49.56 49.56 0 0 1 16.2 0A2 2 0 0 1 21.5 7a24.12 24.12 0 0 1 0 10 2 2 0 0 1-1.4 1.4 49.55 49.55 0 0 1-16.2 0A2 2 0 0 1 2.5 17z"/>
+                    <path d="M2.5 17a24.12 24.12 0 0 1 0-10 2 2 0 0 1 1.4-1.4 49.56 49.56 0 0 1 16.2 0A2 2 0 0 1 21.5 7a24.12 24.12 0 0 1 0 10 2 2 0 0 1-1.4 1.4 49.55 49.55 0 0 1 16.2 0A2 2 0 0 1 2.5 17z"/>
                     <polygon points="10 15 15 12 10 9"/>
                   </svg>
                 </a>
@@ -1393,27 +1405,108 @@ export default function LandingView({ onAuthSuccess, onEnterDemo }) {
 
           </div>
 
+          {/* Barra Inferior con Políticas y Enlace a Cookies */}
           <div style={{ 
             borderTop: '1px solid rgba(255, 255, 255, 0.05)', 
-            paddingTop: '20px', 
+            paddingTop: '24px', 
             display: 'flex', 
             justifyContent: 'space-between', 
             alignItems: 'center',
-            fontSize: '0.72rem',
+            fontSize: '0.74rem',
             color: '#9AA6AB',
             flexWrap: 'wrap',
-            gap: '14px'
+            gap: '16px'
           }}>
-            <span>© 2026 Áncora Health, S.L. Todos los derechos reservados.</span>
-            <div style={{ display: 'flex', gap: '20px' }}>
-              <span style={{ cursor: 'pointer' }}>Privacidad</span>
-              <span style={{ cursor: 'pointer' }}>Términos y condiciones</span>
-              <span style={{ cursor: 'pointer' }}>Política de cookies</span>
+            <span>© 2026 Áncora Health, S.L. · Todos los derechos reservados.</span>
+            
+            <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
+              <span 
+                style={{ cursor: 'pointer', transition: 'color 0.2s' }} 
+                onMouseEnter={e => e.currentTarget.style.color = '#ffffff'} 
+                onMouseLeave={e => e.currentTarget.style.color = '#9AA6AB'}
+                onClick={() => setActiveLegalModal('privacy')}
+              >
+                Privacidad
+              </span>
+              <span 
+                style={{ cursor: 'pointer', transition: 'color 0.2s' }} 
+                onMouseEnter={e => e.currentTarget.style.color = '#ffffff'} 
+                onMouseLeave={e => e.currentTarget.style.color = '#9AA6AB'}
+                onClick={() => setActiveLegalModal('terms')}
+              >
+                Términos y condiciones
+              </span>
+              <span 
+                style={{ cursor: 'pointer', transition: 'color 0.2s' }} 
+                onMouseEnter={e => e.currentTarget.style.color = '#ffffff'} 
+                onMouseLeave={e => e.currentTarget.style.color = '#9AA6AB'}
+                onClick={() => setForceOpenCookies(true)}
+              >
+                Política de cookies
+              </span>
+              <span 
+                style={{ cursor: 'pointer', color: '#7F9F88', fontWeight: 600 }} 
+                onClick={() => setForceOpenCookies(true)}
+              >
+                Configurar Cookies
+              </span>
+            </div>
+
+            {/* BOTÓN ANDROID OFICIAL */}
+            <div>
+              <button
+                type="button"
+                onClick={() => setIsGuideOpen(true)}
+                style={{
+                  padding: '7px 14px',
+                  borderRadius: '10px',
+                  background: 'rgba(5, 33, 58, 0.6)',
+                  border: '1px solid rgba(127, 159, 136, 0.35)',
+                  color: '#ffffff',
+                  fontWeight: 700,
+                  fontSize: '0.74rem',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
+                }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.background = 'rgba(5, 33, 58, 0.9)';
+                  e.currentTarget.style.borderColor = 'rgba(61, 220, 132, 0.5)';
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.background = 'rgba(5, 33, 58, 0.6)';
+                  e.currentTarget.style.borderColor = 'rgba(127, 159, 136, 0.35)';
+                }}
+              >
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="#3DDC84">
+                  <path d="M17.523 15.3414c-.5511 0-.9993-.4486-.9993-.9997s.4482-.9993.9993-.9993c.551 0 .9993.4482.9993.9993.0001.5511-.4482.9997-.9993.9997m-11.046 0c-.5511 0-.9993-.4486-.9993-.9997s.4482-.9993.9993-.9993c.5511 0 .9993.4482.9993.9993 0 .5511-.4482.9997-.9993.9997m11.4045-6.02l1.996-3.4572c.1556-.2698.0631-.6137-.2067-.7694-.2694-.1555-.6133-.0631-.7689.2067l-2.0223 3.5028C15.3023 8.1633 13.7027 7.7816 12 7.7816c-1.7027 0-3.3023.3817-4.8805 1.0227L5.0972 5.3015c-.1556-.2698-.4995-.3622-.7689-.2067-.2698.1557-.3623.4996-.2067.7694l1.996 3.4572C2.6841 11.238 0 14.8872 0 19.1667h24c0-4.2795-2.6841-7.9287-6.1185-9.8453"/>
+                </svg>
+                <span>App Android</span>
+                <span style={{ color: '#7F9F88', fontFamily: 'monospace', fontSize: '0.68rem', background: 'rgba(127,159,136,0.15)', padding: '1px 5px', borderRadius: '4px' }}>v1.0.0</span>
+              </button>
             </div>
           </div>
 
         </div>
       </footer>
+
+      {/* GESTOR DE COOKIES RGPD */}
+      <CookieBannerModal 
+        forceOpenModal={forceOpenCookies} 
+        onCloseModal={() => setForceOpenCookies(false)} 
+      />
+
+      {/* MODALES LEGALES Y RECURSOS DEL FOOTER */}
+      <LegalModals 
+        modalType={activeLegalModal} 
+        onClose={() => setActiveLegalModal(null)} 
+      />
+
+      {/* GUÍA DE INSTALACIÓN EN ANDROID */}
+      <ApkDownloadGuideModal isOpen={isGuideOpen} onClose={() => setIsGuideOpen(false)} />
 
       {/* MODAL DETALLES DEL PSICÓLOGO (FICHA PÚBLICA DEL MARKETPLACE) */}
       {selectedPsychologist && (
@@ -1677,7 +1770,7 @@ export default function LandingView({ onAuthSuccess, onEnterDemo }) {
                     className="btn btn-outline"
                     style={{ fontSize: '0.74rem', width: '100%', justifyContent: 'flex-start', padding: '10px 12px', height: 'auto', borderColor: 'rgba(255,255,255,0.06)', color: '#ffffff', textAlign: 'left', cursor: 'pointer' }}
                   >
-                    💬 Chat Diario con Walter (IA)
+                    💬 Chat Diario con Ánquer (IA)
                   </button>
                   <button 
                     onClick={() => { setShowDemoConsole(false); onEnterDemo('tisute@gmail.com', 'sesiones'); }}
@@ -1801,6 +1894,62 @@ export default function LandingView({ onAuthSuccess, onEnterDemo }) {
               </button>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* MODAL OVERLAY DE ACCESO / REGISTRO DIRECTO */}
+      {showAuthModal && (
+        <div 
+          className="modal-overlay flex-center"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(5, 33, 58, 0.85)',
+            backdropFilter: 'blur(10px)',
+            zIndex: 1000,
+            padding: '20px',
+            overflowY: 'auto',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowAuthModal(false);
+          }}
+        >
+          <div 
+            style={{
+              position: 'relative',
+              width: '100%',
+              maxWidth: '460px',
+              margin: 'auto'
+            }}
+          >
+            <button
+              onClick={() => setShowAuthModal(false)}
+              style={{
+                position: 'absolute',
+                top: '14px',
+                right: '14px',
+                zIndex: 20,
+                background: 'rgba(255,255,255,0.1)',
+                border: '1px solid rgba(255,255,255,0.2)',
+                borderRadius: '50%',
+                width: '32px',
+                height: '32px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#ffffff',
+                cursor: 'pointer',
+                transition: 'all 0.2s'
+              }}
+              title="Cerrar ventana de acceso"
+            >
+              <X size={16} />
+            </button>
+            <LoginView onAuthSuccess={onAuthSuccess} initialRole={selectedRole} />
           </div>
         </div>
       )}

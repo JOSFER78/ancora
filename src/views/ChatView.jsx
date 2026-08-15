@@ -326,7 +326,7 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
     setIsEditingSessionDiag(true);
   };
 
-  // Guardar la edición manual del diagnóstico de la sesión actual en Supabase
+  // Guardar la edición manual del diagnóstico de la sesión actual en Áncora
   const handleSaveSessionDiagnosis = async (e) => {
     if (e) e.preventDefault();
     if (!activeConversationId) return;
@@ -464,7 +464,7 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
   // Delete conversation by ID
   const handleDeleteConversation = async (convId) => {
     if (!convId) return;
-    if (confirm("¿Estás seguro de que deseas eliminar permanentemente esta sesión de tu historial en Supabase?")) {
+    if (confirm("¿Estás seguro de que deseas eliminar permanentemente esta sesión de tu historial en Áncora?")) {
       try {
         const { error } = await supabase
           .from('conversations')
@@ -518,17 +518,12 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
       ...(msg.image && { image: msg.image })
     }));
 
-    // Intentar obtener contexto técnico en tiempo real desde el TradingView Desktop local
-    let tradingviewContext = null;
-    // Contexto local de TradingView desactivado
-
     try {
-      // Invoke Supabase Edge Function 'chat-terapeuta'
       const data = await invokeChatTerapeuta({
+        patientId: user?.id || profile?.id,
         messages: apiMessages,
         currentMood: dailyMoodToday,
         conversationId: activeConversationId,
-        tradingviewContext,
         model: selectedModel,
         genericMode
       });
@@ -598,7 +593,7 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
     setInput('');
     setImageBase64(null);
 
-    // 1. Guardar mensaje en Supabase
+    // 1. Guardar mensaje en Áncora
     try {
       await supabase.from('messages').insert([{
         conversation_id: activeConversationId,
@@ -612,8 +607,6 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
 
     await sendMessageToAssistantSupport(updatedMessages);
   };
-
-  // Trigger de auditoría de trading desactivado
 
   const activeConv = conversations.find(c => c.id === activeConversationId);
   const isClosed = activeConv?.status === 'completed';
@@ -1167,7 +1160,7 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
             <button
               onClick={() => handleDeleteConversation(activeConversationId)}
               className="btn btn-outline flex-center"
-              title="Eliminar esta conversación de Supabase"
+              title="Eliminar esta conversación de Áncora"
               style={{ padding: '8px', borderRadius: 'var(--radius-sm)', height: '36px', width: '36px', minWidth: 0, borderColor: 'hsla(var(--rose), 0.3)', color: 'var(--color-rose)' }}
             >
               <Trash2 size={16} />

@@ -46,9 +46,7 @@ export default function PacienteDiarioView({ onMoodSaved, dailyMoodToday }) {
         energy_level: energy,
         notes: notes,
         sleep_hours: sleepHours,
-        triggers: selectedTriggers,
-        trading_today: false,
-        atomoxetina_taken: false
+        triggers: selectedTriggers
       };
       onMoodSaved(newMood);
     }
@@ -64,7 +62,7 @@ export default function PacienteDiarioView({ onMoodSaved, dailyMoodToday }) {
           Diario Emocional y Correlaciones
         </h3>
         <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '4px', lineHeight: 1.45 }}>
-          Registra tus niveles cotidianos. Walter procesa estos datos de forma local y anónima para extraer tendencias e identificar detonantes clínicos que tu psicólogo revisará contigo.
+          Registra tus niveles cotidianos. Ánquer procesa estos datos de forma local y anónima para extraer tendencias e identificar detonantes clínicos que tu psicólogo revisará contigo.
         </p>
       </div>
 
@@ -298,7 +296,7 @@ export default function PacienteDiarioView({ onMoodSaved, dailyMoodToday }) {
               Preparación de tu Próxima Sesión
             </h4>
             <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', lineHeight: 1.45, marginBottom: '14px' }}>
-              Walter ha estructurado estos temas pendientes para que los traigas a tu videollamada con María:
+              Ánquer ha estructurado estos temas clave para que los trates en tu próxima sesión con tu terapeuta:
             </p>
             
             <ul style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', paddingLeft: '20px', display: 'flex', flexDirection: 'column', gap: '8px', lineHeight: 1.4 }}>

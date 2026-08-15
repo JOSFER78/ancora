@@ -41,8 +41,8 @@ export default function PacienteTimelineView({ isVirtualDemo }) {
       id: 2,
       date: 'Ayer, 28 de Mayo',
       type: 'chat',
-      title: 'Chat de acompañamiento con Walter',
-      detail: 'Habló sobre el miedo a fallar en los entregables del trabajo. Walter estructuró 3 tareas conductuales.',
+      title: 'Chat de acompañamiento con Ánquer',
+      detail: 'Habló sobre el miedo a fallar en los entregables del trabajo. Ánquer estructuró 3 tareas conductuales.',
       tag: 'Autoexigencia'
     },
     {

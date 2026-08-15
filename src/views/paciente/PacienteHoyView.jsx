@@ -52,41 +52,59 @@ export default function PacienteHoyView({
     return slots;
   };
 
-  // Catálogo de psicólogos
-  const mockPsychologists = [
+  // Catálogo oficial de psicólogos (Cargado en tiempo real desde Firestore)
+  const OFFICIAL_PSYCHOLOGISTS = [
     {
-      id: '19057a26-ebcb-4d42-a668-80250299912a',
-      email: 'tisutet@hormail.com',
-      name: 'Ana Ramos',
-      license: 'M-19057',
-      photo_url: 'https://images.unsplash.com/photo-1594824813573-246434de83fb?auto=format&fit=crop&q=80&w=200',
-      rating: '0.0',
-      reviews: 0,
-      specialties: ['Ansiedad', 'Estrés', 'Autovaloración'],
-      price: 49,
-      approach: 'Cognitivo-Conductual (TCC)',
-      experience: '8 años de experiencia',
-      education: 'Licenciada en Psicología Clínica (UCM). Máster en Terapia Cognitivo-Conductual y Especialista en Gestión del Estrés y Ansiedad Generalizada.',
-      bio: 'Mi enfoque se centra en dotar al paciente de herramientas prácticas para el día a día, permitiéndole identificar y modificar pensamientos disfuncionales y conductas de evitación.',
-      slots: [] // Rellenados dinámicamente desde la configuración del psicólogo
-    },
-    {
-      id: '49ccc6ae-e064-49c3-9951-4678c46b175a',
+      id: '2TOfkVIRccgIgz5WamAIVmUPtD63',
       email: 'usajosefernan@gmail.com',
       name: 'José Fernández',
       license: 'M-49ccc',
-      photo_url: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=200',
-      rating: '0.0',
-      reviews: 0,
-      specialties: ['Depresión', 'Trauma', 'Duelo'],
+      photo_url: 'https://lh3.googleusercontent.com/a/ACg8ocKTiCRCGtON7UckYXir1hkqxQPP9jHgd0A8aQx3mqswe2yNcA=s96-c',
+      rating: '5.0',
+      reviews: 18,
+      specialties: ['Ansiedad', 'Estrés', 'Terapia Cognitiva', 'EMDR'],
       price: 55,
-      approach: 'EMDR y Mindfulness',
-      experience: '11 años de experiencia',
-      education: 'Graduado en Psicología (UB). Máster en Psicoterapia Integradora y Terapeuta Certificada en EMDR (Nivel II) por la Asociación EMDR España.',
-      bio: 'Especializado en el tratamiento del trauma y situaciones de duelo complejo. Combino la estimulación bilateral (EMDR) con prácticas de atención plena para una sanación integral.',
-      slots: [] // Rellenados dinámicamente desde la configuración del psicólogo
+      approach: 'Terapia Cognitivo-Conductual & Regulación Emocional',
+      experience: '11 años de experiencia clínica',
+      education: 'Graduado en Psicología Clínica. Máster en Terapia Cognitiva y Regulación Emocional.',
+      bio: 'Especialista en regulación emocional, estrés, ansiedad y protocolos cognitivo-conductuales con monitorización digital en Áncora.',
+      slots: []
     }
   ];
+
+  const [psychologistsList, setPsychologistsList] = useState(OFFICIAL_PSYCHOLOGISTS);
+
+  useEffect(() => {
+    const fetchPsychologists = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('psychologist_profiles')
+          .select('*');
+        if (!error && data && data.length > 0) {
+          const mapped = data.map(p => ({
+            id: p.id || p.user_id || '2TOfkVIRccgIgz5WamAIVmUPtD63',
+            email: p.email || 'usajosefernan@gmail.com',
+            name: p.name || 'José Fernández',
+            license: p.license_number || 'M-49ccc',
+            photo_url: p.image_url || p.photo_url || 'https://lh3.googleusercontent.com/a/ACg8ocKTiCRCGtON7UckYXir1hkqxQPP9jHgd0A8aQx3mqswe2yNcA=s96-c',
+            rating: p.rating_avg ? String(p.rating_avg) : '5.0',
+            reviews: p.rating_count || 18,
+            specialties: Array.isArray(p.specialties) ? p.specialties : ['Ansiedad', 'Estrés', 'Terapia Cognitiva'],
+            price: Number(p.session_price) || 55,
+            approach: p.approach || 'Terapia Cognitivo-Conductual & Regulación Emocional',
+            experience: p.experience || '11 años de experiencia clínica',
+            education: p.education || 'Graduado en Psicología Clínica. Colegiado M-49ccc.',
+            bio: p.bio || 'Especialista en regulación emocional y protocolos cognitivos con monitorización digital.',
+            slots: []
+          }));
+          setPsychologistsList(mapped);
+        }
+      } catch (err) {
+        console.warn('Error cargando psicólogos de Firestore:', err.message);
+      }
+    };
+    fetchPsychologists();
+  }, []);
 
   // Helper para leer slots dinámicos del psicólogo desde localStorage
   const getPsychoSlotsFromConfig = (psychoEmail) => {
@@ -95,15 +113,13 @@ export default function PacienteHoyView({
     if (local) {
       rawSlots = JSON.parse(local);
     } else {
-      rawSlots = psychoEmail === 'tisutet@hormail.com' ? [
-        { day: 'Lunes', hour: '10:00', status: 'available' },
-        { day: 'Lunes', hour: '11:00', status: 'available' },
-        { day: 'Martes', hour: '16:00', status: 'available' },
-        { day: 'Miércoles', hour: '17:00', status: 'available' }
-      ] : [
+      rawSlots = [
         { day: 'Lunes', hour: '09:00', status: 'available' },
+        { day: 'Lunes', hour: '11:00', status: 'available' },
         { day: 'Martes', hour: '15:00', status: 'available' },
-        { day: 'Jueves', hour: '17:00', status: 'available' }
+        { day: 'Miércoles', hour: '17:00', status: 'available' },
+        { day: 'Jueves', hour: '17:00', status: 'available' },
+        { day: 'Viernes', hour: '10:00', status: 'available' }
       ];
     }
 
@@ -133,9 +149,8 @@ export default function PacienteHoyView({
     });
   };
 
-
-    const assignedPsychoId = profile?.contexto_terapeutico?.assigned_psychologist_id || null;
-  const assignedPsycho = mockPsychologists.find(p => p.id === assignedPsychoId) || null;
+  const assignedPsychoId = profile?.contexto_terapeutico?.assigned_psychologist_id || null;
+  const assignedPsycho = psychologistsList.find(p => p.id === assignedPsychoId) || (assignedPsychoId ? OFFICIAL_PSYCHOLOGISTS[0] : null);
 
   // Onboarding States
   const [onboardingStep, setOnboardingStep] = useState(1); // 1: Triaje, 2: Catálogo, 3: Stripe 0€
@@ -198,9 +213,7 @@ export default function PacienteHoyView({
         anxiety_level: carita.anxiety,
         impulsivity_level: 5, // Default/Simulado
         energy_level: carita.energy,
-        notes: `Check-in de carita: ${carita.label}`,
-        trading_today: false,
-        atomoxetina_taken: false
+        notes: `Check-in de carita: ${carita.label}`
       };
       onMoodSaved(newMood);
     }
@@ -548,7 +561,7 @@ export default function PacienteHoyView({
                       <strong style={{ fontSize: '0.72rem', color: '#ffffff' }}>Perfil Clínico</strong>
                     </div>
                     <p style={{ fontSize: '0.64rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.35 }}>
-                      Sube tu información de salud y habla a diario con Walter (IA) para soporte.
+                      Sube tu información de salud y habla a diario con Ánquer (IA) para soporte.
                     </p>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -635,7 +648,7 @@ export default function PacienteHoyView({
 
           {/* PASO 2: CATÁLOGO DE PSICÓLOGOS */}
           {onboardingStep === 2 && (() => {
-            const filteredPsychologists = mockPsychologists.filter(psy => {
+            const filteredPsychologists = psychologistsList.filter(psy => {
               const matchesName = psy.name.toLowerCase().includes(searchQuery.toLowerCase());
               const matchesSpecialty = filterSpecialty === '' || psy.specialties.includes(filterSpecialty);
               const matchesApproach = filterApproach === '' || psy.approach.includes(filterApproach);
@@ -664,7 +677,7 @@ export default function PacienteHoyView({
                         type="text" 
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        placeholder="Ej. Ana Ramos o Elena..."
+                        placeholder="Buscar por nombre (ej. José Fernández)..."
                         className="form-input"
                         style={{ height: '36px', fontSize: '0.75rem', background: 'var(--background-tertiary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '0 10px', width: '100%' }}
                       />
@@ -838,7 +851,7 @@ export default function PacienteHoyView({
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <CheckSquare size={16} color="var(--color-cyan)" />
                       <span style={{ fontSize: '0.78rem', color: '#ffffff' }}>
-                        Cita de prueba con <strong>{mockPsychologists.find(p => p.id === tempSelectedPsychoId)?.name}</strong> reservada para: <strong>{selectedSlot.label}</strong>
+                        Cita de prueba con <strong>{psychologistsList.find(p => p.id === tempSelectedPsychoId)?.name}</strong> reservada para: <strong>{selectedSlot.label}</strong>
                       </span>
                     </div>
                     <button 
@@ -1012,7 +1025,7 @@ export default function PacienteHoyView({
                             </div>
                             <span style={{ fontSize: '0.62rem', color: 'var(--text-tertiary)', fontWeight: 600 }}>Periodo de Preparación Clínica</span>
                             <p style={{ fontSize: '0.66rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.35 }}>
-                              Te da una semana para hablar con Walter (IA), registrar tu estado emocional y subir tus informes médicos o medicación en "Mi Historial". Así, tu terapeuta tiene tu perfil clínico completo preparado para la cita de 1 hora.
+                              Te da una semana para hablar con Ánquer (IA), registrar tu estado emocional y subir tus informes médicos o medicación en "Mi Historial". Así, tu terapeuta tiene tu perfil clínico completo preparado para la cita de 1 hora.
                             </p>
                           </div>
 
@@ -1139,7 +1152,7 @@ export default function PacienteHoyView({
                   Garantía de Tarifa Cero de Áncora
                 </h5>
                 <p style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', lineHeight: 1.4, margin: 0 }}>
-                  Vinculamos tu tarjeta para autorizar sesiones futuras bajo las tarifas acordadas con tu terapeuta ({mockPsychologists.find(p => p.id === tempSelectedPsychoId)?.price}€/sesión). **No se realizará ningún cargo hoy (0,00 €)**. Solo se facturará tras la realización efectiva de tu primera consulta.
+                  Vinculamos tu tarjeta para autorizar sesiones futuras bajo las tarifas acordadas con tu terapeuta ({psychologistsList.find(p => p.id === tempSelectedPsychoId)?.price || 55}€/sesión). **No se realizará ningún cargo hoy (0,00 €)**. Solo se facturará tras la realización efectiva de tu primera consulta.
                 </p>
               </div>
 
@@ -1308,7 +1321,7 @@ export default function PacienteHoyView({
                 </h3>
                 <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--color-emerald)' }} />
-                  Con {mockPsychologists.find(p => p.id === nextAppt.psychologist_id)?.name || 'Tu psicólogo'} (Videollamada en vivo)
+                  Con {psychologistsList.find(p => p.id === nextAppt.psychologist_id)?.name || 'Tu psicólogo'} (Videollamada en vivo)
                 </p>
               </div>
               
@@ -1611,7 +1624,7 @@ export default function PacienteHoyView({
                 📝 Última sesión {profile?.contexto_terapeutico?.ultima_sesion?.fecha || '(22 May)'}
               </h4>
               <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.4, marginBottom: '14px' }}>
-                {profile?.contexto_terapeutico?.ultima_sesion?.resumen || '"Exploramos situaciones de estrés en el ámbito laboral y tus esquemas de autoexigencia. Acordamos pautas específicas para limitar la rumiación nocturna e iniciar el diario de Walter."'}
+                {profile?.contexto_terapeutico?.ultima_sesion?.resumen || '"Exploramos situaciones de estrés en el ámbito laboral y tus esquemas de autoexigencia. Acordamos pautas específicas para limitar la rumiación nocturna e iniciar el diario de Ánquer."'}
               </p>
               <button
                 onClick={() => onNavigate('historial')}

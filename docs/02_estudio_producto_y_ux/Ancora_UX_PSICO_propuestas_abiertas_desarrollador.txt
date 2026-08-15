@@ -1,0 +1,137 @@
+ÁNCORA UX
+Informe de propuestas abiertas para el desarrollador
+Visión del psicólogo: continuidad clínica, baja carga administrativa y soberanía profesional
+Enfoque del documento
+Este informe no está escrito como una lista cerrada de órdenes de interfaz. Está planteado como un marco de razonamiento para que el desarrollador valore alternativas. La idea central es que Áncora no sea otro EHR ni un CRM sanitario, sino una cabina clínica privada: el lugar donde el psicólogo prepara, revisa, documenta y sostiene la continuidad entre sesiones con menos fricción y más criterio.
+Fuentes de partida: los dos documentos aportados sobre la mirada del psicólogo: ancoraUX _A_PSICO.md y ancoraUX _B_PSICO.md. La síntesis conserva la voz en primera persona clínica, pero la transforma en propuestas más abiertas, discutibles y útiles para tomar decisiones de producto.
+Resumen ejecutivo
+Como psicólogo, no adoptaría Áncora porque tenga muchas pantallas, una IA llamativa o un portal bonito. La adoptaría si reduce mi carga administrativa real, me ayuda a preparar sesiones en minutos y me permite documentar sin robar energía a la relación terapéutica. El valor está en que la herramienta recuerde, ordene y sugiera; no en que piense por mí.
+El punto de vista profesional cambia el centro de gravedad del producto. Para el paciente, la interfaz debe sentirse segura y humana. Para el psicólogo, debe sentirse rápida, sobria, trazable y clínicamente respetuosa. Yo necesito que la app me ayude a responder cinco preguntas: a quién debo revisar hoy, qué ha cambiado, qué evidencia lo sostiene, qué haré en sesión y qué queda documentado después.
+La privacidad debe plantearse aquí de forma madura y realista. Si un paciente usa Áncora dentro de un proceso terapéutico, debe entender que lo que escribe, graba o aporta forma parte del material clínico que su psicólogo puede revisar. No es un diario secreto separado de la terapia. Es la extensión digital del encuadre terapéutico, en un sistema privado, sin servidores externos ni IAs externas. Por tanto, la privacidad no debe presentarse como desconfianza frente al psicólogo, sino como claridad de encuadre: qué se registra, qué ve el profesional, cómo se audita y qué límites existen.
+Principios de diseño que deberían guiar la versión del psicólogo
+* 1. Menos carga, más criterio. Cada pantalla debería ahorrar tiempo clínico o mejorar la precisión del razonamiento. Si una función no reduce clics, no ordena información o no mejora la sesión, quizá no debe estar en el flujo principal.
+* 2. IA como taquígrafa silenciosa. La IA puede resumir, estructurar, detectar cambios, preparar borradores y recuperar evidencias. No debería sonar como un supervisor clínico ni como una entidad que diagnostica por encima del psicólogo.
+* 3. Dato fuente, análisis y criterio separados. El desarrollador debería preservar tres capas visuales y técnicas: lo que dijo o subió el paciente, lo que el sistema organiza automáticamente y lo que el psicólogo valida como juicio profesional.
+* 4. Privacidad como encuadre terapéutico. No conviene vender privacidad como si el paciente tuviera que protegerse del psicólogo. Conviene explicarla como en consulta: confidencialidad profesional, trazabilidad, acceso legítimo del terapeuta y ausencia de procesamiento externo.
+* 5. Diseño para 30 segundos. Antes de una sesión, el psicólogo no tiene diez minutos de lectura. Necesita una radiografía breve del caso: riesgo, cambio, foco, pendiente y evidencia clave.
+* 6. Alertas sin histeria visual. El riesgo debe ser ineludible, pero no espectacular. El exceso de rojo, pop-ups y alarmas produce fatiga y puede empeorar la toma de decisiones.
+* 7. Todo debe poder revisarse. El sistema puede inferir, pero debe permitir corregir. La confianza clínica nace de poder abrir fuente, editar, descartar, validar y dejar rastro.
+Idea madre para el desarrollador
+Áncora no debería comportarse como una app que le dice al psicólogo qué hacer. Debería comportarse como una mesa de trabajo clínica: limpia la superficie, coloca delante lo importante, guarda lo que se dijo y deja al profesional decidir.
+Cambio de tono: de instrucciones cerradas a propuestas que invitan a razonar
+En vez de formularlo asíMejor plantearlo asíPor qué ayuda al desarrolladorImplementar un botón obligatorio de X.Valorar si una acción rápida de un toque reduce fricción en este punto del flujo.Invita a pensar en el problema de fondo: tiempo, clics y carga cognitiva.La IA debe hacer Y.Explorar si la IA puede preparar un borrador revisable, siempre con fuente visible y validación humana.Evita que el producto derive hacia automatización clínica peligrosa.Ocultar al psicólogo ciertas entradas del paciente.Aclarar desde onboarding que lo registrado en Áncora forma parte del material terapéutico revisable por el psicólogo.Respeta el encuadre real de terapia y evita falsas expectativas de privacidad interna.Crear más paneles.Preguntar si una pantalla nueva responde a una pregunta clínica que hoy no está resuelta.Frena la proliferación de funciones y prioriza utilidad.Poner alertas rojas de riesgo.Diseñar una jerarquía de riesgo visible, sobria y accionable.Mantiene seguridad sin saturar visualmente al profesional.
+Arquitectura recomendada desde la consulta clínica
+La arquitectura actual de Áncora ya apunta en la dirección correcta: Cartera Clínica, Semana Terapéutica, Paciente 360, Agenda, Sesiones, Privacidad, Evidencias, Análisis IA y Criterio Profesional. La propuesta no es rehacerla entera, sino ajustar la jerarquía para que el psicólogo trabaje con menos fricción.
+PantallaPregunta clínica que debe responderPropuesta abierta de diseñoCartera ClínicaA quién tengo que mirar hoy y por qué.Convertirla en una bandeja de priorización, no en una lista administrativa. Filtros por riesgo, sesión próxima y actividad nueva.AgendaQué tengo hoy y qué preparación mínima requiere cada sesión.Integrar calendario y preparación en una misma vista. La agenda no debería ser solo horarios; debería anticipar carga clínica.Paciente 360Cuál es la formulación viva del caso.Mantener una pantalla única con capas: brief, ficha mínima, evidencias, análisis automático y criterio profesional.Semana TerapéuticaQué cambió desde la última sesión.Presentar una narrativa breve: evolución, riesgos, tareas, frases clave y pendientes de entrevista.EvidenciasDe dónde sale esta conclusión.Vista raw-first: fuente, extracto, fecha, contexto y opción de validar, corregir o descartar.Sesión / SOAPQué se habló y qué queda clínicamente documentado.Borrador asistido por IA, editable y firmable por el psicólogo. Nada validado automáticamente.Chat / DiarioQué material asíncrono merece llegar a sesión.Digest clínico por tema y semana, sin crear expectativa de respuesta inmediata 24/7.PrivacidadCuál es el encuadre de uso y acceso.Explicar que es espacio terapéutico privado: el psicólogo puede revisar el material compartido en Áncora; no hay servidores ni IAs externas.
+1. Cartera Clínica y Agenda: priorizar sin entrar en cada expediente
+Como psicólogo, mi jornada empieza por priorizar. No quiero abrir pacientes uno por uno para saber si hay algo importante. La Cartera debería comportarse como una bandeja clínica de decisión rápida.
+Sugerencias para valorar
+* Organizar tarjetas o filas de pacientes por riesgo, próxima sesión y actividad nueva desde la última revisión.
+* Permitir estados simples y consistentes: nuevo, pendiente de leer, revisado, preparado, sesión realizada, SOAP validado y cerrado por esta semana.
+* Añadir una acción de un toque: abrir brief, marcar revisado, preparar sesión, registrar acción de riesgo.
+* Pensar si un formato tipo Kanban ayuda realmente o si una tabla clínica compacta es más eficiente para psicólogos con 25-40 pacientes activos.
+* Incluir un indicador de carga semanal: no como productividad, sino como prevención de saturación administrativa.
+Hipótesis de producto
+Si la Cartera permite revisar la situación de todos los pacientes activos en 5-10 minutos, el psicólogo percibirá valor inmediato. Si obliga a abrir expedientes completos para cada revisión básica, se convertirá en otra herramienta pesada.
+2. Paciente 360: radiografía clínica en 30 segundos
+Paciente 360 debería ser la pantalla donde el psicólogo recupera el hilo del caso justo antes de entrar en sesión. No debería parecer una carpeta de documentos, sino una formulación clínica viva y verificable.
+BloqueQué debería mostrarQué debería evitarBrief clínicoMotivo actual, riesgo, foco terapéutico, cambio desde última sesión y pendientes clave.Textos largos, frases genéricas o resúmenes sin fuente.Ficha mínimaDatos básicos, antecedentes, sueño, consumo, medicación, red de apoyo, huecos pendientes.Forzar campos obligatorios que interrumpan la sesión.EvidenciasCitas, audios, notas y documentos con procedencia clara.Convertir documentos en una lista fría de archivos.Análisis IAPatrones probables, contradicciones, cambios y preguntas sugeridas.Diagnósticos automáticos o conclusiones cerradas.Criterio profesionalHipótesis, formulación, juicio clínico y decisiones firmadas por el psicólogo.Mezclar criterio humano con resumen automático.
+Criterio para decidir diseño
+Paciente 360 será bueno si el psicólogo puede entrar, recordar el caso y formular dos o tres focos de sesión sin sentirse arrastrado a leerlo todo. La profundidad debe existir, pero bajo demanda.
+3. Semana Terapéutica profesional: narrativa breve, no tablero de productividad
+La semana terapéutica del psicólogo debería responder a una pregunta simple: qué pasó desde la última vez que vi a esta persona. No debe funcionar como checklist de rendimiento del paciente ni como dashboard de métricas frías.
+* Abrir con una frase de síntesis clínica: "más evitación, peor sueño, sin riesgo agudo nuevo".
+* Separar lo objetivo de lo interpretativo: registros del paciente, cambios detectados, hipótesis del sistema y criterio del psicólogo.
+* Mostrar tareas o acuerdos como seguimiento clínico, no como cumplimiento escolar.
+* Permitir fijar tres hallazgos para sesión: una preocupación, una oportunidad y una pregunta.
+* Incluir una comparación suave con la semana anterior, solo si aporta orientación.
+4. Evidencias y raw-first: confianza a través de la fuente
+El psicólogo necesita poder confiar en el sistema. Esa confianza no nace de que la IA parezca segura, sino de que pueda abrir la evidencia. Por eso conviene mantener una filosofía raw-first: primero el material fuente, luego el resumen.
+SituaciónCómo podría resolverlo ÁncoraValor clínicoEl paciente menciona una crisis en un audio.Transcripción con fragmento destacado, fecha, contexto y enlace al audio original.Permite revisar tono, matiz y gravedad.La IA detecta patrón repetido.Mostrar las 3-5 evidencias que sostienen el patrón.Evita que el psicólogo acepte una inferencia opaca.Hay información ambigua.Crear una aclaración pendiente en lugar de cerrar una conclusión.Protege la anamnesis de falsas certezas.Hay contradicción entre dos entradas.Señalar versiones incompatibles y proponer pregunta de sesión.Convierte el problema de datos en material clínico.El psicólogo valida un hecho.Pasarlo de "extraído" a "validado clínicamente" con fecha y autor.Genera trazabilidad y seguridad medicolegal.
+5. IA como apoyo clínico privado, no como terapeuta ni auditor
+Desde este punto de vista, la IA de Áncora se entiende dentro de un entorno privado, sin servidores externos ni IAs externas. Eso cambia mucho el encuadre: no se trata de vender una IA misteriosa, sino de una herramienta interna que ayuda a ordenar material terapéutico.
+Usos que sí parecen valiosos
+* Resumir material asíncrono antes de sesión.
+* Extraer hechos, eventos, relaciones, temas y cambios de tono.
+* Preparar borradores SOAP o DAP editables.
+* Detectar huecos de anamnesis y generar preguntas discretas.
+* Agrupar patrones longitudinales con fuentes visibles.
+* Ayudar a redactar un resumen compartible con el paciente, siempre revisado por el psicólogo.
+Límites que conviene preservar
+* No diagnosticar automáticamente.
+* No sustituir el criterio clínico.
+* No enviar resúmenes al paciente sin revisión humana.
+* No cerrar alertas de riesgo sin acción registrada.
+* No mezclar visualmente "análisis IA" con "criterio profesional".
+6. Sesiones y documentación: antes, durante y después
+El mayor valor profesional de Áncora aparece si reduce el tiempo de preparación y documentación. La app debería acompañar tres momentos: preparación de sesión, desarrollo de sesión y cierre documental.
+MomentoPropuesta abiertaCriterio de éxitoAntesBrief de 2 minutos con foco, riesgo, cambios, tareas y preguntas pendientes.El psicólogo llega orientado sin releer todo el historial.DuranteModo sesión sobrio: agenda clínica, preguntas pendientes y espacio para marcar hallazgos.La interfaz no compite con la presencia terapéutica.DespuésBorrador SOAP/DAP a partir de notas, dictado o material fijado.El psicólogo edita, valida y firma en pocos minutos.CompartirResumen para paciente en lenguaje claro, separado de notas clínicas internas.Nada sensible se comparte por accidente.SeguimientoAcuerdos y tareas flexibles vinculados a la siguiente semana.La continuidad no depende de la memoria del profesional.
+Cómo plantearlo al desarrollador
+No se trata de pedir "un generador SOAP" sin más. La pregunta es: qué flujo mínimo permite al psicólogo cerrar una sesión con una nota útil, firmada y trazable en menos de tres minutos, sin que el sistema escriba por encima de su criterio.
+7. Chat y diario asíncrono: material clínico, no mensajería ilimitada
+El paciente ya está dentro de una app terapéutica. Si escribe o graba algo en Áncora, lo razonable es que entienda que ese material puede ser revisado por su psicólogo. El diseño no debería crear la fantasía de un diario secreto dentro del espacio clínico, salvo que se defina explícitamente una función separada para notas privadas.
+Lo importante es encuadrarlo bien: Áncora puede decir desde el inicio que el diario, los audios y las notas sirven para preparar mejor la terapia. Si el paciente no quiere que un contenido forme parte del proceso, no debería registrarlo en ese canal. Eso es parecido a consulta: lo que se dice al psicólogo entra en el proceso terapéutico y queda protegido por confidencialidad profesional.
+Sugerencias de diseño
+* Mostrar el chat del profesional como digest semanal, no como conversación infinita.
+* Agrupar por temas: riesgo, sueño, conflictos, síntomas, avances, tareas y dudas.
+* Permitir marcar entradas como "llevar a sesión", "requiere aclaración" o "integrar en SOAP".
+* Evitar que el paciente espere respuesta inmediata si el servicio no la ofrece.
+* Permitir respuestas tipo encuadre: "Lo he visto y lo trabajamos en sesión".
+8. Alertas y riesgo: seguridad sin ruido innecesario
+El riesgo debe ser visible y trazable. Pero la interfaz no debería convertirse en un sistema de alarma permanente, porque eso aumenta fatiga y reduce claridad. Conviene diseñar alertas por nivel, con evidencia y acción asociada.
+NivelCómo podría verseAcción sugerida para valorarCríticoBanner persistente sobrio, extracto fuente y botón de protocolo.Revisar ahora, registrar acción y no permitir cierre sin motivo.AltoTarjeta destacada en Paciente 360 y Cartera.Preparar sesión con foco de seguridad y plan de seguimiento.ModeradoIndicador en semana terapéutica o área de cambios.Explorar en sesión y monitorizar evolución.Bajo / contextualChip discreto asociado a evidencia.Mantener en observación sin saturar pantalla.
+Lo más importante no es el color de la alerta, sino su trazabilidad: qué la disparó, cuándo, con qué evidencia, qué profesional la revisó y qué acción se tomó.
+9. Privacidad y confidencialidad: plantearlo como terapia, no como app de consumo
+En la versión del paciente anterior se había puesto mucho énfasis en controles granulares y posibles miedos a exposición. Desde la mirada del psicólogo conviene ajustar el mensaje: Áncora no es una red social ni un diario personal aislado. Es una herramienta clínica privada dentro de una relación terapéutica.
+Si el sistema no usa servidores externos ni IAs externas, ese punto debería comunicarse con mucha claridad. No hace falta dramatizar la privacidad; hace falta explicarla bien. El paciente debería saber que el psicólogo puede leer el material que introduce en Áncora, que ese acceso forma parte del encuadre terapéutico y que el sistema protege esa información como se protege una historia clínica.
+TemaCómo plantearlo mejorEvitarAcceso del psicólogo"Lo que compartas en Áncora podrá ser revisado por tu psicólogo para preparar y dar continuidad a tu terapia."Simular que el diario es secreto si en realidad forma parte del proceso.IA privada"La IA interna ayuda a ordenar y resumir; no usa servicios externos ni sustituye al psicólogo."Presentarla como una inteligencia autónoma o externa.Confidencialidad"Tus datos forman parte de tu espacio clínico privado y se tratan bajo confidencialidad profesional."Lenguaje legal frío que no explica el encuadre terapéutico.ControlPermitir exportación, rectificación y revisión de datos cuando corresponda.Hacer de la privacidad un laberinto de toggles que distrae del proceso clínico.TransparenciaMostrar cuándo algo fue leído, resumido o incorporado a sesión.Ocultar actividad relevante del sistema o del profesional.
+Frase de encuadre posible
+Áncora funciona como una extensión privada de tu terapia. Lo que registres aquí puede ayudar a tu psicólogo a entender mejor tu semana y preparar tus sesiones. Si hay algo que no quieres trabajar en terapia, no tienes que registrarlo en este espacio.
+10. Árbol de vida, genograma y línea temporal
+Estos módulos pueden ser muy diferenciales si se diseñan como herramientas de formulación clínica y no como visualizaciones decorativas. El psicólogo necesita ver relaciones, etapas, eventos, duelos, apoyos y repeticiones de patrones.
+* El genograma debería permitir vínculos ambiguos, rupturas, apoyos, conflictos y figuras protectoras, sin forzar categorías rígidas.
+* La línea temporal debería aceptar fechas aproximadas y eventos pendientes de confirmar.
+* Cada nodo o evento debería enlazar con una evidencia o nota de procedencia.
+* El sistema debería permitir filtrar por dominio: familia, pareja, trabajo, salud, crisis, medicación, pérdidas y avances.
+* La interfaz debería evitar dramatismo visual: sobria, útil y rápida de leer.
+11. Estética profesional: silencio visual y ergonomía de consulta
+La interfaz del psicólogo no debería parecer una herramienta comercial ni un sistema hospitalario antiguo. Tiene que ser sobria, rápida y descansada. El profesional trabaja muchas horas leyendo material emocionalmente intenso; la estética también es salud laboral.
+AspectoSugerenciaRazón clínicaColorPaleta desaturada, alertas sobrias y modo oscuro bien calibrado.Reduce fatiga visual en consultas con luz tenue.TipografíaAlta legibilidad, buen interlineado y jerarquías claras.Permite escaneo rápido antes de sesión.NavegaciónMenú persistente y ubicaciones estables.Evita reaprender la app entre sesiones.DensidadInformación compacta, pero con profundidad desplegable.El psicólogo necesita síntesis sin perder acceso al detalle.LenguajeDescriptivo y respetuoso: "evidencia detectada", "revisar", "validar".Refuerza soberanía profesional y evita tono directivo.
+Microcopy sugerido para preservar soberanía clínica
+ContextoTexto posibleAnálisis IA"Análisis automático de datos. No es diagnóstico. Revisa fuentes antes de validar."Borrador SOAP"Borrador preparado para revisión. Solo será parte del historial cuando lo firmes."Evidencia nueva"Hay material nuevo desde tu última revisión. Puedes abrir el brief o revisarlo después."Riesgo"Riesgo detectado con evidencia disponible. Requiere acción o cierre justificado."Chat paciente"Entrada recibida para seguimiento terapéutico. No implica respuesta inmediata fuera de sesión."Privacidad"Este es un espacio clínico privado. Tu psicólogo puede revisar lo que compartes aquí para acompañar tu proceso."Genograma"Relación pendiente de confirmar. Puedes revisarla en sesión antes de validarla."Cierre semanal"Semana revisada. Quedan pendientes 2 preguntas para próxima sesión."
+Roadmap sugerido: empezar por el valor clínico, no por lo vistoso
+Si el desarrollador necesita razonar prioridades, mi recomendación sería ordenar el producto según valor clínico y reducción de fricción. No empezaría por visualizaciones bonitas si todavía no existe una cartera eficaz, un brief útil y una nota clínica validable.
+PrioridadMóduloPor qué primero / despuésP0Cartera Clínica + Brief de sesiónEs la puerta de entrada diaria. Si no ahorra tiempo desde el primer uso, el psicólogo no adopta la herramienta.P0Evidencias raw-first + procedenciaSin fuente visible no hay confianza clínica.P0Alertas de riesgo con trazabilidadSeguridad y responsabilidad profesional.P0SOAP asistido y firma humanaReduce carga administrativa de forma tangible.P1Agenda y balanceador de cargaOptimiza operación semanal cuando el núcleo clínico ya funciona.P1Chat/diario como digest clínicoDa continuidad entre sesiones sin abrir mensajería ilimitada.P1Genograma y línea temporalAporta profundidad de formulación cuando ya hay datos estructurados.P2Resumen compartible con pacienteMuy útil, pero debe ir después de separar bien nota clínica y comunicación al paciente.P2Analíticas avanzadasSolo cuando la base sea fiable, trazable y usada de verdad.
+Matriz impacto/esfuerzo para que el desarrollador valore cambios
+IdeaImpacto clínicoEsfuerzo estimadoComentarioBrief de 2 minutos por pacienteMuy altoMedioProbablemente el mayor desbloqueador de adopción.Estados consistentes en todo el sistemaMuy altoMedioEvita confusión y permite trazabilidad.Botones de acción rápida en CarteraAltoBajo/medioReduce clics y hace que la app se sienta ligera.Raw-first con fuente expandibleMuy altoAltoClave para confianza en IA.SOAP asistido con firmaMuy altoAltoAhorro administrativo directo.Alertas con playbookMuy altoAltoNo es vistoso, pero es esencial.Genograma visual avanzadoMedio/altoAltoDiferencial, pero no debería preceder al núcleo.Modo oscuro profesionalMedioBajo/medioMejora comodidad y percepción de calidad.Balanceador de carga semanalMedio/altoMedioMuy valioso para carteras grandes.Gamificación profesionalBajoMedioNo priorizar. Puede resultar infantil o punitiva.
+Preguntas útiles para el desarrollador antes de implementar
+1. Qué decisión clínica concreta ayuda a tomar esta pantalla?
+2. Puede el psicólogo entender lo importante en 30 segundos?
+3. Dónde está la fuente de cada afirmación automática?
+4. Qué parte es dato del paciente, qué parte es análisis del sistema y qué parte es criterio profesional?
+5. La acción principal requiere un clic, dos clics o una navegación larga?
+6. Esta función reduce carga administrativa o añade otra tarea?
+7. Qué pasa si la IA se equivoca? Se puede corregir, descartar y auditar?
+8. Qué expectativa de respuesta humana crea el chat?
+9. Cómo entiende el paciente que lo compartido aquí puede ser leído por su psicólogo?
+10. Qué queda documentado al cerrar una alerta, una sesión o una semana?
+Criterios de aceptación generales
+* El psicólogo puede abrir su cartera y saber en menos de 10 segundos qué pacientes requieren atención prioritaria.
+* Antes de una sesión, puede preparar el caso en dos minutos sin leer conversaciones completas.
+* Toda inferencia automática enlaza con evidencia visible.
+* El criterio profesional queda separado y marcado como validado por el psicólogo.
+* Ningún borrador SOAP, resumen o alerta se cierra como definitivo sin acción humana.
+* El paciente entiende que Áncora es un espacio terapéutico privado revisable por su psicólogo.
+* La interfaz evita lenguaje directivo hacia el profesional y usa tono de apoyo clínico.
+* Las alertas son visibles, sobrias y accionables, no invasivas ni teatrales.
+* La app reduce clics reales en comparación con registrar notas manualmente.
+* El sistema mantiene trazabilidad: quién vio, validó, corrigió o cerró cada elemento relevante.
+Conclusión
+Desde la mirada del psicólogo, Áncora puede ser una herramienta muy valiosa si se mantiene fiel a una idea sencilla: no debe competir con el criterio clínico ni convertir la terapia en burocracia digital. Debe ordenar, recordar, preparar y documentar con discreción.
+La propuesta más sólida no es decirle al desarrollador exactamente qué botón poner, sino darle criterios para decidir: reducir carga, preservar soberanía profesional, mostrar fuentes, separar capas, encuadrar bien la privacidad y diseñar para consultas reales con poco tiempo entre pacientes.
+Si Áncora logra sentirse como una cabina clínica privada - no como un CRM, no como un EHR pesado, no como una IA terapeuta -, entonces el psicólogo no la vivirá como una obligación más. La vivirá como una herramienta que le permite llegar mejor a sesión, sostener mejor el proceso y terminar el día con menos peso administrativo.
+Apéndice: síntesis de enfoque para compartir con desarrollo
+Mensaje breve para el equipo técnico
+No diseñemos Áncora como una herramienta que dirige al psicólogo. Diseñémosla como una extensión privada de la consulta: organiza lo que el paciente comparte, muestra evidencias, sugiere preguntas, prepara borradores y deja que el profesional valide. El éxito no será tener más funciones, sino que el psicólogo tarde menos, recuerde mejor y documente con más seguridad.
+Áncora UX - Informe de propuestas abiertas desde la consulta clínica
+

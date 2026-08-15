@@ -86,6 +86,12 @@ export default function PsicologoPerfilView({ profile, onProfileUpdated, user, i
           if (data.session_price) setPriceInput(Number(data.session_price));
           if (data.name) setNameInput(data.name);
           if (data.license_number) setLicenseInput(data.license_number);
+          if (data.image_url) setAvatarUrl(data.image_url);
+          if (data.bio) setBioInput(data.bio);
+          if (data.approach) setApproachInput(data.approach);
+          if (data.specialties) {
+            setSpecialtiesInput(Array.isArray(data.specialties) ? data.specialties.join(', ') : data.specialties);
+          }
         }
       } catch (err) {
         console.error("Error loading psychologist profile:", err.message);
@@ -99,9 +105,9 @@ export default function PsicologoPerfilView({ profile, onProfileUpdated, user, i
   const appConfig = profile?.app_config || {};
   
   const currentName = context.name || profile?.display_name || 'Dr. José Fernández';
-  const currentAvatar = profile?.avatar || context.avatar || 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&q=80&w=150&h=150';
+  const currentAvatar = profile?.avatar || context.avatar || 'https://lh3.googleusercontent.com/a/ACg8ocKTiCRCGtON7UckYXir1hkqxQPP9jHgd0A8aQx3mqswe2yNcA=s96-c';
   const currentLicense = appConfig.license_number || context.licenseNumber || 'M-49ccc';
-  const currentQualification = appConfig.qualification || 'Especialista Clínico Generalista';
+  const currentQualification = appConfig.qualification || 'Especialista Clínico Sanitario';
   const currentInsurance = appConfig.rc_insurance || 'Seguro RC Activo (Mapfre)';
   const currentPrice = context.sessionPrice || appConfig.session_price || 55;
 
@@ -111,13 +117,16 @@ export default function PsicologoPerfilView({ profile, onProfileUpdated, user, i
   const [qualificationInput, setQualificationInput] = useState(currentQualification);
   const [insuranceInput, setInsuranceInput] = useState(currentInsurance);
   const [priceInput, setPriceInput] = useState(currentPrice);
+  const [bioInput, setBioInput] = useState('Especialista en regulación emocional, estrés, ansiedad y protocolos cognitivo-conductuales con monitorización digital.');
+  const [specialtiesInput, setSpecialtiesInput] = useState('Ansiedad, Estrés, Terapia Cognitiva, EMDR');
+  const [approachInput, setApproachInput] = useState('Terapia Cognitivo-Conductual & Regulación Emocional');
 
   // Lista de avatares predefinidos para psicólogos
   const PRESET_AVATARS = [
-    { label: 'José (Clínico)', url: 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&q=80&w=150&h=150' },
-    { label: 'Ana (Profesional)', url: 'https://images.unsplash.com/photo-1594824813573-246434de83fb?auto=format&fit=crop&q=80&w=150&h=150' },
-    { label: 'Javier (Terapeuta)', url: 'https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?auto=format&fit=crop&q=80&w=150&h=150' },
-    { label: 'Sofía (Alternativo)', url: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=150&h=150' }
+    { label: 'Google Profile', url: user?.user_metadata?.avatar_url || user?.photoURL || 'https://lh3.googleusercontent.com/a/ACg8ocKTiCRCGtON7UckYXir1hkqxQPP9jHgd0A8aQx3mqswe2yNcA=s96-c' },
+    { label: 'José (Clínico)', url: 'https://lh3.googleusercontent.com/a/ACg8ocKTiCRCGtON7UckYXir1hkqxQPP9jHgd0A8aQx3mqswe2yNcA=s96-c' },
+    { label: 'Profesional 1', url: 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&q=80&w=150&h=150' },
+    { label: 'Profesional 2', url: 'https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?auto=format&fit=crop&q=80&w=150&h=150' }
   ];
 
   // Historial de liquidaciones Stripe Connect mockeados
@@ -238,12 +247,18 @@ export default function PsicologoPerfilView({ profile, onProfileUpdated, user, i
         device_connected: deviceConnected
       };
 
+      const specsArray = specialtiesInput.split(',').map(s => s.trim()).filter(Boolean);
+
       const { error: psychoProfileError } = await supabase
         .from('psychologist_profiles')
         .update({
           name: nameInput,
           session_price: Number(priceInput),
           license_number: licenseInput,
+          image_url: avatarUrl,
+          bio: bioInput,
+          approach: approachInput,
+          specialties: specsArray,
           availability: JSON.stringify(availabilityObj)
         })
         .eq('id', user.id);
@@ -403,6 +418,42 @@ export default function PsicologoPerfilView({ profile, onProfileUpdated, user, i
                   value={insuranceInput}
                   onChange={(e) => setInsuranceInput(e.target.value)}
                   style={{ height: '36px', fontSize: '0.78rem', paddingLeft: '12px' }}
+                />
+              </div>
+
+              <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <label style={{ fontSize: '0.68rem', fontWeight: 'bold', color: 'var(--text-secondary)' }}>Enfoque Clínico Principal</label>
+                <input 
+                  type="text" 
+                  className="form-input" 
+                  value={approachInput}
+                  onChange={(e) => setApproachInput(e.target.value)}
+                  placeholder="Ej. Terapia Cognitivo-Conductual, EMDR, ACT..."
+                  style={{ height: '36px', fontSize: '0.78rem', paddingLeft: '12px' }}
+                />
+              </div>
+
+              <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <label style={{ fontSize: '0.68rem', fontWeight: 'bold', color: 'var(--text-secondary)' }}>Especialidades (separadas por comas)</label>
+                <input 
+                  type="text" 
+                  className="form-input" 
+                  value={specialtiesInput}
+                  onChange={(e) => setSpecialtiesInput(e.target.value)}
+                  placeholder="Ansiedad, Estrés, Trauma, Duelo..."
+                  style={{ height: '36px', fontSize: '0.78rem', paddingLeft: '12px' }}
+                />
+              </div>
+
+              <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <label style={{ fontSize: '0.68rem', fontWeight: 'bold', color: 'var(--text-secondary)' }}>Biografía Profesional & Presentación</label>
+                <textarea 
+                  className="form-input" 
+                  value={bioInput}
+                  onChange={(e) => setBioInput(e.target.value)}
+                  rows={3}
+                  placeholder="Describe tu trayectoria, metodología clínica y qué encontrará el paciente en tu consulta..."
+                  style={{ fontSize: '0.75rem', padding: '8px 12px', minHeight: '68px', resize: 'vertical' }}
                 />
               </div>
 

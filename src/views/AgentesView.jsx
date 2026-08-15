@@ -298,8 +298,8 @@ const parseReportToVisualHTML = (resultText, agentColor = 'var(--color-cyan)', s
           if (lowerText.includes('cortisol') || lowerText.includes('estrés') || lowerText.includes('estres') || lowerText.includes('adrenalina')) {
             imageAsset = {
               src: '/infografia_cortisol_trading.png',
-              title: 'Fisiología del Cortisol y Estrés en Trading',
-              desc: 'Bucle neuroendocrino del cortisol durante pérdidas: la activación prolongada del eje HPA bloquea la corteza prefrontal lateral, impidiendo el cierre disciplinado de posiciones.'
+              title: 'Fisiología del Cortisol y Estrés Agudo',
+              desc: 'Bucle neuroendocrino del cortisol durante picos de tensión: la activación prolongada del eje HPA bloquea la corteza prefrontal, afectando la toma de decisiones.'
             };
           } else if (lowerText.includes('trauma') || lowerText.includes('amígdala') || lowerText.includes('amigdala') || lowerText.includes('vago') || lowerText.includes('agorafobia') || lowerText.includes('bloqueo')) {
             imageAsset = {
@@ -307,17 +307,11 @@ const parseReportToVisualHTML = (resultText, agentColor = 'var(--color-cyan)', s
               title: 'Secuestro de la Amígdala vs Regulación Somática',
               desc: 'Mapa del procesamiento del miedo de vía rápida. Muestra cómo el reset térmico somático activa el nervio vago y la vía parasimpática para desescalar el pánico.'
             };
-          } else if (lowerText.includes('tdah') || lowerText.includes('script') || lowerText.includes('blindaje') || lowerText.includes('equity-killer')) {
+          } else if (lowerText.includes('tdah') || lowerText.includes('script') || lowerText.includes('blindaje') || lowerText.includes('rutina')) {
             imageAsset = {
               src: '/infografia_tdah_trading.png',
-              title: 'Andamiajes Conductuales y el Equity-Killer',
-              desc: 'Arquitectura del blindaje operacional. Estructuración externa (mirror trading, control ciego y scripts forzados de desconexión) para anular el impulso hiperfocalizado del TDAH.'
-            };
-          } else if (lowerText.includes('btc') || lowerText.includes('bitcoin') || lowerText.includes('oro') || lowerText.includes('gold') || lowerText.includes('onchain') || lowerText.includes('on-chain') || lowerText.includes('financier') || lowerText.includes('precio') || lowerText.includes('brent')) {
-            imageAsset = {
-              src: '/grafico_precios_oro_btc.png',
-              title: 'Correlación de Activos Refugio e Indicadores On-chain',
-              desc: 'Análisis de liquidez global y métricas de reserva on-chain. Compara el comportamiento de fuerza relativa entre Bitcoin y el Oro en escenarios de inflación estructural.'
+              title: 'Andamiajes Conductuales y Funciones Ejecutivas',
+              desc: 'Arquitectura del andamiaje externo. Estructuración de rutinas y pausas asistidas para compensar la dificultad inhibitoria en el TDAH.'
             };
           }
 
@@ -1623,7 +1617,7 @@ export default function AgentesView({ user, profile, sidebarCollapsed = false, s
     if (!user || submittingTask) return;
     setSubmittingTask(true);
     try {
-      const activeAgentName = newTaskAgent || (agents[0]?.name || 'Walter');
+      const activeAgentName = newTaskAgent || (agents[0]?.name || 'Ánquer');
       const isRecurrent = newTaskRecurrenceType !== 'none';
       const cronExpr = (newTaskRecurrenceType === 'custom' ? newTaskCron : buildCronFromUI(newTaskRecurrenceType, newTaskRecurrenceTime, newTaskRecurrenceDay, newTaskRecurrenceInterval)) || null;
       
@@ -1946,7 +1940,7 @@ export default function AgentesView({ user, profile, sidebarCollapsed = false, s
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           chat_id: telegramChatId,
-          text: `🔌 <b>Prueba de Conexión de Walter Clínica</b>\n\n¡Enhorabuena Emilio! La conexión con tu bot se ha establecido de forma exitosa.\n\nHora de verificación: ${new Date().toLocaleTimeString('es-ES')} (Local)\nURL del Portal: https://ancora-portal.web.app\n\n<i>Tus alertas y reportes llegarán a este chat.</i>`,
+          text: `🔌 <b>Prueba de Conexión de Ánquer Clínica</b>\n\n¡Enhorabuena Emilio! La conexión con tu bot se ha establecido de forma exitosa.\n\nHora de verificación: ${new Date().toLocaleTimeString('es-ES')} (Local)\nURL del Portal: https://ancora-portal.web.app\n\n<i>Tus alertas y reportes llegarán a este chat.</i>`,
           parse_mode: 'HTML'
         })
       });
@@ -2662,7 +2656,7 @@ export default function AgentesView({ user, profile, sidebarCollapsed = false, s
                     rows="4"
                     value={newTaskDesc}
                     onChange={(e) => setNewTaskDesc(e.target.value)}
-                    placeholder="Describe con precisión qué debe hacer el agente en local. Ej: Extrae la correlación entre mi impulsividad del diario de ayer con las operaciones registradas en BingX..."
+                    placeholder="Describe con precisión qué debe hacer el agente en local. Ej: Extrae la correlación entre mi nivel de ansiedad del diario y las horas de descanso registradas..."
                     required
                     style={{ resize: 'none' }}
                   />
@@ -2781,7 +2775,7 @@ export default function AgentesView({ user, profile, sidebarCollapsed = false, s
                 <div style={{ display: 'flex', gap: '8px', alignSelf: 'flex-end' }}>
                   <button type="button" className="btn btn-outline" onClick={() => setShowTaskForm(false)} style={{ height: '38px' }}>Cancelar</button>
                   <button type="submit" className="btn btn-cyan" style={{ height: '38px' }} disabled={submittingTask}>
-                    {submittingTask ? 'Programando...' : 'Programar en Supabase'}
+                    {submittingTask ? 'Programando...' : 'Programar en Áncora'}
                   </button>
                 </div>
               </form>
@@ -3836,7 +3830,7 @@ export default function AgentesView({ user, profile, sidebarCollapsed = false, s
             </h3>
             
             {[
-              { id: 'trading', label: 'Blindaje Operativo', icon: <Shield size={16} />, desc: 'Límites, Cooldown y Walter' },
+              { id: 'trading', label: 'Blindaje Operativo', icon: <Shield size={16} />, desc: 'Límites, Cooldown y Ánquer' },
               { id: 'somatic', label: 'Control Somático', icon: <Brain size={16} />, desc: 'Cortisol y Risk Guard' },
               { id: 'debate', label: 'Debate Clínico', icon: <MessageSquare size={16} />, desc: 'Rondas y rigor de agentes' },
               { id: 'telegram', label: 'Telegram Bot', icon: <Bot size={16} />, desc: 'Token, Chat ID y pruebas' },
@@ -3894,7 +3888,7 @@ export default function AgentesView({ user, profile, sidebarCollapsed = false, s
                       <div>
                         <h3 style={{ fontSize: '1rem', fontWeight: 800, margin: 0, color: '#ffffff', display: 'flex', gap: '8px', alignItems: 'center' }}>
                           <Shield size={18} color="var(--color-cyan)" />
-                          <span>Blindaje Operativo de Walter</span>
+                          <span>Blindaje Operativo de Ánquer</span>
                         </h3>
                         <p style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', marginTop: '4px', marginBottom: 0 }}>
                           Configura la frecuencia de sondeo y las reglas de protección estrictas para tu operativa y mitigación de sobreoperativa.
@@ -4150,7 +4144,7 @@ export default function AgentesView({ user, profile, sidebarCollapsed = false, s
                             <option value="5">5 Rondas (Examen exhaustivo multidireccional)</option>
                           </select>
                           <span style={{ fontSize: '0.64rem', color: 'var(--text-tertiary)', marginTop: '6px', display: 'block', lineHeight: '1.3' }}>
-                            Rondas totales de debate y réplica entre Walter, Risk Guard y Axi Coach antes de emitir la conclusión.
+                            Rondas totales de debate y réplica entre Ánquer, Risk Guard y Axi Coach antes de emitir la conclusión.
                           </span>
                         </div>
 
@@ -4482,7 +4476,7 @@ export default function AgentesView({ user, profile, sidebarCollapsed = false, s
                             <ol style={{ margin: 0, paddingLeft: '20px', fontSize: '0.7rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '8px', lineHeight: 1.4 }}>
                               <li>Abre Telegram y busca al bot oficial <b>@BotFather</b>.</li>
                               <li>Envía el comando <code>/newapp</code> y selecciona tu Bot.</li>
-                              <li>Escribe el título de tu app (ej: <code>Walter Clínica</code>) y su descripción.</li>
+                              <li>Escribe el título de tu app (ej: <code>Ánquer Clínica</code>) y su descripción.</li>
                               <li>Sube una imagen de logo si lo deseas (o envia /skip).</li>
                               <li>Cuando te pida la <b>URL del Web App</b>, pega la URL de esta web:<br />
                                 <strong style={{ color: '#ffffff', wordBreak: 'break-all' }}>https://ancora-portal.web.app</strong>
@@ -4517,7 +4511,7 @@ export default function AgentesView({ user, profile, sidebarCollapsed = false, s
                               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                 <span style={{ color: 'var(--color-cyan)', fontSize: '0.7rem', cursor: 'pointer' }}>✕</span>
                                 <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                  <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#ffffff', lineHeight: 1.1 }}>Walter Clínica</span>
+                                  <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#ffffff', lineHeight: 1.1 }}>Ánquer Clínica</span>
                                   <span style={{ fontSize: '0.52rem', color: 'var(--text-tertiary)' }}>bot de Emilio</span>
                                 </div>
                               </div>
@@ -4531,7 +4525,7 @@ export default function AgentesView({ user, profile, sidebarCollapsed = false, s
                               </div>
 
                               <div style={{ alignSelf: 'flex-start', background: 'rgba(255,255,255,0.01)', border: '1px solid var(--border)', borderRadius: '0 8px 8px 8px', padding: '6px 8px', maxWidth: '85%' }}>
-                                <span style={{ fontSize: '0.54rem', fontWeight: 800, color: 'var(--color-cyan)', display: 'block', marginBottom: '2px' }}>Walter IA</span>
+                                <span style={{ fontSize: '0.54rem', fontWeight: 800, color: 'var(--color-cyan)', display: 'block', marginBottom: '2px' }}>Ánquer IA</span>
                                 <p style={{ fontSize: '0.62rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.3 }}>
                                   Emilio, he detectado sobreoperativa. Equity Killer a 2R. ¡Detén la sesión de hoy!
                                 </p>

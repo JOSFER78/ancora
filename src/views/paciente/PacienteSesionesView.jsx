@@ -30,88 +30,54 @@ export default function PacienteSesionesView({ profile, user, isVirtualDemo }) {
   const [scheduledSessions, setScheduledSessions] = useState([]);
   const [loadingSessions, setLoadingSessions] = useState(true);
 
-  // Perfil del psicólogo desde Supabase
+  // Perfil del psicólogo desde Áncora
   const [psychoProfile, setPsychoProfile] = useState(null);
   const [loadingPsycho, setLoadingPsycho] = useState(true);
 
-  // Catálogo de psicólogos
-  const mockPsychologists = [
+  // Catálogo oficial de psicólogos
+  const OFFICIAL_PSYCHOLOGISTS = [
     {
-      id: '19057a26-ebcb-4d42-a668-80250299912a',
-      name: 'Ana Ramos',
-      email: 'tisutet@hormail.com',
-      license: 'M-19057',
-      photo_url: 'https://images.unsplash.com/photo-1594824813573-246434de83fb?auto=format&fit=crop&q=80&w=200',
-      rating: '0.0',
-      reviews: 0,
-      specialties: ['Ansiedad', 'Estrés', 'Autovaloración'],
-      price: 49,
-      approach: 'Cognitivo-Conductual (TCC)'
-    },
-    {
-      id: '49ccc6ae-e064-49c3-9951-4678c46b175a',
+      id: '2TOfkVIRccgIgz5WamAIVmUPtD63',
       name: 'José Fernández',
       email: 'usajosefernan@gmail.com',
       license: 'M-49ccc',
-      photo_url: 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&q=80&w=200',
-      rating: '0.0',
-      reviews: 0,
-      specialties: ['Depresión', 'Trauma', 'Duelo'],
+      photo_url: 'https://lh3.googleusercontent.com/a/ACg8ocKTiCRCGtON7UckYXir1hkqxQPP9jHgd0A8aQx3mqswe2yNcA=s96-c',
+      rating: '5.0',
+      reviews: 18,
+      specialties: ['Ansiedad', 'Estrés', 'Terapia Cognitiva', 'EMDR'],
       price: 55,
-      approach: 'EMDR y Mindfulness'
-    },
-    {
-      id: '7b32049e-cb5e-4c24-9390-c32508dda09d',
-      name: 'Elena Custer',
-      email: 'elena.custer@gmail.com',
-      license: 'M-31204',
-      photo_url: 'https://images.unsplash.com/photo-1582750433449-64c86b1fdf30?auto=format&fit=crop&q=80&w=200',
-      rating: '0.0',
-      reviews: 0,
-      specialties: ['Fobias', 'Ansiedad', 'TCC'],
-      price: 50,
-      approach: 'Cognitivo-Conductual (TCC)'
-    },
-    {
-      id: 'c2104500-1111-2222-3333-444455556666',
-      name: 'Carlos Ruiz',
-      email: 'carlos.ruiz@gmail.com',
-      license: 'M-21045',
-      photo_url: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&q=80&w=200',
-      rating: '4.8',
-      reviews: 45,
-      specialties: ['Ansiedad', 'Fobias', 'Sueño'],
-      price: 45,
-      approach: 'Cognitivo-Conductual (TCC)'
-    },
-    {
-      id: 'd1849200-1111-2222-3333-444455556666',
-      name: 'Sofía Vergara',
-      email: 'sofia.vergara@gmail.com',
-      license: 'M-18492',
-      photo_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200',
-      rating: '4.9',
-      reviews: 62,
-      specialties: ['Pareja', 'Autoestima', 'Estrés'],
-      price: 65,
-      approach: 'Sistémico y Gestalt'
-    },
-    {
-      id: 'e3298100-1111-2222-3333-444455556666',
-      name: 'Javier Gómez',
-      email: 'javier.gomez@gmail.com',
-      license: 'M-32981',
-      photo_url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=200',
-      rating: '4.7',
-      reviews: 28,
-      specialties: ['Depresión', 'Duelo', 'Autoestima'],
-      price: 50,
-      approach: 'Humanista'
+      approach: 'Terapia Cognitivo-Conductual & Regulación Emocional'
     }
   ];
 
+  const [psychologistsList, setPsychologistsList] = useState(OFFICIAL_PSYCHOLOGISTS);
+
+  useEffect(() => {
+    const fetchPsychologists = async () => {
+      try {
+        const { data, error } = await supabase.from('psychologist_profiles').select('*');
+        if (!error && data && data.length > 0) {
+          const mapped = data.map(p => ({
+            id: p.id || p.user_id || '2TOfkVIRccgIgz5WamAIVmUPtD63',
+            email: p.email || 'usajosefernan@gmail.com',
+            name: p.name || 'José Fernández',
+            license: p.license_number || 'M-49ccc',
+            photo_url: p.image_url || p.photo_url || 'https://lh3.googleusercontent.com/a/ACg8ocKTiCRCGtON7UckYXir1hkqxQPP9jHgd0A8aQx3mqswe2yNcA=s96-c',
+            rating: p.rating_avg ? String(p.rating_avg) : '5.0',
+            reviews: p.rating_count || 18,
+            specialties: Array.isArray(p.specialties) ? p.specialties : ['Ansiedad', 'Estrés', 'Terapia Cognitiva'],
+            price: Number(p.session_price) || 55,
+            approach: p.approach || 'Terapia Cognitivo-Conductual & Regulación Emocional'
+          }));
+          setPsychologistsList(mapped);
+        }
+      } catch (e) {}
+    };
+    fetchPsychologists();
+  }, []);
+
   const assignedPsychoId = profile?.contexto_terapeutico?.assigned_psychologist_id || null;
-  const assignedPsycho = mockPsychologists.find(p => p.id === assignedPsychoId) || null;
+  const assignedPsycho = psychologistsList.find(p => p.id === assignedPsychoId) || (assignedPsychoId ? OFFICIAL_PSYCHOLOGISTS[0] : null);
 
   const fetchSessions = async () => {
     if (!user?.id) return;
@@ -122,11 +88,11 @@ export default function PacienteSesionesView({ profile, user, isVirtualDemo }) {
         const localAppts = JSON.parse(localApptsStr).filter(a => a.patient_id === user.id);
         
         const mapped = localAppts.map(a => {
-          const psycho = mockPsychologists.find(p => p.id === a.psychologist_id);
+          const psycho = psychologistsList.find(p => p.id === a.psychologist_id);
           return {
             id: a.id,
             date: `${a.appointment_date} — ${a.appointment_time}h`,
-            psychologist: psycho ? psycho.name : 'Terapeuta Áncora',
+            psychologist: psycho ? psycho.name : 'José Fernández',
             status: a.status,
             type: a.session_type === 'individual' ? 'Individual' : (a.session_type === 'pareja' ? 'Pareja' : 'Revisión')
           };
@@ -156,7 +122,7 @@ export default function PacienteSesionesView({ profile, user, isVirtualDemo }) {
       if (error) throw error;
 
       const mapped = (data || []).map(a => {
-        const psycho = mockPsychologists.find(p => p.id === a.psychologist_id);
+        const psycho = psychologistsList.find(p => p.id === a.psychologist_id);
         return {
           id: a.id,
           date: `${a.appointment_date} — ${a.appointment_time}h`,
@@ -204,7 +170,7 @@ export default function PacienteSesionesView({ profile, user, isVirtualDemo }) {
     fetchSessions();
   }, [user?.id, assignedPsychoId]);
 
-  // Parsear la disponibilidad desde Supabase
+  // Parsear la disponibilidad desde Áncora
   let availability = null;
   if (psychoProfile?.availability) {
     try {
@@ -235,7 +201,7 @@ export default function PacienteSesionesView({ profile, user, isVirtualDemo }) {
       return [];
     }
 
-    // Si hay slots personalizados en Supabase para ese día de la semana
+    // Si hay slots personalizados en Áncora para ese día de la semana
     if (availability && availability.custom_available_slots && availability.custom_available_slots[dayName]) {
       // Filtrar slots que ya estén reservados para este terapeuta
       const reservedHours = scheduledSessions
@@ -336,7 +302,7 @@ export default function PacienteSesionesView({ profile, user, isVirtualDemo }) {
     }
 
     try {
-      // Formatear fecha para guardarla en Supabase
+      // Formatear fecha para guardarla en Áncora
       const newAppt = {
         patient_id: user.id,
         psychologist_id: assignedPsychoId,
@@ -356,12 +322,12 @@ export default function PacienteSesionesView({ profile, user, isVirtualDemo }) {
         setCheckoutLoading(false);
         setBookingSuccess(true);
         setShowCheckout(false);
-        fetchSessions(); // Recargar de Supabase
+        fetchSessions(); // Recargar de Áncora
       }, 1500);
 
     } catch (err) {
       console.error("Error saving appointment:", err.message);
-      alert("Error al guardar la cita en Supabase: " + err.message);
+      alert("Error al guardar la cita en Áncora: " + err.message);
       setCheckoutLoading(false);
     }
   };
@@ -516,7 +482,7 @@ export default function PacienteSesionesView({ profile, user, isVirtualDemo }) {
       {/* Próximas Sesiones Programadas */}
       <div className="glass-panel" style={{ padding: '20px' }}>
         <h3 style={{ fontSize: '0.95rem', fontWeight: 800, marginBottom: '16px', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-secondary)' }}>
-          🗓️ Tus Sesiones Programadas (Supabase real)
+          🗓️ Tus Sesiones Programadas (Áncora Cloud)
         </h3>
         
         {loadingSessions ? (
@@ -638,7 +604,7 @@ export default function PacienteSesionesView({ profile, user, isVirtualDemo }) {
             <div className="flex-center" style={{ width: '54px', height: '54px', borderRadius: '50%', background: 'rgba(127,159,136,0.1)', color: 'var(--color-emerald)' }}>
               <CheckCircle2 size={32} />
             </div>
-            <h4 style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--color-emerald)' }}>¡Reserva Guardada en Supabase!</h4>
+            <h4 style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--color-emerald)' }}>¡Reserva Guardada en Áncora!</h4>
             <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
               Tu consulta para el día <strong>{selectedDate} de {monthNames[currentMonth]} de {currentYear}</strong> a las <strong>{selectedSlot}h</strong> ha quedado reservada y cobrada con éxito en Stripe Demo.
             </p>

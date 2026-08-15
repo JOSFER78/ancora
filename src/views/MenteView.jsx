@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { supabase } from '../supabaseClient';
 import { invokeChatTerapeuta } from '../lib/chatTerapeuta';
+import { MemoryRepositoryFactory } from '../infrastructure/storage/MemoryRepositoryFactory';
+import { CognitiveMemoryEngine } from '../services/memory/CognitiveMemoryEngine';
 import {
   Calendar,
   Brain,
@@ -33,7 +35,7 @@ const DEFAULT_RESOURCES = [
     tipo: "libro",
     sintoma: "Trauma Complejo y Regulación Somática",
     justificacion: "Detalla científicamente cómo las experiencias traumáticas de la infancia se almacenan físicamente en el cuerpo y alteran de forma permanente el sistema de alerta (amígdala), provocando respuestas involuntarias de lucha/huida/parálisis.",
-    adaptacion: "Cuando experimentas pánico y parálisis (freeze) en el trading, no es una decisión racional; es tu cuerpo recreando físicamente la indefensión de tu infancia. Regular primero el cuerpo mediante estímulos somáticos es imprescindible antes de razonar.",
+    adaptacion: "Cuando experimentas pánico y parálisis (freeze) ante el estrés agudo, no es una decisión racional; es tu cuerpo recreando físicamente la indefensión. Regular primero el cuerpo mediante estímulos somáticos es imprescindible antes de razonar.",
     practica: "Choque térmico somático: Sostener cubos de hielo en las manos o lavar la cara con agua helada por 30 segundos ante picos de pánico y sobrecarga emocional."
   },
   {
@@ -42,17 +44,17 @@ const DEFAULT_RESOURCES = [
     tipo: "estudio",
     sintoma: "Funciones Ejecutivas e Impulsividad",
     justificacion: "Demuestra que las dificultades del TDAH no son por falta de conocimiento o de voluntad, sino por un déficit neurobiológico en la inhibición de conductas en tiempo real y la ceguera temporal.",
-    adaptacion: "La fuerza de voluntad de Emilio fallará bajo estrés en el trading. No puedes depender del autocontrol subjetivo para parar tus pérdidas. La única contención eficaz es el andamiaje físico externo e infranqueable.",
-    practica: "Mantener activo el Script Equity-Killer local con bloqueo diferido de 24h y delegar el resguardo de claves a un software inaccesible."
+    adaptacion: "La fuerza de voluntad tiende a fallar bajo estrés intenso. No se puede depender del autocontrol puramente subjetivo en momentos de sobrecarga; la contención eficaz requiere un andamiaje externo estructurado.",
+    practica: "Mantener rutinas estructuradas con recordatorios externos no manipulables y división de tareas complejas en micro-bloques de 15 minutos."
   },
   {
     autor: "Dra. Marian Rojas Estapé",
     titulo: "Cortisol, Estrés Crónico y Bucle de Alerta Límbica (Charla / Video)",
     tipo: "video",
-    sintoma: "Cortisol Alto y Visión de Túnel en Pérdidas",
-    justificacion: "Explica la fisiología del estrés: la mente interpreta la pérdida de dinero continuo como una amenaza física mortal. Inunda el organismo de cortisol y bloquea las decisiones lógicas de la corteza prefrontal.",
-    adaptacion: "Tras una pérdida considerable, tu cortisol estará elevado por horas. Ignorarlo te arrastrará a la sobreoperación impulsiva para recuperar. Debes desengancharte físicamente de las pantallas.",
-    practica: "Aplicar la regla 'One and Done' (un solo trade diario). Levantar y caminar al aire libre durante 15 minutos inmediatamente tras cerrar cualquier trade."
+    sintoma: "Cortisol Alto y Visión de Túnel ante la Sobrecarga",
+    justificacion: "Explica la fisiología del estrés: la mente interpreta la sobrecarga continua como una amenaza física. Inunda el organismo de cortisol y bloquea las decisiones lógicas de la corteza prefrontal.",
+    adaptacion: "Tras un episodio de estrés agudo, el cortisol permanece elevado por horas. Ignorarlo arrastra a la sobreexigencia y el agotamiento. Es indispensable desengancharse físicamente de las pantallas.",
+    practica: "Pausa de desconexión activa: Levantarse y caminar al aire libre durante 15 minutos tras completar un bloque de trabajo intenso."
   },
   {
     autor: "Dr. Jeffrey Young",
@@ -342,7 +344,7 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
 
-  // Estados para búsqueda de fuentes con Walter IA
+  // Estados para búsqueda de fuentes con Ánquer IA
   const [customSearchTopic, setCustomSearchTopic] = useState('');
   const [availableTopics, setAvailableTopics] = useState([
     'TDAH / Impulsividad y Control Ejecutivo',
@@ -376,7 +378,7 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
         .from('agent_tasks')
         .insert({
           user_id: user.id,
-          agent_name: 'Walter',
+          agent_name: 'Ánquer',
           title: `Investigar Fuentes: ${topicToSearch.trim()}`,
           description: `Investigar y buscar fuentes científicas y clínicas de alta calidad sobre el tema: "${topicToSearch.trim()}". Genera una ficha técnica de la fuente, una ficha adaptada al caso de Emilio (TDAH, trauma, agorafobia, deudas, trading) y propuestas de ejercicios prácticos, y guárdalas en su perfil.`,
           status: 'pending'
@@ -396,7 +398,7 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
         if (attempts > 50) { // Límite de 1.25 minutos
           clearInterval(interval);
           setSearchAgentStatus('failed');
-          setSearchTaskError('Tiempo de espera agotado. Walter IA no respondió a tiempo.');
+          setSearchTaskError('Tiempo de espera agotado. Ánquer IA no respondió a tiempo.');
           return;
         }
         
@@ -457,7 +459,7 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
         } else if (taskData.status === 'failed') {
           clearInterval(interval);
           setSearchAgentStatus('failed');
-          setSearchTaskError('Walter IA reportó un error al investigar.');
+          setSearchTaskError('Ánquer IA reportó un error al investigar.');
         }
       }, 1500);
       
@@ -602,13 +604,13 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
       remainingCount: 0,
       processedItems: [],
       errorItems: [],
-      currentActivity: 'Iniciando conexión con Supabase...'
+      currentActivity: 'Iniciando conexión con Áncora...'
     });
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
-        throw new Error("No se pudo obtener la sesión activa de Supabase.");
+        throw new Error("No se pudo obtener la sesión activa de Áncora.");
       }
 
       setSyncStatus(prev => ({ ...prev, percentage: 5, currentActivity: 'Preparando cola de análisis...' }));
@@ -719,7 +721,7 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
       setSyncStatus(prev => ({
         ...prev,
         percentage: 90,
-        currentActivity: 'Consolidando diagnóstico clínico global (Walter)...'
+        currentActivity: 'Consolidando diagnóstico clínico global (Ánquer)...'
       }));
 
       const consRes = await invokeChatTerapeuta({
@@ -801,6 +803,22 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
 
       if (error) throw error;
 
+      // Sincronizar con el motor de memoria cognitiva
+      try {
+        const repo = MemoryRepositoryFactory.getRepository();
+        const engine = new CognitiveMemoryEngine({ repository: repo });
+        await engine.repo.saveSemanticProfile(user.id, {
+          patientId: user.id,
+          currentSummary: editDiagnosticoBase.trim(),
+          activeTriggers: updatedCtx.triggers || [],
+          protectiveAnchors: updatedCtx.protective_anchors || updatedCtx.pautas_accion || [],
+          coreBeliefs: updatedCtx.conclusiones || []
+        });
+        await engine.consolidate(user.id);
+      } catch (memSyncErr) {
+        console.warn('Advertencia al sincronizar memoria cognitiva:', memSyncErr.message);
+      }
+
       if (onProfileUpdated) {
         onProfileUpdated({
           ...profile,
@@ -880,7 +898,7 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
 
   // Delete source
   const handleDeleteSource = async (id) => {
-    if (!confirm("¿Deseas eliminar esta fuente de contexto? Walter ya no la usará de referencia.")) return;
+    if (!confirm("¿Deseas eliminar esta fuente de contexto? Ánquer ya no la usará de referencia.")) return;
     try {
       const { error } = await supabase
         .from('mente_sources')
@@ -1441,7 +1459,7 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
                 ACTIVIDAD RECOMENDADA: Registro Diario de Cortisol & Impulsividad
               </strong>
               <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', lineHeight: '1.35', display: 'block' }}>
-                Registra tus sensaciones físicas, ansiedad e impulsividad a diario (especialmente antes de empezar a operar). Walter analizará tus sesgos emocionales y los integrará de manera incremental en tu plan de blindaje clínico.
+                Registra tus sensaciones físicas, ansiedad e impulsividad a diario (especialmente antes de empezar a operar). Ánquer analizará tus sesgos emocionales y los integrará de manera incremental en tu plan de blindaje clínico.
               </span>
             </div>
           </div>
@@ -1454,7 +1472,7 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
                 Registrar Sensaciones de Hoy
               </h3>
               <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '20px' }}>
-                Este registro permite a Walter (tu terapeuta) supervisar tu ansiedad y el impacto del tratamiento.
+                Este registro permite a Ánquer (tu terapeuta) supervisar tu ansiedad y el impacto del tratamiento.
               </p>
 
               <form onSubmit={handleSaveMood} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -1534,7 +1552,7 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
                   disabled={loading || profile?.role === 'supervisor'}
                   style={{ height: '44px', width: '100%' }}
                 >
-                  {loading ? 'Guardando...' : profile?.role === 'supervisor' ? 'Modo de Solo Lectura' : 'Guardar en Supabase'}
+                  {loading ? 'Guardando...' : profile?.role === 'supervisor' ? 'Modo de Solo Lectura' : 'Guardar en Áncora'}
                 </button>
               </form>
             </div>
@@ -1554,7 +1572,7 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
             <div style={{ flex: 1, overflowY: 'auto', maxHeight: '360px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {history.length === 0 ? (
                 <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', textAlign: 'center', marginTop: '40px' }}>
-                  No hay registros diarios guardados en Supabase.
+                  No hay registros diarios guardados en Áncora.
                 </p>
               ) : (
                 history.map((h) => (
@@ -1633,7 +1651,7 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
             <div className="glass-panel" style={{ padding: '24px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
               {selectedTimelineItem ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                  <span className="badge badge-cyan" style={{ marginBottom: '4px', alignSelf: 'flex-start' }}>Reencuadre Terapéutico ( Walter )</span>
+                  <span className="badge badge-cyan" style={{ marginBottom: '4px', alignSelf: 'flex-start' }}>Reencuadre Terapéutico ( Ánquer )</span>
                   
                   <h3 style={{ fontSize: '1.25rem', margin: 0, color: selectedTimelineItem.type === 'positive' ? 'var(--color-emerald)' : 'var(--color-rose)' }}>
                     {selectedTimelineItem.title}
@@ -1680,7 +1698,7 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
                   )}
 
                   <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '8px', lineHeight: 1.4, margin: 0 }}>
-                    <strong>Nota de Walter:</strong> En tu terapia EMDR, enfócate en la sensación física que te produce este recuerdo y sustitúyela con esta verdad de reencuadre. El trauma no es tu identidad.
+                    <strong>Nota de Ánquer:</strong> En tu terapia EMDR, enfócate en la sensación física que te produce este recuerdo y sustitúyela con esta verdad de reencuadre. El trauma no es tu identidad.
                   </p>
                 </div>
               ) : (
@@ -1788,18 +1806,18 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
               <div>
                 <strong style={{ fontSize: '0.82rem', color: '#ffffff', display: 'block', marginBottom: '2px' }}>
                   {hasFuentes 
-                    ? 'Recursos Personalizados Encontrados por Walter' 
+                    ? 'Recursos Personalizados Encontrados por Ánquer' 
                     : 'Portal de Evidencia Científica y Lectura Clínica'}
                 </strong>
                 <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', lineHeight: '1.4', display: 'block' }}>
                   {hasFuentes 
-                    ? 'Este portal compila referencias personalizadas obtenidas mediante el Deep Research clínico de Walter sobre tu caso.'
-                    : ' Walter no ha consolidado recursos específicos para tu caso actual. Abajo se listan las fuentes científicas base del andamiaje conductual. Sincroniza tu Mente para poblar este catálogo.'}
+                    ? 'Este portal compila referencias personalizadas obtenidas mediante el Deep Research clínico de Ánquer sobre tu caso.'
+                    : ' Ánquer no ha consolidado recursos específicos para tu caso actual. Abajo se listan las fuentes científicas base del andamiaje conductual. Sincroniza tu Mente para poblar este catálogo.'}
                 </span>
               </div>
             </div>
 
-            {/* Buscador de Fuentes mediante Walter IA */}
+            {/* Buscador de Fuentes mediante Ánquer IA */}
             <div className="glass-panel" style={{
               padding: '20px',
               border: '1px solid rgba(6, 182, 212, 0.15)',
@@ -1813,7 +1831,7 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <Sparkles size={16} color="var(--color-cyan)" className={searchAgentStatus === 'searching' ? 'animate-spin' : ''} />
                   <h4 style={{ fontSize: '0.84rem', fontWeight: 800, color: '#ffffff', margin: 0 }}>
-                    Buscador de Fuentes Científicas Walter IA
+                    Buscador de Fuentes Científicas Ánquer IA
                   </h4>
                 </div>
                 <button
@@ -1837,7 +1855,7 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
               </div>
 
               <p style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.4 }}>
-                Selecciona un síntoma o tema para que Walter realice una búsqueda profunda de literatura científica comprobada (estilo NotebookLM con Deep Search) y genere fichas adaptadas con ejercicios prácticos.
+                Selecciona un síntoma o tema para que Ánquer realice una búsqueda profunda de literatura científica comprobada (estilo NotebookLM con Deep Search) y genere fichas adaptadas con ejercicios prácticos.
               </p>
 
               {/* GESTIÓN DE TEMAS (COLLAPSIBLE) */}
@@ -2018,7 +2036,7 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
                     <Search size={14} color="var(--color-cyan)" />
                     <input
                       type="text"
-                      placeholder="Escribe el síntoma o tema libre a buscar con Walter IA (ej. Trauma de rechazo, adicciones)..."
+                      placeholder="Escribe el síntoma o tema libre a buscar con Ánquer IA (ej. Trauma de rechazo, adicciones)..."
                       value={customSearchTopic}
                       onChange={(e) => setCustomSearchTopic(e.target.value)}
                       disabled={searchAgentStatus === 'searching'}
@@ -2038,7 +2056,7 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(6, 182, 212, 0.05)', border: '1px solid rgba(6, 182, 212, 0.1)', padding: '8px 12px', borderRadius: '6px' }}>
                   <RefreshCw size={12} color="var(--color-cyan)" className="animate-spin" />
                   <span style={{ fontSize: '0.64rem', color: 'var(--color-cyan)', fontWeight: 600 }}>
-                    Walter está realizando una búsqueda profunda (Deep Search) en bases de datos clínicas. Esto podría tardar unos segundos...
+                    Ánquer está realizando una búsqueda profunda (Deep Search) en bases de datos clínicas. Esto podría tardar unos segundos...
                   </span>
                 </div>
               )}
@@ -2056,7 +2074,7 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(244, 63, 94, 0.05)', border: '1px solid rgba(244, 63, 94, 0.1)', padding: '8px 12px', borderRadius: '6px' }}>
                   <AlertOctagon size={12} color="var(--color-rose)" />
                   <span style={{ fontSize: '0.64rem', color: 'var(--color-rose)', fontWeight: 600 }}>
-                    Error de Búsqueda: {searchTaskError || 'No se pudo contactar con Walter.'}
+                    Error de Búsqueda: {searchTaskError || 'No se pudo contactar con Ánquer.'}
                   </span>
                 </div>
               )}
@@ -2318,7 +2336,7 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
                 Cargar Contexto Personal (NotebookLM)
               </h3>
               <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
-                Sube reportes, notas de texto o informes. Walter los asimilará como contexto complementario en vuestro chat para orientar la terapia.
+                Sube reportes, notas de texto o informes. Ánquer los asimilará como contexto complementario en vuestro chat para orientar la terapia.
               </p>
             </div>
 
@@ -2385,7 +2403,7 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
                   <textarea
                     className="form-input"
                     rows="5"
-                    placeholder="Escribe o pega aquí el texto que servirá de contexto para Walter..."
+                    placeholder="Escribe o pega aquí el texto que servirá de contexto para Ánquer..."
                     value={noteContent}
                     onChange={(e) => setNoteContent(e.target.value)}
                     required
@@ -2420,7 +2438,7 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
                 <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-tertiary)' }}>
                   <FileText size={40} style={{ margin: '0 auto 12px', opacity: 0.5 }} />
                   <p style={{ fontSize: '0.8rem', margin: 0 }}>Aún no has subido documentos o notas.</p>
-                  <p style={{ fontSize: '0.7rem', marginTop: '4px' }}>Walter solo usará sus pautas base hasta que agregues fuentes.</p>
+                  <p style={{ fontSize: '0.7rem', marginTop: '4px' }}>Ánquer solo usará sus pautas base hasta que agregues fuentes.</p>
                 </div>
               ) : (
                 sources.map((src) => (
@@ -2462,7 +2480,7 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
                             </span>
                           ) : (src.sync_status === 'analyzed' || src.processed) ? (
                             <span className="badge badge-emerald" style={{ fontSize: '0.55rem', padding: '1px 6px', height: '16px', textTransform: 'none', letterSpacing: '0.02em', borderRadius: '4px', fontWeight: 600 }}>
-                              🧠 Leído por Walter
+                              🧠 Leído por Ánquer
                             </span>
                           ) : (
                             <span className="badge badge-cyan animate-pulse-soft" style={{ fontSize: '0.55rem', padding: '1px 6px', height: '16px', textTransform: 'none', letterSpacing: '0.02em', borderRadius: '4px', fontWeight: 600, border: '1px solid var(--color-cyan)', boxShadow: '0 0 6px hsla(var(--cyan), 0.3)' }}>
@@ -2515,7 +2533,7 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
                     Diagnóstico Clínico & Evolución Psicológica
                   </h3>
                   <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: '2px 0 0 0' }}>
-                    Análisis terapéutico estructurado y consolidado por Walter para Usuario.
+                    Análisis terapéutico estructurado y consolidado por Ánquer para Usuario.
                   </p>
                 </div>
               </div>
@@ -2649,7 +2667,7 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
                       </div>
                       <div className="flex-center" style={{ gap: '8px' }}>
                         <span className="badge badge-emerald" style={{ fontSize: '0.6rem', padding: '3px 8px', fontWeight: 700 }}>
-                          Walter: Soul del Chat Sincronizado
+                          Ánquer: Soul del Chat Sincronizado
                         </span>
                       </div>
                     </div>
@@ -2755,7 +2773,7 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
                     }}>
                       <h5 style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--color-cyan)', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px', marginTop: 0 }}>
                         <Brain size={16} />
-                        Diagnóstico Clínico de Base (Walter)
+                        Diagnóstico Clínico de Base (Ánquer)
                       </h5>
                       <p style={{ fontSize: '0.78rem', lineHeight: 1.6, color: '#ffffff', fontStyle: 'italic', margin: 0 }}>
                         {profile?.contexto_terapeutico?.contexto_base?.diagnostico_inicial || profile?.contexto_terapeutico?.foto_persona || "Paciente con TDAH del adulto con perfil impulsivo severo agravado por trauma complejo de la infancia, lo que desencadena patrones repetitivos de autosabotaje financiero ante hitos de éxito."}
@@ -2802,7 +2820,7 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
                     {(!profile?.contexto_terapeutico?.evoluciones || profile.contexto_terapeutico.evoluciones.length === 0) ? (
                       <div style={{ padding: '24px', background: 'rgba(255,255,255,0.01)', border: '1px dashed var(--border)', borderRadius: '12px', textAlign: 'center' }}>
                         <span style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', fontStyle: 'italic' }}>
-                          No hay hitos evolutivos registrados todavía. Las evoluciones cronológicas se generan automáticamente al cerrar y consolidar sesiones terapéuticas con Walter.
+                          No hay hitos evolutivos registrados todavía. Las evoluciones cronológicas se generan automáticamente al cerrar y consolidar sesiones terapéuticas con Ánquer.
                         </span>
                       </div>
                     ) : (
@@ -2891,7 +2909,7 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
                     </h4>
                     {(!profile?.contexto_terapeutico?.temas || profile.contexto_terapeutico.temas.length === 0) ? (
                       <p style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', fontStyle: 'italic', margin: 0 }}>
-                        Walter mapeará los temas clínicos activos, cerrados y emergentes tras sincronizar el análisis.
+                        Ánquer mapeará los temas clínicos activos, cerrados y emergentes tras sincronizar el análisis.
                       </p>
                     ) : (
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '16px' }}>
@@ -3187,7 +3205,7 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
               <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-tertiary)' }}>
                 <Calendar size={36} style={{ margin: '0 auto 10px', opacity: 0.5 }} />
                 <p style={{ fontSize: '0.8rem', margin: 0 }}>No hay sesiones de chat archivadas.</p>
-                <p style={{ fontSize: '0.7rem', marginTop: '4px' }}>Finaliza una sesión activa en el Chat con Walter para registrar conclusiones detalladas.</p>
+                <p style={{ fontSize: '0.7rem', marginTop: '4px' }}>Finaliza una sesión activa en el Chat con Ánquer para registrar conclusiones detalladas.</p>
               </div>
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '16px' }}>
@@ -3221,7 +3239,7 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
                         </div>
 
                         <h4 style={{ fontSize: '0.92rem', fontWeight: 800, color: '#ffffff', marginBottom: '10px' }}>
-                          {session.title || 'Nueva Sesión con Walter'}
+                          {session.title || 'Nueva Sesión con Ánquer'}
                         </h4>
 
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.74rem' }}>
@@ -3377,10 +3395,10 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
                             textTransform: 'none',
                             marginTop: '4px'
                           }}
-                          title="Analizar esta sensación e integrarla en el diagnóstico de Walter"
+                          title="Analizar esta sensación e integrarla en el diagnóstico de Ánquer"
                         >
                           <Brain size={12} />
-                          <span>Analizar con Walter</span>
+                          <span>Analizar con Ánquer</span>
                         </button>
                       )}
                     </div>
@@ -3491,7 +3509,7 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
                 <h4 style={{ fontSize: '1rem', margin: 0, color: '#ffffff' }}>
-                  Transcripción: {selectedSession.title || 'Sesión con Walter'}
+                  Transcripción: {selectedSession.title || 'Sesión con Ánquer'}
                 </h4>
                 <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>
                   Sesión archivada el {selectedSession.closed_at ? new Date(selectedSession.closed_at).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}
@@ -3554,7 +3572,7 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
                       textTransform: 'uppercase',
                       marginBottom: '4px'
                     }}>
-                      {msg.role === 'user' ? 'Usuario' : 'Walter'}
+                      {msg.role === 'user' ? 'Usuario' : 'Ánquer'}
                     </span>
                     <p style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{msg.content}</p>
                   </div>
@@ -3624,7 +3642,7 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
             <div style={{ borderBottom: '1px solid var(--border)', paddingBottom: '14px' }}>
               <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#ffffff', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <RefreshCw size={20} className="animate-pulse-soft" color="var(--color-cyan)" />
-                Sincronizar Análisis de Walter
+                Sincronizar Análisis de Ánquer
               </h3>
               <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', margin: '6px 0 0 0' }}>
                 Selecciona el método de consolidación para actualizar tu perfil clínico en Mente.

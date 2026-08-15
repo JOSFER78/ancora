@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import { db, auth } from '../firebaseClient';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { getRedirectResult } from 'firebase/auth';
 import { LegalModals } from '../components/LegalModals';
 import { 
   Shield, Mail, Lock, LogIn, AlertCircle, RefreshCw, ClipboardCheck, 
@@ -64,6 +65,25 @@ export default function LoginView({
       setError(null);
     }
   }, [initialRole]);
+
+  useEffect(() => {
+    if (auth) {
+      getRedirectResult(auth).then(async (result) => {
+        if (result?.user) {
+          console.log('[Firebase Auth] Resultado de login por redirección:', result.user.email);
+          const profileDocRef = doc(db, 'profiles', String(result.user.uid));
+          const snap = await getDoc(profileDocRef);
+          if (snap.exists() && onAuthSuccess) {
+            onAuthSuccess(result.user, snap.data());
+          }
+        }
+      }).catch(err => {
+        if (err?.code !== 'auth/null-user') {
+          console.warn('[Firebase Auth] Redirección no completada:', err?.message);
+        }
+      });
+    }
+  }, []);
 
   useEffect(() => {
     if (currentUser) {
@@ -359,7 +379,12 @@ export default function LoginView({
       }
     } catch (err) {
       console.error('Error al acceder con Google:', err);
-      setError(err.message || 'Error al iniciar sesión con Google.');
+      let msg = err.message || 'Error al iniciar sesión con Google.';
+      if (err?.code === 'auth/unauthorized-domain' || msg.includes('unauthorized-domain')) {
+        const curHost = typeof window !== 'undefined' ? window.location.hostname : 'tu dominio actual';
+        msg = `Dominio no autorizado en Firebase ("${curHost}"). Accede mediante "http://localhost:5173" o añade "${curHost}" en Firebase Console > Authentication > Settings > Authorized domains.`;
+      }
+      setError(msg);
     } finally {
       setLoading(false);
     }

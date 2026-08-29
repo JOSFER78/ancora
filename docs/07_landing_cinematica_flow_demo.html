@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>⚓ Áncora — Experiencia Cinemática Apple-Style Scrollytelling</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,600;0,700;1,600&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --bg-base: #030712;
+      --bg-surface: rgba(7, 13, 27, 0.78);
+      --bg-surface-elevated: rgba(11, 19, 38, 0.88);
+      --glass-border: rgba(255, 255, 255, 0.12);
+      --glass-border-glow: rgba(56, 189, 248, 0.45);
+      --text-primary: #f8fafc;
+      --text-secondary: #94a3b8;
+      --text-muted: #64748b;
+      --cyan: #38bdf8;
+      --cyan-glow: rgba(56, 189, 248, 0.35);
+      --gold: #f59e0b;
+      --gold-glow: rgba(245, 158, 11, 0.4);
+      --emerald: #10b981;
+      --emerald-glow: rgba(16, 185, 129, 0.35);
+      --radius-sm: 8px;
+      --radius-md: 14px;
+      --radius-lg: 24px;
+      --shadow-luxury: 0 25px 60px rgba(0, 0, 0, 0.8);
+      --font-display: 'Outfit', sans-serif;
+      --font-serif: 'Playfair Display', serif;
+      --font-body: 'Inter', sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-base);
+      color: var(--text-primary);
+      font-family: var(--font-body);
+      line-height: 1.6;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* =========================================================================
+       1. CANVAS SCRUBBER DE ALTO RENDIMIENTO (Apple Scrollytelling Engine)
+       ========================================================================= */
+    #canvas-container {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 1;
+      overflow: hidden;
+      background: #000;
+    }
+
+    #cinematic-canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      object-fit: cover;
+    }
+
+    #background-video {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.5s ease;
+    }
+
+    #background-video.video-mode-active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .cinematic-vignette {
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle at center, rgba(3, 7, 18, 0.1) 0%, rgba(3, 7, 18, 0.75) 100%),
+                  linear-gradient(to top, rgba(3, 7, 18, 0.9) 0%, transparent 40%, rgba(3, 7, 18, 0.7) 100%);
+      pointer-events: none;
+      z-index: 2;
+    }
+
+    /* =========================================================================
+       2. TOP NAVBAR ULTRA-LIMPIO Y SIN SOLAPAMIENTO
+       ========================================================================= */
+    .top-navbar {
+      position: fixed;
+      top: 18px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: calc(100% - 48px);
+      max-width: 1200px;
+      height: 60px;
+      background: var(--bg-surface);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid var(--glass-border);
+      border-radius: 999px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+      z-index: 100;
+      box-shadow: var(--shadow-luxury);
+    }
+
+    .brand-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+    }
+
+    .brand-logo {
+      width: 34px;
+      height: 34px;
+      background: linear-gradient(135deg, #0284c7, #f59e0b);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      box-shadow: 0 0 14px var(--cyan-glow);
+    }
+
+    .brand-title {
+      font-family: var(--font-display);
+      font-size: 18px;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: -0.5px;
+    }
+
+    .brand-badge {
+      font-size: 10px;
+      text-transform: uppercase;
+      font-weight: 700;
+      color: var(--cyan);
+      background: rgba(56, 189, 248, 0.12);
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(56, 189, 248, 0.25);
+    }
+
+    .nav-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn-pill {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--glass-border);
+      color: var(--text-primary);
+      padding: 7px 14px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.25s ease;
+    }
+
+    .btn-pill:hover, .btn-pill.active {
+      background: rgba(56, 189, 248, 0.18);
+      border-color: var(--cyan);
+      color: #fff;
+      box-shadow: 0 0 12px var(--cyan-glow);
+    }
+
+    .btn-cta {
+      background: linear-gradient(135deg, #0284c7, #0369a1);
+      border: 1px solid rgba(56, 189, 248, 0.4);
+      color: #fff;
+      padding: 8px 18px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 4px 14px var(--cyan-glow);
+      transition: all 0.25s ease;
+    }
+
+    .btn-cta:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px var(--cyan-glow);
+    }
+
+    /* =========================================================================
+       3. PISTA DE SCROLLYTELLING CON ESPACIADO GENEROSO
+       ========================================================================= */
+    .scrolly-track {
+      position: relative;
+      z-index: 10;
+      width: 100%;
+    }
+
+    .scrolly-section {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      padding: 120px 48px 140px; /* Margen superior e inferior para evitar colisiones */
+      max-width: 1200px;
+      margin: 0 auto;
+      pointer-events: none;
+    }
+
+    .story-card {
+      background: var(--bg-surface);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border: 1px solid var(--glass-border);
+      border-radius: var(--radius-lg);
+      padding: 36px 40px;
+      max-width: 540px;
+      pointer-events: auto;
+      box-shadow: var(--shadow-luxury);
+      transition: transform 0.4s ease, border-color 0.4s ease, box-shadow 0.4s ease, opacity 0.4s ease;
+    }
+
+    .story-card:hover {
+      border-color: var(--glass-border-glow);
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.85), 0 0 30px var(--cyan-glow);
+    }
+
+    .stage-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(56, 189, 248, 0.12);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      padding: 5px 12px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--cyan);
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+
+    .stage-badge.gold {
+      background: rgba(245, 158, 11, 0.12);
+      border-color: rgba(245, 158, 11, 0.35);
+      color: var(--gold);
+    }
+
+    .stage-badge.emerald {
+      background: rgba(16, 185, 129, 0.12);
+      border-color: rgba(16, 185, 129, 0.35);
+      color: var(--emerald);
+    }
+
+    .story-card h2 {
+      font-family: var(--font-display);
+      font-size: 30px;
+      font-weight: 700;
+      line-height: 1.22;
+      margin-bottom: 14px;
+      color: #fff;
+      letter-spacing: -0.5px;
+    }
+
+    .story-card p {
+      color: var(--text-secondary);
+      font-size: 14px;
+      line-height: 1.65;
+      margin-bottom: 20px;
+    }
+
+    .fact-box {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: var(--radius-sm);
+      padding: 12px 16px;
+      font-size: 12px;
+      color: var(--text-primary);
+      margin-bottom: 20px;
+    }
+
+    .fact-box strong {
+      color: var(--cyan);
+    }
+
+    .feature-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-bottom: 24px;
+    }
+
+    .feature-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      font-size: 13px;
+      color: var(--text-primary);
+    }
+
+    .feature-icon {
+      color: var(--cyan);
+      font-size: 15px;
+    }
+
+    /* =========================================================================
+       4. SCRUBBER / HUD MINIMALISTA INFERIOR
+       ========================================================================= */
+    .bottom-hud {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: calc(100% - 48px);
+      max-width: 860px;
+      background: var(--bg-surface-elevated);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid var(--glass-border);
+      border-radius: 999px;
+      padding: 10px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      z-index: 100;
+      box-shadow: var(--shadow-luxury);
+    }
+
+    .hud-controls-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .btn-play {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: var(--cyan);
+      border: none;
+      color: #030712;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s ease;
+      box-shadow: 0 0 12px var(--cyan-glow);
+    }
+
+    .btn-play:hover {
+      transform: scale(1.08);
+      box-shadow: 0 0 18px var(--cyan);
+    }
+
+    .hud-timecode {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--cyan);
+      white-space: nowrap;
+    }
+
+    .timeline-track-wrapper {
+      flex: 1;
+      position: relative;
+      height: 6px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 3px;
+      cursor: pointer;
+      overflow: hidden;
+    }
+
+    .timeline-progress-fill {
+      position: absolute;
+      top: 0;
+      left: 0;
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #0284c7, #38bdf8, #f59e0b);
+      border-radius: 3px;
+      transition: width 0.1s linear;
+    }
+
+    .hud-shots-nav {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .shot-pill-btn {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--glass-border);
+      color: var(--text-muted);
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-family: var(--font-mono);
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+    }
+
+    .shot-pill-btn:hover, .shot-pill-btn.active {
+      background: rgba(56, 189, 248, 0.18);
+      border-color: var(--cyan);
+      color: #fff;
+    }
+
+    /* Modal Markdown */
+    #markdown-modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: #020617;
+      z-index: 200;
+      overflow-y: auto;
+      padding: 100px 24px 60px;
+    }
+
+    .markdown-wrapper {
+      max-width: 900px;
+      margin: 0 auto;
+      background: #0b0f19;
+      border: 1px solid var(--glass-border);
+      border-radius: var(--radius-lg);
+      padding: 40px 48px;
+      box-shadow: var(--shadow-luxury);
+    }
+
+    @media (max-width: 768px) {
+      .top-navbar { height: 52px; padding: 0 14px; }
+      .brand-badge { display: none; }
+      .scrolly-section { padding: 100px 16px 120px; }
+      .story-card { padding: 24px 20px; }
+      .story-card h2 { font-size: 22px; }
+      .bottom-hud { padding: 8px 14px; gap: 10px; }
+      .shot-pill-btn span { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 1. VISOR CANVAS SCRUBBER / VIDEO BACKGROUND -->
+  <div id="canvas-container">
+    <canvas id="cinematic-canvas"></canvas>
+    <video id="background-video" src="./assets/cinematic/ancora_cinematic_experience.mp4" loop muted playsinline preload="auto"></video>
+    <div class="cinematic-vignette"></div>
+  </div>
+
+  <!-- 2. TOP NAVBAR GLASS -->
+  <header class="top-navbar">
+    <a href="#" class="brand-group">
+      <div class="brand-logo">⚓</div>
+      <div class="brand-title">ÁNCORA</div>
+    </a>
+    <span class="brand-badge">Apple-Style Video Scrollytelling</span>
+
+    <div class="nav-actions">
+      <button class="btn-pill active" id="btn-mode-scrub" onclick="switchPlaybackMode('scrub')">
+        <span>🎞️</span> Canvas Scrubbing
+      </button>
+      <button class="btn-pill" id="btn-mode-video" onclick="switchPlaybackMode('video')">
+        <span>🔊</span> Vídeo en Vivo
+      </button>
+      <button class="btn-pill" id="btn-toggle-doc" onclick="toggleDocModal()">
+        <span>📄</span> Dossier
+      </button>
+      <button class="btn-cta" onclick="alert('Iniciando triaje clínico seguro...')">
+        Comenzar
+      </button>
+    </div>
+  </header>
+
+  <!-- 3. SECCIONES DE SCROLLYTELLING (ESPACIADO PERFECTO) -->
+  <main class="scrolly-track">
+
+    <!-- ESCENA 1: 0% - 25% -->
+    <section class="scrolly-section" id="sec-0" style="justify-content: flex-start;">
+      <div class="story-card">
+        <div class="stage-badge">Secuencia 01 • Rumiación y Desborde Nocturno</div>
+        <h2>Tu vida no cabe en una hora de consulta a la semana.</h2>
+        <p>
+          Los pensamientos se agolpan un martes a medianoche. La ansiedad y las distorsiones cognitivas te desbordan, y para cuando llega tu sesión presencial, el 70% de los incidentes se han disuelto en el sesgo de recuerdo.
+        </p>
+        <div class="fact-box">
+          📉 <strong>Evidencia Clínica:</strong> El 73% de los disparadores somáticos entre sesiones se pierden por el sesgo retrospectivo de recuerdo.
+        </div>
+        <ul class="feature-list">
+          <li class="feature-item">
+            <span class="feature-icon">🌊</span>
+            <span><strong>Sin 'Memoria de Pez':</strong> Hilo bi-temporal inmutable sin alucinaciones ni complacencia algorítmica.</span>
+          </li>
+          <li class="feature-item">
+            <span class="feature-icon">🔒</span>
+            <span><strong>Cero Intrusismo:</strong> La IA solo registra hechos objetivos sin emitir juicios ni diagnósticos médicos.</span>
+          </li>
+        </ul>
+        <button class="btn-cta" onclick="scrollToSec(1)">Descubrir el Anclaje ↓</button>
+      </div>
+    </section>
+
+    <!-- ESCENA 2: 25% - 50% -->
+    <section class="scrolly-section" id="sec-1" style="justify-content: flex-end;">
+      <div class="story-card">
+        <div class="stage-badge gold">Secuencia 02 • Estabilidad y Polo a Tierra</div>
+        <h2>El Faro y la Contención Somática 24/7.</h2>
+        <p>
+          Cuando la tormenta arrecia, Áncora activa las directivas pautadas por tu terapeuta colegiado: ejercicios de respiración vagal a <strong>0.1 Hz (6 respiraciones por minuto)</strong> para devolver tu sistema nervioso a su ventana de tolerancia.
+        </p>
+        <div class="fact-box">
+          🌬️ <strong>Resonancia HRV 0.1 Hz:</strong> Estimulación parasimpática para desescalar la hiperreactividad amigdalina antes de la reestructuración cognitiva.
+        </div>
+        <ul class="feature-list">
+          <li class="feature-item">
+            <span class="feature-icon">⚓</span>
+            <span><strong>Directivas Clínicas Activas:</strong> Aplicación estricta de las pautas fijadas por tu psicólogo.</span>
+          </li>
+          <li class="feature-item">
+            <span class="feature-icon">🛑</span>
+            <span><strong>Circuit Breaker:</strong> Derivación automática al 024 / 112 ante cualquier indicio de crisis.</span>
+          </li>
+        </ul>
+        <button class="btn-cta" onclick="scrollToSec(2)">Ver la Conexión Humana ↓</button>
+      </div>
+    </section>
+
+    <!-- ESCENA 3: 50% - 75% -->
+    <section class="scrolly-section" id="sec-2" style="justify-content: flex-start;">
+      <div class="story-card">
+        <div class="stage-badge emerald">Secuencia 03 • Human-in-the-Loop</div>
+        <h2>La IA acompaña y recuerda; tu psicólogo dirige.</h2>
+        <p>
+          Tus registros diarios se estructuran con citas textuales literales (<em>verbatim</em>). Tu psicólogo colegiado revisa la evolución semanal en un panel <em>Patient 360</em> y prepara la consulta en menos de 3 minutos.
+        </p>
+        <div class="fact-box">
+          🩺 <strong>Supervisión Humana Obligatoria:</strong> Al menos 2 revisiones clínicas mensuales de 15 minutos aseguradas.
+        </div>
+        <ul class="feature-list">
+          <li class="feature-item">
+            <span class="feature-icon">📜</span>
+            <span><strong>Separación Deontológica:</strong> 1. Dato literal -> 2. Análisis preliminar -> 3. Criterio clínico humano.</span>
+          </li>
+          <li class="feature-item">
+            <span class="feature-icon">⚖️</span>
+            <span><strong>Stripe Split 0% Comisiones:</strong> Honorarios 100% íntegros y limpios para el profesional (exentos de IVA).</span>
+          </li>
+        </ul>
+        <button class="btn-cta" onclick="scrollToSec(3)">Ver el Rumbo Vital ↓</button>
+      </div>
+    </section>
+
+    <!-- ESCENA 4: 75% - 100% -->
+    <section class="scrolly-section" id="sec-3" style="justify-content: flex-end;">
+      <div class="story-card">
+        <div class="stage-badge">Secuencia 04 • Claridad y Rumbo Vital</div>
+        <h2>Llega a cada sesión con el contexto exacto.</h2>
+        <p>
+          Sin perder el 30% de la consulta en poner al día al terapeuta. Con un rumbo claro, métricas de recuperación contrastadas y soberanía de datos bajo cifrado de grado médico en servidores dedicados en España.
+        </p>
+        <div class="fact-box">
+          🛡️ <strong>Privacidad Zero-Knowledge:</strong> Cifrado cliente (Argon2id + AES-GCM-256). Solo tú y tu psicólogo tenéis la clave.
+        </div>
+        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+          <button class="btn-cta" style="padding: 10px 22px; font-size: 13px;" onclick="alert('Iniciando triaje clínico seguro...')">
+            Comenzar Onboarding ⚓
+          </button>
+          <button class="btn-pill" style="padding: 10px 16px;" onclick="alert('Abriendo portal de profesionales...')">
+            Portal Psicólogos
+          </button>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- 4. BOTTOM HUD MINIMALISTA -->
+  <footer class="bottom-hud">
+    <div class="hud-controls-left">
+      <button class="btn-play" id="hud-play-btn" onclick="togglePlayPause()">▶</button>
+      <div class="hud-timecode" id="hud-timecode">FRAME 001 / 140 • 00:00.0</div>
+    </div>
+
+    <!-- Barra de progreso interactiva -->
+    <div class="timeline-track-wrapper" onclick="onTimelineClick(event)">
+      <div class="timeline-progress-fill" id="timeline-fill"></div>
+    </div>
+
+    <!-- Píldoras de salto de escena -->
+    <div class="hud-shots-nav">
+      <button class="shot-pill-btn active" onclick="scrollToSec(0)">01 <span>Tormenta</span></button>
+      <button class="shot-pill-btn" onclick="scrollToSec(1)">02 <span>Faro</span></button>
+      <button class="shot-pill-btn" onclick="scrollToSec(2)">03 <span>Consulta</span></button>
+      <button class="shot-pill-btn" onclick="scrollToSec(3)">04 <span>Puerto</span></button>
+    </div>
+  </footer>
+
+  <!-- 5. MODAL DOSSIER DE PRODUCCIÓN -->
+  <div id="markdown-modal">
+    <div class="markdown-wrapper">
+      <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--glass-border); padding-bottom: 16px; margin-bottom: 24px;">
+        <h1 style="margin: 0; font-family: var(--font-display); color: #fff;">🛸 Dossier Técnico: Arquitectura Apple-Style Scrollytelling</h1>
+        <button class="btn-pill active" onclick="toggleDocModal()">Volver a la Web ✕</button>
+      </div>
+
+      <h2 style="font-family: var(--font-display); color: #fff; margin: 20px 0 10px;">1. ¿Cómo se construyen estas webs de vídeo cinematográfico?</h2>
+      <p style="color: var(--text-secondary); line-height: 1.7; margin-bottom: 14px;">
+        Las webs premiadas de alta gama (Apple, Genesis, Ferrari, Awwwards) utilizan el patrón de <strong>Canvas 2D Image Sequence Scrubbing</strong>:
+      </p>
+      <ul style="color: var(--text-secondary); margin-left: 20px; line-height: 1.8; margin-bottom: 20px;">
+        <li><strong>Extracción de fotogramas clave en 1080p</strong> precalculados con FFmpeg.</li>
+        <li><strong>Precarga en memoria RAM</strong> de los 140 fotogramas como objetos <code>Image</code> nativos.</li>
+        <li><strong>Sincronización suave por LERP</strong> en <code>requestAnimationFrame</code> vinculando el scroll del usuario con el fotograma exacto.</li>
+        <li><strong>Cero buffering / Cero lag:</strong> respuesta inmediata de avance y retroceso táctil a 60/120 FPS.</li>
+      </ul>
+
+      <h2 style="font-family: var(--font-display); color: #fff; margin: 20px 0 10px;">2. Compatibilidad con Vídeo en Vivo</h2>
+      <p style="color: var(--text-secondary); line-height: 1.7;">
+        El motor permite alternar con un clic al reproductor de vídeo nativo MP4 en 1080p con la pista de audio binaural relajante de 432 Hz y modulación de respiración a 0.1 Hz.
+      </p>
+    </div>
+  </div>
+
+  <!-- JAVASCRIPT ENGINE APPLE-STYLE CANVAS SCRUBBER -->
+  <script>
+    const framePaths = ["./assets/cinematic/frames/frame_0001.jpg","./assets/cinematic/frames/frame_0002.jpg","./assets/cinematic/frames/frame_0003.jpg","./assets/cinematic/frames/frame_0004.jpg","./assets/cinematic/frames/frame_0005.jpg","./assets/cinematic/frames/frame_0006.jpg","./assets/cinematic/frames/frame_0007.jpg","./assets/cinematic/frames/frame_0008.jpg","./assets/cinematic/frames/frame_0009.jpg","./assets/cinematic/frames/frame_0010.jpg","./assets/cinematic/frames/frame_0011.jpg","./assets/cinematic/frames/frame_0012.jpg","./assets/cinematic/frames/frame_0013.jpg","./assets/cinematic/frames/frame_0014.jpg","./assets/cinematic/frames/frame_0015.jpg","./assets/cinematic/frames/frame_0016.jpg","./assets/cinematic/frames/frame_0017.jpg","./assets/cinematic/frames/frame_0018.jpg","./assets/cinematic/frames/frame_0019.jpg","./assets/cinematic/frames/frame_0020.jpg","./assets/cinematic/frames/frame_0021.jpg","./assets/cinematic/frames/frame_0022.jpg","./assets/cinematic/frames/frame_0023.jpg","./assets/cinematic/frames/frame_0024.jpg","./assets/cinematic/frames/frame_0025.jpg","./assets/cinematic/frames/frame_0026.jpg","./assets/cinematic/frames/frame_0027.jpg","./assets/cinematic/frames/frame_0028.jpg","./assets/cinematic/frames/frame_0029.jpg","./assets/cinematic/frames/frame_0030.jpg","./assets/cinematic/frames/frame_0031.jpg","./assets/cinematic/frames/frame_0032.jpg","./assets/cinematic/frames/frame_0033.jpg","./assets/cinematic/frames/frame_0034.jpg","./assets/cinematic/frames/frame_0035.jpg","./assets/cinematic/frames/frame_0036.jpg","./assets/cinematic/frames/frame_0037.jpg","./assets/cinematic/frames/frame_0038.jpg","./assets/cinematic/frames/frame_0039.jpg","./assets/cinematic/frames/frame_0040.jpg","./assets/cinematic/frames/frame_0041.jpg","./assets/cinematic/frames/frame_0042.jpg","./assets/cinematic/frames/frame_0043.jpg","./assets/cinematic/frames/frame_0044.jpg","./assets/cinematic/frames/frame_0045.jpg","./assets/cinematic/frames/frame_0046.jpg","./assets/cinematic/frames/frame_0047.jpg","./assets/cinematic/frames/frame_0048.jpg","./assets/cinematic/frames/frame_0049.jpg","./assets/cinematic/frames/frame_0050.jpg","./assets/cinematic/frames/frame_0051.jpg","./assets/cinematic/frames/frame_0052.jpg","./assets/cinematic/frames/frame_0053.jpg","./assets/cinematic/frames/frame_0054.jpg","./assets/cinematic/frames/frame_0055.jpg","./assets/cinematic/frames/frame_0056.jpg","./assets/cinematic/frames/frame_0057.jpg","./assets/cinematic/frames/frame_0058.jpg","./assets/cinematic/frames/frame_0059.jpg","./assets/cinematic/frames/frame_0060.jpg","./assets/cinematic/frames/frame_0061.jpg","./assets/cinematic/frames/frame_0062.jpg","./assets/cinematic/frames/frame_0063.jpg","./assets/cinematic/frames/frame_0064.jpg","./assets/cinematic/frames/frame_0065.jpg","./assets/cinematic/frames/frame_0066.jpg","./assets/cinematic/frames/frame_0067.jpg","./assets/cinematic/frames/frame_0068.jpg","./assets/cinematic/frames/frame_0069.jpg","./assets/cinematic/frames/frame_0070.jpg","./assets/cinematic/frames/frame_0071.jpg","./assets/cinematic/frames/frame_0072.jpg","./assets/cinematic/frames/frame_0073.jpg","./assets/cinematic/frames/frame_0074.jpg","./assets/cinematic/frames/frame_0075.jpg","./assets/cinematic/frames/frame_0076.jpg","./assets/cinematic/frames/frame_0077.jpg","./assets/cinematic/frames/frame_0078.jpg","./assets/cinematic/frames/frame_0079.jpg","./assets/cinematic/frames/frame_0080.jpg","./assets/cinematic/frames/frame_0081.jpg","./assets/cinematic/frames/frame_0082.jpg","./assets/cinematic/frames/frame_0083.jpg","./assets/cinematic/frames/frame_0084.jpg","./assets/cinematic/frames/frame_0085.jpg","./assets/cinematic/frames/frame_0086.jpg","./assets/cinematic/frames/frame_0087.jpg","./assets/cinematic/frames/frame_0088.jpg","./assets/cinematic/frames/frame_0089.jpg","./assets/cinematic/frames/frame_0090.jpg","./assets/cinematic/frames/frame_0091.jpg","./assets/cinematic/frames/frame_0092.jpg","./assets/cinematic/frames/frame_0093.jpg","./assets/cinematic/frames/frame_0094.jpg","./assets/cinematic/frames/frame_0095.jpg","./assets/cinematic/frames/frame_0096.jpg","./assets/cinematic/frames/frame_0097.jpg","./assets/cinematic/frames/frame_0098.jpg","./assets/cinematic/frames/frame_0099.jpg","./assets/cinematic/frames/frame_0100.jpg","./assets/cinematic/frames/frame_0101.jpg","./assets/cinematic/frames/frame_0102.jpg","./assets/cinematic/frames/frame_0103.jpg","./assets/cinematic/frames/frame_0104.jpg","./assets/cinematic/frames/frame_0105.jpg","./assets/cinematic/frames/frame_0106.jpg","./assets/cinematic/frames/frame_0107.jpg","./assets/cinematic/frames/frame_0108.jpg","./assets/cinematic/frames/frame_0109.jpg","./assets/cinematic/frames/frame_0110.jpg","./assets/cinematic/frames/frame_0111.jpg","./assets/cinematic/frames/frame_0112.jpg","./assets/cinematic/frames/frame_0113.jpg","./assets/cinematic/frames/frame_0114.jpg","./assets/cinematic/frames/frame_0115.jpg","./assets/cinematic/frames/frame_0116.jpg","./assets/cinematic/frames/frame_0117.jpg","./assets/cinematic/frames/frame_0118.jpg","./assets/cinematic/frames/frame_0119.jpg","./assets/cinematic/frames/frame_0120.jpg","./assets/cinematic/frames/frame_0121.jpg","./assets/cinematic/frames/frame_0122.jpg","./assets/cinematic/frames/frame_0123.jpg","./assets/cinematic/frames/frame_0124.jpg","./assets/cinematic/frames/frame_0125.jpg","./assets/cinematic/frames/frame_0126.jpg","./assets/cinematic/frames/frame_0127.jpg","./assets/cinematic/frames/frame_0128.jpg","./assets/cinematic/frames/frame_0129.jpg","./assets/cinematic/frames/frame_0130.jpg","./assets/cinematic/frames/frame_0131.jpg","./assets/cinematic/frames/frame_0132.jpg","./assets/cinematic/frames/frame_0133.jpg","./assets/cinematic/frames/frame_0134.jpg","./assets/cinematic/frames/frame_0135.jpg","./assets/cinematic/frames/frame_0136.jpg","./assets/cinematic/frames/frame_0137.jpg","./assets/cinematic/frames/frame_0138.jpg","./assets/cinematic/frames/frame_0139.jpg","./assets/cinematic/frames/frame_0140.jpg"];
+    const totalFrames = framePaths.length;
+    const images = [];
+    let imagesLoaded = 0;
+
+    const canvas = document.getElementById('cinematic-canvas');
+    const ctx = canvas.getContext('2d', { alpha: false });
+    const video = document.getElementById('background-video');
+
+    let currentFrame = 0;
+    let targetFrame = 0;
+    let isPlaying = false;
+    let playInterval = null;
+    let playbackMode = 'scrub'; // 'scrub' | 'video'
+
+    // Ajustar dimensiones del Canvas
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      renderCurrentFrame();
+    }
+    window.addEventListener('resize', resizeCanvas);
+
+    // Precargar todas las imágenes
+    function preloadImages() {
+      for (let i = 0; i < totalFrames; i++) {
+        const img = new Image();
+        img.src = framePaths[i];
+        img.onload = () => {
+          imagesLoaded++;
+          if (imagesLoaded === 1) {
+            resizeCanvas();
+          }
+        };
+        images.push(img);
+      }
+    }
+    preloadImages();
+
+    // Renderizar fotograma con cover perfecto
+    function renderFrame(index) {
+      const idx = Math.max(0, Math.min(totalFrames - 1, Math.round(index)));
+      const img = images[idx];
+      if (!img || !img.complete || img.naturalWidth === 0) return;
+
+      const cw = canvas.width;
+      const ch = canvas.height;
+      const iw = img.naturalWidth;
+      const ih = img.naturalHeight;
+
+      const scale = Math.max(cw / iw, ch / ih);
+      const nw = iw * scale;
+      const nh = ih * scale;
+      const nx = (cw - nw) / 2;
+      const ny = (ch - nh) / 2;
+
+      ctx.drawImage(img, nx, ny, nw, nh);
+    }
+
+    function renderCurrentFrame() {
+      renderFrame(currentFrame);
+    }
+
+    // Bucle de animación por Lerp amortiguado (Smooth Damping)
+    function animate() {
+      if (playbackMode === 'scrub') {
+        const diff = targetFrame - currentFrame;
+        if (Math.abs(diff) > 0.01) {
+          currentFrame += diff * 0.18; // Factor de amortiguación sedoso
+          renderFrame(currentFrame);
+          updateHUD(currentFrame);
+        }
+      }
+      requestAnimationFrame(animate);
+    }
+    animate();
+
+    // Sincronización con Scroll Nativo
+    window.addEventListener('scroll', () => {
+      if (playbackMode !== 'scrub') return;
+      const scrollY = window.scrollY;
+      const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+      if (maxScroll <= 0) return;
+
+      const progress = Math.max(0, Math.min(1, scrollY / maxScroll));
+      targetFrame = progress * (totalFrames - 1);
+    }, { passive: true });
+
+    // Actualizar HUD y botones
+    function updateHUD(frameIdx) {
+      const idx = Math.max(0, Math.min(totalFrames - 1, Math.round(frameIdx)));
+      const progressPercent = (idx / (totalFrames - 1)) * 100;
+      document.getElementById('timeline-fill').style.width = progressPercent + '%';
+
+      const secFraction = (idx / (totalFrames - 1)) * 14.0;
+      const mm = String(Math.floor(secFraction / 60)).padStart(2, '0');
+      const ss = String((secFraction % 60).toFixed(1)).padStart(4, '0');
+      document.getElementById('hud-timecode').innerText = 'FRAME ' + String(idx + 1).padStart(3, '0') + ' / ' + totalFrames + ' • ' + mm + ':' + ss;
+
+      const shotIndex = Math.min(3, Math.floor((idx / totalFrames) * 4));
+      document.querySelectorAll('.shot-pill-btn').forEach((btn, i) => {
+        btn.classList.toggle('active', i === shotIndex);
+      });
+    }
+
+    function scrollToSec(secIndex) {
+      const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+      const targetY = (secIndex / 3) * maxScroll;
+      window.scrollTo({ top: targetY, behavior: 'smooth' });
+    }
+
+    function onTimelineClick(e) {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const ratio = Math.max(0, Math.min(1, clickX / rect.width));
+      const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+      window.scrollTo({ top: ratio * maxScroll, behavior: 'smooth' });
+    }
+
+    function togglePlayPause() {
+      const btn = document.getElementById('hud-play-btn');
+      if (playbackMode === 'video') {
+        if (video.paused) {
+          video.play();
+          btn.innerText = '⏸';
+        } else {
+          video.pause();
+          btn.innerText = '▶';
+        }
+      } else {
+        isPlaying = !isPlaying;
+        if (isPlaying) {
+          btn.innerText = '⏸';
+          playInterval = setInterval(() => {
+            targetFrame = (targetFrame + 1) % totalFrames;
+            const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+            window.scrollTo({ top: (targetFrame / (totalFrames - 1)) * maxScroll });
+          }, 60);
+        } else {
+          btn.innerText = '▶';
+          if (playInterval) clearInterval(playInterval);
+        }
+      }
+    }
+
+    function switchPlaybackMode(mode) {
+      playbackMode = mode;
+      const btnScrub = document.getElementById('btn-mode-scrub');
+      const btnVideo = document.getElementById('btn-mode-video');
+      const btnPlay = document.getElementById('hud-play-btn');
+
+      if (mode === 'video') {
+        btnVideo.classList.add('active');
+        btnScrub.classList.remove('active');
+        video.classList.add('video-mode-active');
+        video.currentTime = (currentFrame / totalFrames) * 14.0;
+        video.play();
+        btnPlay.innerText = '⏸';
+      } else {
+        btnScrub.classList.add('active');
+        btnVideo.classList.remove('active');
+        video.classList.remove('video-mode-active');
+        video.pause();
+        btnPlay.innerText = '▶';
+      }
+    }
+
+    function toggleDocModal() {
+      const modal = document.getElementById('markdown-modal');
+      const isVisible = modal.style.display === 'block';
+      modal.style.display = isVisible ? 'none' : 'block';
+    }
+  </script>
+</body>
+</html>

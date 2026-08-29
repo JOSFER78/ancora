@@ -17,12 +17,35 @@
       }
     </script>
     <script>
+      function isExtensionOrThirdPartyError(err) {
+        if (!err) return false;
+        var str = (typeof err === 'string') ? err : (err.stack || err.message || '');
+        if (typeof str !== 'string') str = String(str);
+        return str.includes('chrome-extension://') || 
+               str.includes('moz-extension://') || 
+               str.includes('safari-web-extension://') ||
+               str.includes('MetaMask') ||
+               str.includes('metamask') ||
+               str.includes('inpage.js');
+      }
+
       window.addEventListener('error', function(event) {
+        if (event.filename && (event.filename.includes('chrome-extension://') || event.filename.includes('moz-extension://') || event.filename.includes('safari-web-extension://'))) {
+          return;
+        }
+        if (isExtensionOrThirdPartyError(event.error) || isExtensionOrThirdPartyError(event.message)) {
+          return;
+        }
         showErrorOverlay('Error de Ejecución', event.error ? event.error.stack : event.message);
       });
+
       window.addEventListener('unhandledrejection', function(event) {
+        if (isExtensionOrThirdPartyError(event.reason)) {
+          return;
+        }
         showErrorOverlay('Promesa Rechazada', event.reason ? (event.reason.stack || event.reason) : 'Desconocido');
       });
+
       function showErrorOverlay(title, stack) {
         var overlay = document.getElementById('error-overlay-global');
         if (!overlay) {
@@ -42,9 +65,14 @@
           overlay.style.overflow = 'auto';
           overlay.style.border = '3px solid #ff3333';
           overlay.style.borderRadius = '8px';
+          overlay.style.boxShadow = '0 10px 30px rgba(0,0,0,0.5)';
           document.body.appendChild(overlay);
         }
-        overlay.innerHTML = '<h3 style="color: #ff3333; margin-top: 0;">⚠️ ' + title + '</h3><pre style="white-space: pre-wrap; word-break: break-all;">' + stack + '</pre>';
+        overlay.innerHTML = '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">' +
+          '<h3 style="color: #ff3333; margin: 0;">⚠️ ' + title + '</h3>' +
+          '<button onclick="this.parentElement.parentElement.remove()" style="background:#ff3333; color:#fff; border:none; padding:6px 12px; border-radius:4px; cursor:pointer; font-weight:bold;">Cerrar</button>' +
+          '</div>' +
+          '<pre style="white-space: pre-wrap; word-break: break-all; margin:0;">' + stack + '</pre>';
       }
     </script>
   </head>

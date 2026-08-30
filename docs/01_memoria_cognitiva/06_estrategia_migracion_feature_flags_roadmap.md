@@ -71,7 +71,7 @@ FASE 3: FIRESTORE & REGLAS DE SEGURIDAD (Despliegue de colecciones y firestore.r
    ↓
 FASE 4: PARSER UNIVERSAL DE DOCUMENTOS (Extracción limpia de XML de los 7 .docx de Emilio en datos/).
    ↓
-FASE 5: PIPELINE ETL SUPABASE -> FIRESTORE (Migración completa de perfiles, deudas, moods, mensajes).
+FASE 5: PIPELINE ETL Firebase -> FIRESTORE (Migración completa de perfiles, deudas, moods, mensajes).
    ↓
 FASE 6: CONCILIACIÓN DE INTEGRIDAD (0.00% de discrepancia en checksums y registros).
    ↓

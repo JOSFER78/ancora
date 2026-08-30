@@ -57,7 +57,7 @@ Nota: el repositorio de GitHub indicado no se ha podido inspeccionar directament
 
 ## Hallazgos del repo real incorporados
 
-- Stack real: React 19 + Vite + Capacitor + Supabase + Edge Functions.
+- Stack real: React 19 + Vite + Capacitor + Firebase + Edge Functions.
 - Edge Functions detectadas: `chat-terapeuta`, `clinical-ingest`, `clinical-synthesize`.
 - Tablas clínicas detectadas en migraciones: `clinical_documents`, `document_extractions`, `clinical_proposals`, `clinical_facts`, `clinical_profiles`, `timeline_events`, `medications`, `risk_events`, `weekly_reviews`, `clinical_life_tree`, `clinical_timeline_index`, `patient_context_snapshots`, `conversation_memory_updates`, `patient_credits`.
-- Problemas críticos: mezcla de producto sanitario con módulos personales/trading, hardcoding de proyecto Supabase, roles inconsistentes, componentes gigantes, uso de OpenRouter pese a promesa de IA local, documentos sensibles en repo, fallback localStorage para datos clínicos y CORS abierto.
+- Problemas críticos: mezcla de producto sanitario con módulos personales/trading, hardcoding de proyecto Firebase, roles inconsistentes, componentes gigantes, uso de OpenRouter pese a promesa de IA local, documentos sensibles en repo, fallback localStorage para datos clínicos y CORS abierto.

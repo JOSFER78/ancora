@@ -1,7 +1,7 @@
 /**
  * @file IMemoryRepository.js
  * @description Interfaz de repositorio de persistencia para el Áncora Cognitive Memory Engine.
- * Define el contrato que deben cumplir todas las fuentes de almacenamiento (Firestore, Supabase, etc.).
+ * Define el contrato que deben cumplir todas las fuentes de almacenamiento (Firestore, Firebase, etc.).
  */
 
 export class IMemoryRepository {

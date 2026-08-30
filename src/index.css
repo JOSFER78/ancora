@@ -1478,10 +1478,10 @@ button, input, select, textarea {
 .chat-sidebar-left {
   display: flex;
   flex-direction: column;
-  width: 260px;
-  background: rgba(8, 16, 22, 0.75);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  width: 290px;
+  background: rgba(8, 16, 22, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   border-right: 1px solid var(--border);
   height: 100%;
   flex-shrink: 0;
@@ -1873,6 +1873,7 @@ button, input, select, textarea {
   letter-spacing: 0.03em;
   background: linear-gradient(90deg, #ffffff, #a8d5db);
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 

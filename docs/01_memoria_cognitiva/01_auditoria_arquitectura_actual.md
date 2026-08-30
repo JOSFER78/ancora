@@ -1,30 +1,30 @@
 # 01. Auditoría de Arquitectura y Codebase Legacy — Repositorio Áncora
 
-**Entorno Auditado:** React 19.2.6, Vite 8.0.12, Supabase JS 2.106.2, Capacitor 8.3.4, Firebase Hosting (`ancora-portal`).  
+**Entorno Auditado:** React 19.2.6, Vite 8.0.12, Firebase JS 2.106.2, Capacitor 8.3.4, Firebase Hosting (`ancora-portal`).  
 **Objetivo:** Identificar acoplamientos, riesgos de rotura, gestión de contexto y sentar las bases para la arquitectura por contratos.
 
 ---
 
 ## 1. Puntos Exactos de Acoplamiento Directo UI ↔ Backend
 
-En la arquitectura actual del repositorio `ancora_repo`, las vistas de la interfaz (`.jsx`) interactúan de forma directa y monolítica con la base de datos de Supabase, el almacenamiento (Storage) y las Edge Functions, sin pasar por una capa de abstracción de servicios o repositorios.
+En la arquitectura actual del repositorio `ancora_repo`, las vistas de la interfaz (`.jsx`) interactúan de forma directa y monolítica con la base de datos de Firebase, el almacenamiento (Storage) y las Edge Functions, sin pasar por una capa de abstracción de servicios o repositorios.
 
 ### A. Inicialización y Credenciales Hardcodeadas en Cliente
-- **Archivo:** `src/supabaseClient.js` (Líneas 3-6)
-  - La URL de Supabase (`https://ysnorelkaccaikvuqgnv.supabase.co`) y la clave anónima JWT están hardcodeadas directamente en el código fuente en lugar de ser leídas desde variables de entorno seguras (`import.meta.env.VITE_SUPABASE_URL`, `import.meta.env.VITE_SUPABASE_ANON_KEY`).
+- **Archivo:** `src/firebaseClient.js` (Líneas 3-6)
+  - La URL de Firebase (`https://ysnorelkaccaikvuqgnv.firebase.co`) y la clave anónima JWT están hardcodeadas directamente en el código fuente en lugar de ser leídas desde variables de entorno seguras (`import.meta.env.VITE_Firebase_URL`, `import.meta.env.VITE_Firebase_ANON_KEY`).
   - **Impacto:** Cualquier cambio de entorno o migración de persistencia hacia Firestore requiere editar archivos estáticos de código fuente.
 
 ### B. Consultas SQL / REST Directas desde Vistas de UI
 - **`src/App.jsx` (Líneas 263-332, 852-875):**
-  - Líneas 263-286 (`fetchUserProfile`): `supabase.from('profiles').select(...).eq('id', currentUser.id).single()` acoplado al hook `useEffect` principal.
+  - Líneas 263-286 (`fetchUserProfile`): `firebase.from('profiles').select(...).eq('id', currentUser.id).single()` acoplado al hook `useEffect` principal.
   - Líneas 298-304 (`fetchTodayMood`): Consulta directa a la tabla `daily_moods` con filtrado por fecha `toISOString().split('T')[0]`.
   - Líneas 316-327 (`fetchTotalDebts`): Consulta directa a `debts` y agregación manual en memoria.
-  - Líneas 852-875 (`onAssignPsychologist`): `supabase.from('profiles').update({ contexto_terapeutico: ... })` y `supabase.from('appointments').insert(...)` ejecutados en callbacks inline del render.
+  - Líneas 852-875 (`onAssignPsychologist`): `firebase.from('profiles').update({ contexto_terapeutico: ... })` y `firebase.from('appointments').insert(...)` ejecutados en callbacks inline del render.
 
 - **`src/views/paciente/PacienteChatView.jsx` (Líneas 235-442):**
-  - Líneas 235-260 (`loadConversations`): `supabase.from('conversations').select('*').eq('user_id', user.id).neq('status', 'archived')` y fallback directo de inserción de nueva sesión.
-  - Líneas 273-280 (`loadMessages`): `supabase.from('messages').select('*').eq('conversation_id', convId)`.
-  - Líneas 378-383 (`checkCredits`): `supabase.from('patient_credits').select('*').eq('patient_id', profile.id)`.
+  - Líneas 235-260 (`loadConversations`): `firebase.from('conversations').select('*').eq('user_id', user.id).neq('status', 'archived')` y fallback directo de inserción de nueva sesión.
+  - Líneas 273-280 (`loadMessages`): `firebase.from('messages').select('*').eq('conversation_id', convId)`.
+  - Líneas 378-383 (`checkCredits`): `firebase.from('patient_credits').select('*').eq('patient_id', profile.id)`.
   - Líneas 424-434 (`handleSend`): Inserción directa de mensaje `role: 'user'` en tabla `messages`.
   - Líneas 540-546 (`handleRenameConversation`) y 566-571 (`handleDeleteConversation`): Operaciones CRUD directas sobre `conversations`.
 
@@ -36,8 +36,8 @@ En la arquitectura actual del repositorio `ancora_repo`, las vistas de la interf
 
 - **`src/views/MenteView.jsx` (Líneas 403-440, 520-573, 797-802):**
   - Líneas 403-440: Polling directo con `setInterval` cada 1.5s sobre `agent_tasks` y mutación subsiguiente de `profiles.contexto_terapeutico`.
-  - Líneas 520-526 (`fetchSources`): `supabase.from('mente_sources').select('*')`.
-  - Líneas 538-545 (`fetchCompletedConversations`): `supabase.from('conversations').select('*').eq('status', 'completed')`.
+  - Líneas 520-526 (`fetchSources`): `firebase.from('mente_sources').select('*')`.
+  - Líneas 538-545 (`fetchCompletedConversations`): `firebase.from('conversations').select('*').eq('status', 'completed')`.
   - Líneas 557-573 (`handleAddNote`): Inserción directa de documentos/notas en `mente_sources`.
   - Líneas 797-802 (`handleSaveMente`): Mutación directa del blob `contexto_terapeutico` en `profiles`.
 
@@ -97,8 +97,8 @@ Implementado en `src/lib/clinicalEngine.js` y `chat-terapeuta/index.ts:224-343` 
    No existen bloqueos optimistas ni campos atómicos. Toda la información del paciente se sobreescribe como un objeto JSON completo (`PATCH profiles`). Si una sesión de chat actualiza un compromiso al mismo tiempo que el psicólogo edita una nota, una escritura sobreescribe y destruye los cambios de la otra.
 4. **Incoherencia Dual de Vistas:**
    Existen implementaciones duplicadas (`ChatView.jsx` vs `PacienteChatView.jsx`, `DashboardView.jsx` vs `PacienteHoyView.jsx`).
-5. **Doble Configuración de Despliegue (Firebase Hosting vs Supabase Backend):**
-   `firebase.json` está configurado para hospedar el SPA en Firebase Hosting (`ancora-portal`), pero los servicios backend residen en Supabase. No hay sincronización de reglas de seguridad ni adaptadores formales para Firestore.
+5. **Doble Configuración de Despliegue (Firebase Hosting vs Firebase Backend):**
+   `firebase.json` está configurado para hospedar el SPA en Firebase Hosting (`ancora-portal`), pero los servicios backend residen en Firebase. No hay sincronización de reglas de seguridad ni adaptadores formales para Firestore.
 
 ---
 
@@ -114,7 +114,7 @@ src/
 │
 ├── infrastructure/              # 2. ADAPTADORES DE INFRAESTRUCTURA
 │   ├── firebase/ (FirestoreChatAdapter, FirestoreClinicalAdapter)
-│   ├── supabase/ (SupabaseChatAdapter, SupabaseClinicalAdapter)
+│   ├── firebase/ (FirebaseChatAdapter, FirebaseClinicalAdapter)
 │   └── config/env.js (Variables de entorno seguras)
 │
 ├── application/                 # 3. CASOS DE USO Y SERVICIOS

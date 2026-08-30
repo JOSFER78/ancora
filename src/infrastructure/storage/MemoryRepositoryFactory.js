@@ -1,35 +1,27 @@
 /**
  * @file MemoryRepositoryFactory.js
  * @description Fábrica y Singleton del Repositorio de Memoria Cognitiva de Áncora.
- * Desacopla la elección del adaptador de persistencia (Supabase / Firestore) de los hooks y servicios.
+ * Conecta el motor cognitivo directamente con Google Cloud Firestore y Firebase.
  */
 
-import { SupabaseMemoryAdapter } from './SupabaseMemoryAdapter.js';
 import { FirestoreMemoryAdapter } from './FirestoreMemoryAdapter.js';
-import { supabase } from '../../supabaseClient.js';
-import { db } from '../../firebaseClient.js';
+import { dbClient } from '../../firebaseAdapter.js';
 
 let activeRepositoryInstance = null;
 
 export class MemoryRepositoryFactory {
   /**
    * Obtiene la instancia activa del repositorio de memoria.
-   * Por defecto utiliza SupabaseMemoryAdapter sobre el cliente unificado de Supabase/Firestore.
+   * Por defecto utiliza FirestoreMemoryAdapter sobre Firebase / Firestore.
    * 
-   * @param {'supabase' | 'firestore'} [type='supabase']
    * @returns {import('./IMemoryRepository.js').IMemoryRepository}
    */
-  static getRepository(type = 'supabase') {
+  static getRepository() {
     if (activeRepositoryInstance) {
       return activeRepositoryInstance;
     }
 
-    if (type === 'firestore' && db) {
-      activeRepositoryInstance = new FirestoreMemoryAdapter(db);
-    } else {
-      activeRepositoryInstance = new SupabaseMemoryAdapter(supabase);
-    }
-
+    activeRepositoryInstance = new FirestoreMemoryAdapter(dbClient);
     return activeRepositoryInstance;
   }
 
@@ -48,3 +40,5 @@ export class MemoryRepositoryFactory {
     activeRepositoryInstance = null;
   }
 }
+
+export default MemoryRepositoryFactory;

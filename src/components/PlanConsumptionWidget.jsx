@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { supabase } from '../supabaseClient';
+import { firebaseClient as db, firebaseClient } from '../firebaseAdapter.js';
 import { Clock, MessageSquare, RefreshCw, AlertCircle, Info, X, HelpCircle, Sparkles, Zap } from 'lucide-react';
 
 export default function PlanConsumptionWidget({ patientId, forceRefreshFlag, minimal = false }) {
@@ -32,7 +32,7 @@ export default function PlanConsumptionWidget({ patientId, forceRefreshFlag, min
     try {
       setLoading(true);
       setError(null);
-      const { data, error: fetchErr } = await supabase
+      const { data, error: fetchErr } = await firebaseClient
         .from('patient_credits')
         .select('*')
         .eq('patient_id', patientId)
@@ -57,7 +57,7 @@ export default function PlanConsumptionWidget({ patientId, forceRefreshFlag, min
       
       const newUsed = Math.max(0, (credits.text_credits_used || 0) - amount); // Aumentar saldo restando del acumulado de uso
       
-      const { error: updateErr } = await supabase
+      const { error: updateErr } = await firebaseClient
         .from('patient_credits')
         .update({
           text_credits_used: newUsed,

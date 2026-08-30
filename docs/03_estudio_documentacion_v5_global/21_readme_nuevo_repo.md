@@ -44,7 +44,7 @@ La IA de Áncora no diagnostica, no prescribe y no sustituye al psicólogo. Orga
 ```text
 Frontend React/PWA
   ↓
-API / Supabase Edge Functions
+API / Firebase Edge Functions
   ↓
 Clinical Engine
   ↓
@@ -74,9 +74,9 @@ src/
     psychologist-panel/
     admin-console/
   integrations/
-    supabase/
+    firebase/
     model-gateway/
-supabase/
+firebase/
   migrations/
   functions/
 ```
@@ -116,9 +116,9 @@ npm run dev
 Variables necesarias:
 
 ```bash
-VITE_SUPABASE_URL=
-VITE_SUPABASE_ANON_KEY=
-SUPABASE_SERVICE_ROLE_KEY=
+VITE_Firebase_URL=
+VITE_Firebase_ANON_KEY=
+Firebase_SERVICE_ROLE_KEY=
 MODEL_PROVIDER=openrouter_dev|local_vllm|private_eu_cloud
 OPENROUTER_API_KEY=
 ```

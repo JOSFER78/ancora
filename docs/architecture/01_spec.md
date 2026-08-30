@@ -77,7 +77,7 @@ La psicoterapia contemporánea adolece de un punto ciego crítico: **la pérdida
 ### C. Persistencia y Capa de Abstracción de Almacenamiento (SAL)
 El repositorio ya cuenta con una arquitectura de persistencia limpia desacoplada:
 - **`IMemoryRepository.js`:** Contrato formal de métodos CRUD y búsqueda bi-temporal.
-- **`SupabaseMemoryAdapter.js`:** Adaptador para PostgreSQL / Edge Functions (`chat-terapeuta`, `clinical-synthesize`).
+- **`FirebaseMemoryAdapter.js`:** Adaptador para PostgreSQL / Edge Functions (`chat-terapeuta`, `clinical-synthesize`).
 - **`FirestoreMemoryAdapter.js`:** Adaptador preparado para Google Cloud Firestore v9 modular multitenant (`patients/{id}/semanticProfile/current`, `directives`, `auditLogs`).
 
 ---

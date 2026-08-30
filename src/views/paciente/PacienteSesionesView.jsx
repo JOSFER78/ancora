@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../../supabaseClient';
+import { firebaseClient as db, firebaseClient } from '../../firebaseAdapter.js';
 import { 
   Calendar, Clock, Video, ChevronLeft, ChevronRight, 
-  CheckCircle2, User, AlertCircle, CreditCard, ShieldCheck, RefreshCw, Landmark
+  CheckCircle2, User, AlertCircle, CreditCard, ShieldCheck, RefreshCw, Landmark, Star, Award, Check, X
 } from 'lucide-react';
 
-export default function PacienteSesionesView({ profile, user, isVirtualDemo }) {
+export default function PacienteSesionesView({ profile, user, isVirtualDemo, onProfileUpdated }) {
   const [selectedDate, setSelectedDate] = useState(null);
   const [selectedSlot, setSelectedSlot] = useState(null);
   const [bookingSuccess, setBookingSuccess] = useState(false);
@@ -16,15 +16,11 @@ export default function PacienteSesionesView({ profile, user, isVirtualDemo }) {
     'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 
     'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
   ];
-  const [sessionType, setSessionType] = useState('individual'); // 'individual' | 'seguimiento' | 'pareja'
+  const [sessionType, setSessionType] = useState('individual');
   
   // Checkout States
   const [showCheckout, setShowCheckout] = useState(false);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
-  const [cardName, setCardName] = useState('');
-  const [cardNumber, setCardNumber] = useState('');
-  const [cardExpiry, setCardExpiry] = useState('');
-  const [cardCvc, setCardCvc] = useState('');
 
   // Sincronización Real de Sesiones
   const [scheduledSessions, setScheduledSessions] = useState([]);
@@ -33,8 +29,9 @@ export default function PacienteSesionesView({ profile, user, isVirtualDemo }) {
   // Perfil del psicólogo desde Áncora
   const [psychoProfile, setPsychoProfile] = useState(null);
   const [loadingPsycho, setLoadingPsycho] = useState(true);
+  const [changingPsycho, setChangingPsycho] = useState(false);
 
-  // Catálogo oficial de psicólogos
+  // Catálogo oficial de psicólogos colegiados
   const OFFICIAL_PSYCHOLOGISTS = [
     {
       id: '2TOfkVIRccgIgz5WamAIVmUPtD63',
@@ -47,6 +44,30 @@ export default function PacienteSesionesView({ profile, user, isVirtualDemo }) {
       specialties: ['Ansiedad', 'Estrés', 'Terapia Cognitiva', 'EMDR'],
       price: 55,
       approach: 'Terapia Cognitivo-Conductual & Regulación Emocional'
+    },
+    {
+      id: 'psy-elena-ruiz',
+      name: 'Dra. Elena Ruiz',
+      email: 'elena.ruiz@ancora.clinic',
+      license: 'M-38291',
+      photo_url: 'https://images.unsplash.com/photo-1594824813598-f5424cf3b5a1?w=150&auto=format&fit=crop&q=80',
+      rating: '4.9',
+      reviews: 24,
+      specialties: ['Terapia de Pareja', 'Apego', 'Duelo', 'Autoestima'],
+      price: 55,
+      approach: 'Terapia Sistémica & Focalizada en las Emociones'
+    },
+    {
+      id: 'psy-carlos-mendoza',
+      name: 'Carlos Mendoza',
+      email: 'carlos.mendoza@ancora.clinic',
+      license: 'M-41029',
+      photo_url: 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=150&auto=format&fit=crop&q=80',
+      rating: '4.9',
+      reviews: 15,
+      specialties: ['Terapia Adultos', 'Gestión del Estrés', 'Trauma Complejo'],
+      price: 55,
+      approach: 'Terapia de Aceptación y Compromiso (ACT)'
     }
   ];
 
@@ -55,7 +76,7 @@ export default function PacienteSesionesView({ profile, user, isVirtualDemo }) {
   useEffect(() => {
     const fetchPsychologists = async () => {
       try {
-        const { data, error } = await supabase.from('psychologist_profiles').select('*');
+        const { data, error } = await db.from('psychologist_profiles').select('*');
         if (!error && data && data.length > 0) {
           const mapped = data.map(p => ({
             id: p.id || p.user_id || '2TOfkVIRccgIgz5WamAIVmUPtD63',
@@ -79,42 +100,33 @@ export default function PacienteSesionesView({ profile, user, isVirtualDemo }) {
   const assignedPsychoId = profile?.contexto_terapeutico?.assigned_psychologist_id || null;
   const assignedPsycho = psychologistsList.find(p => p.id === assignedPsychoId) || (assignedPsychoId ? OFFICIAL_PSYCHOLOGISTS[0] : null);
 
+  const handleSelectPsychologist = async (psycho) => {
+    if (!user?.id) return;
+    try {
+      const updatedContext = {
+        ...(profile?.contexto_terapeutico || {}),
+        assigned_psychologist_id: psycho.id
+      };
+
+      await db.from('profiles').update({
+        contexto_terapeutico: updatedContext,
+        updated_at: new Date().toISOString()
+      }).eq('id', user.id);
+
+      if (onProfileUpdated) {
+        onProfileUpdated({ ...profile, contexto_terapeutico: updatedContext });
+      }
+      setChangingPsycho(false);
+    } catch (err) {
+      console.error("Error al asignar psicólogo:", err);
+    }
+  };
+
   const fetchSessions = async () => {
     if (!user?.id) return;
-    if (isVirtualDemo) {
-      try {
-        setLoadingSessions(true);
-        const localApptsStr = localStorage.getItem('virtual_appointments') || '[]';
-        const localAppts = JSON.parse(localApptsStr).filter(a => a.patient_id === user.id);
-        
-        const mapped = localAppts.map(a => {
-          const psycho = psychologistsList.find(p => p.id === a.psychologist_id);
-          return {
-            id: a.id,
-            date: `${a.appointment_date} — ${a.appointment_time}h`,
-            psychologist: psycho ? psycho.name : 'José Fernández',
-            status: a.status,
-            type: a.session_type === 'individual' ? 'Individual' : (a.session_type === 'pareja' ? 'Pareja' : 'Revisión')
-          };
-        });
-
-        mapped.sort((x, y) => {
-          // Ordenar citas por ID/timestamp desc
-          return y.id.localeCompare(x.id);
-        });
-
-        setScheduledSessions(mapped);
-      } catch (err) {
-        console.error("Error loading virtual appointments:", err);
-      } finally {
-        setLoadingSessions(false);
-      }
-      return;
-    }
-
     try {
       setLoadingSessions(true);
-      const { data, error } = await supabase
+      const { data, error } = await firebaseClient
         .from('appointments')
         .select('*')
         .eq('patient_id', user.id);
@@ -126,15 +138,13 @@ export default function PacienteSesionesView({ profile, user, isVirtualDemo }) {
         return {
           id: a.id,
           date: `${a.appointment_date} — ${a.appointment_time}h`,
-          psychologist: psycho ? psycho.name : 'Terapeuta Áncora',
-          status: a.status,
+          psychologist: psycho ? psycho.name : (assignedPsycho ? assignedPsycho.name : 'Terapeuta Áncora'),
+          status: a.status || 'confirmed',
           type: a.session_type === 'individual' ? 'Individual' : (a.session_type === 'pareja' ? 'Pareja' : 'Revisión')
         };
       });
 
-      // Ordenar por fecha y hora descendente
-      mapped.sort((x, y) => new Date(y.id) - new Date(x.id)); // o por ID temporal
-
+      mapped.sort((x, y) => new Date(y.date.split(' — ')[0]) - new Date(x.date.split(' — ')[0]));
       setScheduledSessions(mapped);
     } catch (err) {
       console.error("Error loading appointments:", err.message);
@@ -145,23 +155,23 @@ export default function PacienteSesionesView({ profile, user, isVirtualDemo }) {
 
   useEffect(() => {
     const loadAssignedPsychologist = async () => {
-      if (!assignedPsychoId || isVirtualDemo) {
+      if (!assignedPsychoId) {
         setLoadingPsycho(false);
         return;
       }
       try {
         setLoadingPsycho(true);
-        const { data, error } = await supabase
+        const { data, error } = await firebaseClient
           .from('psychologist_profiles')
           .select('*')
           .eq('id', assignedPsychoId)
-          .single();
+          .maybeSingle();
         
         if (!error && data) {
           setPsychoProfile(data);
         }
       } catch (err) {
-        console.error("Error loading assigned psychologist profile from Supabase:", err.message);
+        console.error("Error loading assigned psychologist profile:", err.message);
       } finally {
         setLoadingPsycho(false);
       }
@@ -170,7 +180,46 @@ export default function PacienteSesionesView({ profile, user, isVirtualDemo }) {
     fetchSessions();
   }, [user?.id, assignedPsychoId]);
 
-  // Parsear la disponibilidad desde Áncora
+  // Calcular rango de lunes a domingo para una fecha dada (YYYY-MM-DD)
+  const getWeekRange = (dateStr) => {
+    if (!dateStr) return { start: '', end: '', startLabel: '', endLabel: '' };
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const date = new Date(y, m - 1, d);
+    const day = date.getDay();
+    const diff = date.getDate() - day + (day === 0 ? -6 : 1); // Ajustar a Lunes
+    const monday = new Date(y, m - 1, diff);
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    
+    const format = (dt) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+    return {
+      start: format(monday),
+      end: format(sunday),
+      startLabel: `${monday.getDate()} de ${monthNames[monday.getMonth()]}`,
+      endLabel: `${sunday.getDate()} de ${monthNames[sunday.getMonth()]}`
+    };
+  };
+
+  // Comprobar si ya existe una cita (revisión o sesión) en la misma semana natural
+  const getExistingSessionInWeek = (dateStr) => {
+    if (!dateStr || !scheduledSessions.length) return null;
+    const { start, end } = getWeekRange(dateStr);
+    return scheduledSessions.find(s => {
+      const sDate = s.date.split(' — ')[0]?.trim();
+      return sDate >= start && sDate <= end && s.status !== 'cancelled' && s.status !== 'Cancelada';
+    });
+  };
+
+  // Comprobar citas del mes actual (máximo 4)
+  const getExistingSessionsInMonth = (year, month) => {
+    const monthPrefix = `${year}-${String(month + 1).padStart(2, '0')}`;
+    return scheduledSessions.filter(s => {
+      const sDate = s.date.split(' — ')[0]?.trim();
+      return sDate.startsWith(monthPrefix) && s.status !== 'cancelled' && s.status !== 'Cancelada';
+    });
+  };
+
+  // Parsear disponibilidad del psicólogo
   let availability = null;
   if (psychoProfile?.availability) {
     try {
@@ -182,7 +231,7 @@ export default function PacienteSesionesView({ profile, user, isVirtualDemo }) {
     }
   }
 
-  // Obtener slots dinámicos según el día seleccionado y disponibilidad del terapeuta
+  // Obtener slots dinámicos según el día seleccionado y disponibilidad real
   const getAvailableSlotsForDate = () => {
     if (!selectedDate || !assignedPsychoId) return [];
     
@@ -191,25 +240,15 @@ export default function PacienteSesionesView({ profile, user, isVirtualDemo }) {
     const dayName = dayNames[dateObj.getDay()];
     const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${selectedDate < 10 ? '0' + selectedDate : selectedDate}`;
 
-    // Si la fecha está bloqueada por el psicólogo (vacaciones/excepción), no hay slots
+    if (dayName === 'Sábado' || dayName === 'Domingo') return [];
+
     if (availability && availability.blocked_dates && availability.blocked_dates.includes(dateStr)) {
       return [];
     }
 
-    // Si no es un día laborable, tampoco hay slots
-    if (availability && availability.working_days && !availability.working_days.includes(dayName)) {
-      return [];
-    }
-
-    // Si hay slots personalizados en Áncora para ese día de la semana
     if (availability && availability.custom_available_slots && availability.custom_available_slots[dayName]) {
-      // Filtrar slots que ya estén reservados para este terapeuta
       const reservedHours = scheduledSessions
-        .filter(s => {
-          const parts = s.date.split(' — ');
-          const sDate = parts[0]?.trim();
-          return sDate === dateStr && s.status === 'upcoming';
-        })
+        .filter(s => s.date.split(' — ')[0]?.trim() === dateStr)
         .map(s => s.date.split(' — ')[1]?.replace('h', '')?.trim());
 
       return availability.custom_available_slots[dayName]
@@ -217,43 +256,8 @@ export default function PacienteSesionesView({ profile, user, isVirtualDemo }) {
         .sort();
     }
     
-    // Slots por defecto de fallback
-    const psychoEmail = assignedPsycho?.email;
-    if (psychoEmail === 'tisutet@hormail.com') {
-      // Ana Ramos
-      if (dayName === 'Lunes') return ['10:00', '11:00'];
-      if (dayName === 'Martes') return ['16:00'];
-      if (dayName === 'Miércoles') return ['17:00'];
-      if (dayName === 'Jueves') return ['11:00'];
-      if (dayName === 'Viernes') return ['15:00'];
-    } else if (psychoEmail === 'usajosefernan@gmail.com') {
-      // José Fernández
-      if (dayName === 'Lunes') return ['09:00'];
-      if (dayName === 'Martes') return ['15:00'];
-      if (dayName === 'Jueves') return ['17:00'];
-    }
-    
-    if (dayName === 'Sábado' || dayName === 'Domingo') return [];
-    return ['09:00', '11:00', '16:00', '17:30'];
+    return ['09:00', '10:30', '12:00', '16:00', '17:30', '19:00'];
   };
-
-  const getTherapistWorkingDays = () => {
-    if (availability && availability.working_days) return availability.working_days;
-    return ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
-  };
-
-  const getTherapistShowHours = () => {
-    if (availability && availability.show_detailed_hours !== undefined) return availability.show_detailed_hours;
-    return true;
-  };
-
-  const workingDaysList = getTherapistWorkingDays();
-  const showHours = getTherapistShowHours();
-  const rawSlots = getAvailableSlotsForDate();
-  
-  const currentAvailableSlots = showHours ? rawSlots : (
-    rawSlots.length > 0 ? ['Bloque Mañana (09:00 - 13:00)', 'Bloque Tarde (15:00 - 19:00)'] : []
-  );
 
   const handleDaySelect = (day) => {
     setSelectedDate(day);
@@ -270,49 +274,25 @@ export default function PacienteSesionesView({ profile, user, isVirtualDemo }) {
     setCheckoutLoading(true);
     
     const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${selectedDate < 10 ? '0' + selectedDate : selectedDate}`;
-    
-    if (isVirtualDemo) {
-      try {
-        const newAppt = {
-          id: 'virtual-appt-' + Date.now(),
-          patient_id: user.id,
-          psychologist_id: assignedPsychoId,
-          appointment_date: dateStr,
-          appointment_time: selectedSlot,
-          session_type: sessionType,
-          status: 'upcoming'
-        };
-
-        const localApptsStr = localStorage.getItem('virtual_appointments') || '[]';
-        const localAppts = JSON.parse(localApptsStr);
-        localAppts.push(newAppt);
-        localStorage.setItem('virtual_appointments', JSON.stringify(localAppts));
-
-        setTimeout(() => {
-          setCheckoutLoading(false);
-          setBookingSuccess(true);
-          setShowCheckout(false);
-          fetchSessions();
-        }, 1500);
-      } catch (err) {
-        console.error("Error saving virtual appointment:", err);
-        setCheckoutLoading(false);
-      }
-      return;
-    }
+    const isRevision = sessionType === 'revision';
+    const duration = isRevision ? 15 : 50;
+    const price = isRevision ? 15 : (assignedPsycho?.price || 55);
 
     try {
-      // Formatear fecha para guardarla en Áncora
       const newAppt = {
+        id: 'appt_' + Math.random().toString(36).substring(2, 10),
         patient_id: user.id,
-        psychologist_id: assignedPsychoId,
+        psychologist_id: assignedPsychoId || '2TOfkVIRccgIgz5WamAIVmUPtD63',
         appointment_date: dateStr,
         appointment_time: selectedSlot,
+        duration_minutes: duration,
         session_type: sessionType,
-        status: 'upcoming'
+        price_eur: price,
+        status: 'confirmed',
+        created_at: new Date().toISOString()
       };
 
-      const { error } = await supabase
+      const { error } = await firebaseClient
         .from('appointments')
         .insert(newAppt);
 
@@ -322,103 +302,13 @@ export default function PacienteSesionesView({ profile, user, isVirtualDemo }) {
         setCheckoutLoading(false);
         setBookingSuccess(true);
         setShowCheckout(false);
-        fetchSessions(); // Recargar de Áncora
-      }, 1500);
+        fetchSessions();
+      }, 800);
 
     } catch (err) {
       console.error("Error saving appointment:", err.message);
-      alert("Error al guardar la cita en Áncora: " + err.message);
+      alert("Error al agendar la sesión: " + err.message);
       setCheckoutLoading(false);
-    }
-  };
-
-  const fillTestCard = () => {
-    setCardName(profile?.contexto_terapeutico?.displayName || 'Pedro Sanz');
-    setCardNumber('4242424242424242');
-    setCardExpiry('12/29');
-    setCardCvc('123');
-  };
-
-  const getGoogleCalendarUrl = (sess) => {
-    try {
-      const parts = Math.max(0, sess.date.indexOf('—')) > 0 ? sess.date.split(' — ') : [sess.date];
-      const rawDate = parts[0]?.trim(); 
-      const rawTime = parts[1]?.replace('h', '')?.trim(); 
-      
-      if (!rawDate || !rawTime) return '#';
-
-      const dateStr = rawDate.replace(/-/g, ''); 
-      const timeParts = rawTime.split(':');
-      const hour = Number(timeParts[0]);
-      const minute = Number(timeParts[1]);
-      
-      // Formato YYYYMMDDTHHMMSS
-      const timeStr = `${hour < 10 ? '0' + hour : hour}${minute < 10 ? '0' + minute : minute}00`;
-      
-      // Fin 50 minutos después
-      let endHour = hour;
-      let endMinute = minute + 50;
-      if (endMinute >= 60) {
-        endHour += 1;
-        endMinute -= 60;
-      }
-      const timeStrEnd = `${endHour < 10 ? '0' + endHour : endHour}${endMinute < 10 ? '0' + endMinute : endMinute}00`;
-
-      const title = encodeURIComponent(`Sesión de Terapia con ${sess.psychologist}`);
-      const details = encodeURIComponent(`Sesión síncrona virtual de terapia (${sess.type}) en la plataforma Áncora.`);
-      const location = encodeURIComponent('Videollamada de Áncora');
-      
-      return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${dateStr}T${timeStr}/${dateStr}T${timeStrEnd}&details=${details}&location=${location}`;
-    } catch (e) {
-      console.error(e);
-      return '#';
-    }
-  };
-
-  const handleExportICS = (sess) => {
-    try {
-      const parts = sess.date.split(' — ');
-      const rawDate = parts[0]?.trim(); 
-      const rawTime = parts[1]?.replace('h', '')?.trim(); 
-      
-      if (!rawDate || !rawTime) {
-        alert("No se pudo extraer la fecha/hora de la sesión.");
-        return;
-      }
-
-      const dateStr = rawDate.replace(/-/g, ''); 
-      const timeStr = rawTime.replace(/:/g, '') + '00'; 
-      
-      const icsContent = [
-        'BEGIN:VCALENDAR',
-        'VERSION:2.0',
-        'PRODID:-//Ancora Clinic//Session//ES',
-        'CALSCALE:GREGORIAN',
-        'METHOD:PUBLISH',
-        'BEGIN:VEVENT',
-        `UID:${sess.id}@ancora.clinic`,
-        `DTSTAMP:${dateStr}T${timeStr}Z`,
-        `DTSTART:${dateStr}T${timeStr}`,
-        'DURATION:PT50M',
-        `SUMMARY:Sesión de Terapia con ${sess.psychologist}`,
-        `DESCRIPTION:Sesión síncrona virtual de terapia (${sess.type}) con ${sess.psychologist} en la plataforma Áncora.`,
-        'LOCATION:Videollamada de Áncora',
-        'STATUS:CONFIRMED',
-        'END:VEVENT',
-        'END:VCALENDAR'
-      ].join('\n');
-
-      const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.setAttribute("download", `sesion_ancora_${rawDate}_${rawTime.replace(':', '')}.ics`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    } catch (err) {
-      console.error("Error generating ICS file:", err);
-      alert("Error al exportar el archivo de calendario.");
     }
   };
 
@@ -455,137 +345,213 @@ export default function PacienteSesionesView({ profile, user, isVirtualDemo }) {
     setSelectedSlot(null);
   };
 
-  const psychoPrice = assignedPsycho?.price || 49;
-  const platformPriceBase = 10.00;
-  const platformIva = 2.10; 
-  const totalAmount = psychoPrice + platformPriceBase + platformIva;
-
-  if (!assignedPsychoId) {
+  // VISTA 1: Catálogo para Elegir / Cambiar Psicólogo
+  if (!assignedPsychoId || changingPsycho) {
     return (
       <div className="view-content-limit" style={{ display: 'flex', flexDirection: 'column', gap: '24px', paddingBottom: '30px' }}>
-        <div className="glass-panel" style={{ padding: '40px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
-          <div className="flex-center" style={{ width: '60px', height: '60px', borderRadius: '50%', background: 'rgba(239, 68, 68, 0.1)', color: 'var(--color-rose)' }}>
-            <AlertCircle size={32} />
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+          <div>
+            <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: '#ffffff', margin: 0 }}>
+              Elige tu Psicólogo Colegiado de Referencia
+            </h2>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
+              Selecciona el profesional especializado que supervisará tu proceso y coordinará tus sesiones.
+            </p>
           </div>
-          <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#ffffff' }}>No tienes un psicólogo asignado</h3>
-          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', maxWidth: '500px', lineHeight: 1.5 }}>
-            Para agendar o revisar tus sesiones, primero debes realizar el triaje inicial y elegir a tu psicólogo clínico de referencia en el panel de control principal.
-          </p>
+          {assignedPsychoId && (
+            <button 
+              type="button" 
+              onClick={() => setChangingPsycho(false)}
+              className="btn btn-outline" 
+              style={{ height: '34px', fontSize: '0.76rem' }}
+            >
+              Volver a mis Citas
+            </button>
+          )}
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
+          {psychologistsList.map(psy => (
+            <div key={psy.id} className="glass-panel" style={{ 
+              padding: '22px',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+              gap: '16px',
+              border: psy.id === assignedPsychoId ? '2px solid var(--color-cyan)' : '1px solid var(--border)'
+            }}>
+              <div>
+                <div style={{ display: 'flex', gap: '14px', alignItems: 'center', marginBottom: '14px' }}>
+                  <img 
+                    src={psy.photo_url} 
+                    alt={psy.name} 
+                    style={{ width: '56px', height: '56px', borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--color-cyan)' }} 
+                  />
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <h4 style={{ fontSize: '1.02rem', fontWeight: 800, color: '#ffffff', margin: 0 }}>
+                        {psy.name}
+                      </h4>
+                      <span className="badge badge-cyan" style={{ fontSize: '0.66rem', padding: '2px 6px' }}>
+                        Col. {psy.license}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
+                      <Star size={13} color="var(--color-amber)" fill="var(--color-amber)" />
+                      <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#ffffff' }}>{psy.rating}</span>
+                      <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>({psy.reviews} valoraciones)</span>
+                    </div>
+                  </div>
+                </div>
+
+                <p style={{ fontSize: '0.76rem', color: 'var(--text-secondary)', lineHeight: 1.45, margin: '0 0 12px 0' }}>
+                  {psy.approach}
+                </p>
+
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '12px' }}>
+                  {psy.specialties.map((spec, i) => (
+                    <span key={i} className="badge" style={{ fontSize: '0.66rem', padding: '3px 8px' }}>
+                      {spec}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '12px', borderTop: '1px solid var(--border)' }}>
+                <div>
+                  <span style={{ fontSize: '1.2rem', fontWeight: 900, color: '#ffffff' }}>{psy.price} €</span>
+                  <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}> / sesión (50 min)</span>
+                </div>
+
+                <button 
+                  type="button" 
+                  onClick={() => handleSelectPsychologist(psy)}
+                  className={`btn ${psy.id === assignedPsychoId ? 'btn-primary' : 'btn-outline'}`}
+                  style={{ 
+                    fontSize: '0.78rem',
+                    padding: '8px 16px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  {psy.id === assignedPsychoId ? (
+                    <>
+                      <Check size={14} />
+                      <span>Asignado</span>
+                    </>
+                  ) : (
+                    <span>Elegir Profesional</span>
+                  )}
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     );
   }
 
+  // VISTA 2: Panel de Gestión de Citas y Calendario
   return (
-    <div className="view-content-limit" style={{ display: 'flex', flexDirection: 'column', gap: '24px', paddingBottom: '30px' }}>
+    <div className="view-content-limit" style={{ display: 'flex', flexDirection: 'column', gap: '24px', paddingBottom: '40px' }}>
       
+      {/* Cabecera del Profesional Asignado */}
+      <div className="glass-panel" style={{ 
+        padding: '20px',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        flexWrap: 'wrap',
+        gap: '16px'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          <img 
+            src={assignedPsycho?.photo_url} 
+            alt={assignedPsycho?.name} 
+            style={{ width: '52px', height: '52px', borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--color-cyan)' }} 
+          />
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <h3 style={{ fontSize: '1.02rem', fontWeight: 800, color: '#ffffff', margin: 0 }}>
+                {assignedPsycho?.name}
+              </h3>
+              <span className="badge badge-cyan" style={{ fontSize: '0.66rem', padding: '2px 7px' }}>
+                Col. {assignedPsycho?.license}
+              </span>
+            </div>
+            <p style={{ fontSize: '0.76rem', color: 'var(--text-secondary)', margin: '2px 0 0 0' }}>
+              Tu psicólogo colegiado de referencia en Áncora
+            </p>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button 
+            type="button" 
+            onClick={() => setChangingPsycho(true)}
+            className="btn btn-outline" 
+            style={{ height: '34px', fontSize: '0.76rem' }}
+          >
+            Cambiar de Profesional
+          </button>
+        </div>
+      </div>
+
       {/* Próximas Sesiones Programadas */}
       <div className="glass-panel" style={{ padding: '20px' }}>
-        <h3 style={{ fontSize: '0.95rem', fontWeight: 800, marginBottom: '16px', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-secondary)' }}>
-          🗓️ Tus Sesiones Programadas (Áncora Cloud)
-        </h3>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+          <h3 style={{ fontSize: '0.92rem', fontWeight: 800, color: '#ffffff', margin: 0 }}>
+            🗓️ Tus Sesiones Programadas
+          </h3>
+          <button 
+            type="button" 
+            onClick={fetchSessions}
+            style={{ background: 'transparent', border: 'none', color: 'var(--color-cyan)', cursor: 'pointer', fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: '4px' }}
+          >
+            <RefreshCw size={12} className={loadingSessions ? 'animate-spin' : ''} />
+            <span>Actualizar</span>
+          </button>
+        </div>
         
         {loadingSessions ? (
-          <div style={{ padding: '20px', textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-            Cargando tus citas reales de la base de datos...
+          <div style={{ padding: '20px', textAlign: 'center', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+            Cargando tus citas sincronizadas...
           </div>
         ) : scheduledSessions.length === 0 ? (
-          <div style={{ padding: '20px', textAlign: 'center', fontSize: '0.78rem', color: 'var(--text-tertiary)', border: '1px dashed var(--border)', borderRadius: '8px' }}>
-            No tienes ninguna sesión programada todavía.
+          <div style={{ padding: '24px', textAlign: 'center', fontSize: '0.78rem', color: 'var(--text-secondary)', background: 'rgba(255,255,255,0.02)', borderRadius: '10px', border: '1px dashed var(--border)' }}>
+            No tienes ninguna sesión programada todavía. Selecciona un día en el calendario inferior para reservar tu próxima sesión.
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {scheduledSessions.map(sess => (
               <div 
                 key={sess.id} 
                 style={{ 
-                  padding: '14px 18px', 
-                  borderRadius: 'var(--radius-md)', 
-                  background: 'var(--background-secondary)',
-                  border: '1px solid var(--border)',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  flexWrap: 'wrap',
-                  gap: '12px'
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  alignItems: 'center', 
+                  padding: '12px 16px', 
+                  background: 'rgba(255,255,255,0.02)', 
+                  border: '1px solid var(--border)', 
+                  borderRadius: '10px',
+                  fontSize: '0.78rem'
                 }}
               >
-                <div style={{ display: 'flex', gap: '14px', alignItems: 'center' }}>
-                  <div className="flex-center" style={{ 
-                    width: '36px', 
-                    height: '36px', 
-                    borderRadius: '50%', 
-                    background: sess.status === 'upcoming' ? 'rgba(68,125,130,0.1)' : 'rgba(255,255,255,0.03)',
-                    color: sess.status === 'upcoming' ? 'var(--color-cyan)' : 'var(--text-tertiary)' 
-                  }}>
-                    <Video size={18} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div className="flex-center" style={{ width: '36px', height: '36px', borderRadius: '8px', background: 'rgba(68,125,130,0.15)', color: 'var(--color-cyan)' }}>
+                    <Calendar size={18} />
                   </div>
-                  <div style={{ textAlign: 'left' }}>
-                    <strong style={{ fontSize: '0.82rem', color: '#ffffff', display: 'block' }}>{sess.date}</strong>
-                    <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>
-                      {sess.type} · Con {sess.psychologist}
-                    </span>
+                  <div>
+                    <strong style={{ color: '#ffffff', display: 'block' }}>{sess.date}</strong>
+                    <span style={{ color: 'var(--text-secondary)', fontSize: '0.7rem' }}>Con {sess.psychologist} ({sess.type})</span>
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  {sess.status === 'upcoming' ? (
-                    <>
-                      <span className="badge badge-cyan" style={{ fontSize: '0.62rem' }}>Programada (Pago OK)</span>
-                      
-                      {profile?.app_config?.calendar_sync_device && (
-                        <button
-                          type="button"
-                          onClick={() => handleExportICS(sess)}
-                          className="btn btn-outline"
-                          style={{ 
-                            height: '26px', 
-                            fontSize: '0.65rem', 
-                            paddingInline: '8px', 
-                            borderColor: 'rgba(6, 182, 212, 0.4)', 
-                            color: 'var(--color-cyan)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            borderRadius: '6px',
-                            background: 'rgba(6, 182, 212, 0.02)'
-                          }}
-                          title="Descargar evento .ics para sincronizar con el móvil (iOS / Android)"
-                        >
-                          <Calendar size={12} />
-                          <span>Sincronizar .ics</span>
-                        </button>
-                      )}
-
-                      {profile?.app_config?.calendar_sync_google && (
-                        <a
-                          href={getGoogleCalendarUrl(sess)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="btn btn-outline"
-                          style={{ 
-                            height: '26px', 
-                            fontSize: '0.65rem', 
-                            paddingInline: '8px', 
-                            borderColor: 'rgba(16, 185, 129, 0.4)', 
-                            color: 'var(--color-emerald)',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            borderRadius: '6px',
-                            background: 'rgba(16, 185, 129, 0.02)',
-                            textDecoration: 'none'
-                          }}
-                          title="Añadir esta cita directamente a tu Google Calendar"
-                        >
-                          <Calendar size={12} />
-                          <span>Google Calendar</span>
-                        </a>
-                      )}
-                    </>
-                  ) : (
-                    <span className="badge" style={{ fontSize: '0.62rem', background: 'rgba(255,255,255,0.02)', borderColor: 'var(--border)' }}>Realizada</span>
-                  )}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span className="badge badge-emerald" style={{ fontSize: '0.68rem', padding: '3px 8px' }}>
+                    Confirmada
+                  </span>
                 </div>
               </div>
             ))}
@@ -593,334 +559,344 @@ export default function PacienteSesionesView({ profile, user, isVirtualDemo }) {
         )}
       </div>
 
-      {/* Reservar Nueva Sesión */}
+      {/* Calendario y Reserva de Nueva Cita */}
       <div className="glass-panel" style={{ padding: '24px' }}>
-        <h3 style={{ fontSize: '1.05rem', fontWeight: 800, marginBottom: '20px' }}>
-          Reservar Nueva Sesión con {assignedPsycho.name}
-        </h3>
-
-        {bookingSuccess ? (
-          <div style={{ textAlign: 'center', padding: '40px 0', display: 'flex', flexDirection: 'column', gap: '14px', alignItems: 'center' }}>
-            <div className="flex-center" style={{ width: '54px', height: '54px', borderRadius: '50%', background: 'rgba(127,159,136,0.1)', color: 'var(--color-emerald)' }}>
-              <CheckCircle2 size={32} />
-            </div>
-            <h4 style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--color-emerald)' }}>¡Reserva Guardada en Áncora!</h4>
-            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-              Tu consulta para el día <strong>{selectedDate} de {monthNames[currentMonth]} de {currentYear}</strong> a las <strong>{selectedSlot}h</strong> ha quedado reservada y cobrada con éxito en Stripe Demo.
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px', marginBottom: '18px' }}>
+          <div>
+            <h3 style={{ fontSize: '1.02rem', fontWeight: 800, color: '#ffffff', margin: 0 }}>
+              Reservar Actividad Clínica con {assignedPsycho?.name}
+            </h3>
+            <p style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', margin: '2px 0 0 0' }}>
+              Elige entre una Revisión Semanal (asíncrona) o una Consulta Individual (síncrona). Máximo 1 actividad por semana.
             </p>
-            <div style={{ display: 'flex', gap: '10px', marginTop: '14px' }}>
-              <button 
-                onClick={() => {
-                  setBookingSuccess(false);
-                  setSelectedDate(null);
-                  setSelectedSlot(null);
-                }}
-                className="btn btn-outline" 
-                style={{ height: '36px', fontSize: '0.75rem' }}
-              >
-                Reservar otra sesión
-              </button>
-            </div>
           </div>
-        ) : showCheckout ? (
-          <form onSubmit={handleCheckoutSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px', textAlign: 'left', maxWidth: '600px', margin: '0 auto' }}>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button 
+              type="button" 
+              onClick={handlePrevMonth}
+              className="btn btn-outline" 
+              style={{ height: '30px', width: '30px', padding: 0, borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            >
+              <ChevronLeft size={16} />
+            </button>
+            <span style={{ fontSize: '0.84rem', fontWeight: 800, color: '#ffffff', minWidth: '130px', textAlign: 'center' }}>
+              {monthNames[currentMonth]} {currentYear}
+            </span>
+            <button 
+              type="button" 
+              onClick={handleNextMonth}
+              className="btn btn-outline" 
+              style={{ height: '30px', width: '30px', padding: 0, borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            >
+              <ChevronRight size={16} />
+            </button>
+          </div>
+        </div>
+
+        {/* 1. Selector de Modalidad Clínica: Revisión (15 min) vs Consulta (50 min) */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '12px', marginBottom: '20px' }}>
+          <div 
+            onClick={() => setSessionType('revision')}
+            style={{
+              padding: '14px 16px',
+              borderRadius: '10px',
+              border: sessionType === 'revision' ? '2px solid var(--color-cyan)' : '1px solid var(--border)',
+              background: sessionType === 'revision' ? 'rgba(68,125,130,0.18)' : 'rgba(255,255,255,0.02)',
+              cursor: 'pointer',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '6px',
+              transition: 'all 0.15s ease'
+            }}
+          >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span className="badge badge-cyan" style={{ fontSize: '0.65rem' }}>Stripe Connect Split (Demo Mode)</span>
+              <span style={{ fontSize: '0.86rem', fontWeight: 800, color: '#ffffff' }}>📋 Revisión Semanal</span>
+              <span className="badge badge-cyan" style={{ fontSize: '0.64rem' }}>15 MIN</span>
+            </div>
+            <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.4 }}>
+              Análisis evolutivo de tu diario, seguimiento del chat con la IA y pautas clínicas personalizadas.
+            </p>
+            <span style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--color-cyan)', marginTop: '2px' }}>
+              15.00 € / revisión
+            </span>
+          </div>
+
+          <div 
+            onClick={() => setSessionType('individual')}
+            style={{
+              padding: '14px 16px',
+              borderRadius: '10px',
+              border: sessionType === 'individual' ? '2px solid var(--color-emerald)' : '1px solid var(--border)',
+              background: sessionType === 'individual' ? 'rgba(127,159,136,0.18)' : 'rgba(255,255,255,0.02)',
+              cursor: 'pointer',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '6px',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.86rem', fontWeight: 800, color: '#ffffff' }}>🎙️ Consulta Individual</span>
+              <span className="badge badge-emerald" style={{ fontSize: '0.64rem' }}>50 MIN</span>
+            </div>
+            <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.4 }}>
+              Sesión clínica síncrona 1 a 1 por videollamada cifrada directamente con tu psicólogo colegiado.
+            </p>
+            <span style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--color-emerald)', marginTop: '2px' }}>
+              {assignedPsycho?.price || 55}.00 € / consulta
+            </span>
+          </div>
+        </div>
+
+        {/* 2. Rejilla del Calendario */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '8px', textAlign: 'center' }}>
+          {['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'].map((d, i) => (
+            <div key={i} style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-tertiary)', padding: '6px 0' }}>
+              {d}
+            </div>
+          ))}
+
+          {getDaysInMonth().map(day => {
+            const isSelected = selectedDate === day;
+            const dayOfWeek = new Date(currentYear, currentMonth, day).getDay();
+            const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+            const thisDateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${day < 10 ? '0' + day : day}`;
+            const hasBookingThisDay = scheduledSessions.some(s => s.date.startsWith(thisDateStr));
+
+            return (
+              <button
+                key={day}
+                type="button"
+                disabled={isWeekend}
+                onClick={() => handleDaySelect(day)}
+                style={{
+                  height: '40px',
+                  borderRadius: '8px',
+                  border: isSelected ? '2px solid var(--color-cyan)' : (hasBookingThisDay ? '1px solid var(--color-emerald)' : '1px solid var(--border)'),
+                  background: isSelected ? 'var(--color-cyan)' : (hasBookingThisDay ? 'rgba(127,159,136,0.15)' : (isWeekend ? 'rgba(255,255,255,0.01)' : 'rgba(255,255,255,0.03)')),
+                  color: isSelected ? '#ffffff' : (isWeekend ? 'var(--text-tertiary)' : 'var(--text-primary)'),
+                  fontWeight: isSelected ? 800 : 600,
+                  fontSize: '0.8rem',
+                  cursor: isWeekend ? 'not-allowed' : 'pointer',
+                  transition: 'all var(--transition-fast)',
+                  position: 'relative'
+                }}
+              >
+                {day}
+                {hasBookingThisDay && (
+                  <span style={{ position: 'absolute', bottom: '2px', left: '50%', transform: 'translateX(-50%)', width: '4px', height: '4px', borderRadius: '50%', background: 'var(--color-emerald)' }} />
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* 3. Selección de Horas y Validación Semanal */}
+        {selectedDate && (() => {
+          const selectedDateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${selectedDate < 10 ? '0' + selectedDate : selectedDate}`;
+          const existingWeekAppt = getExistingSessionInWeek(selectedDateStr);
+          const weekRange = getWeekRange(selectedDateStr);
+          const availableSlots = getAvailableSlotsForDate();
+
+          return (
+            <div style={{ marginTop: '22px', paddingTop: '18px', borderTop: '1px solid var(--border)' }}>
+              {existingWeekAppt ? (
+                <div style={{
+                  background: 'rgba(245,158,11,0.12)',
+                  border: '1px solid var(--color-amber)',
+                  borderRadius: '10px',
+                  padding: '16px',
+                  display: 'flex',
+                  gap: '12px',
+                  alignItems: 'flex-start'
+                }}>
+                  <div className="flex-center" style={{ width: '28px', height: '28px', borderRadius: '6px', background: 'rgba(245,158,11,0.2)', color: 'var(--color-amber)', flexShrink: 0 }}>
+                    ⚠️
+                  </div>
+                  <div>
+                    <strong style={{ fontSize: '0.84rem', color: '#ffffff', display: 'block' }}>
+                      Límite de 1 Actividad Semanal Alcanzado
+                    </strong>
+                    <p style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', margin: '4px 0 0 0', lineHeight: 1.45 }}>
+                      Ya dispones de una <strong>{existingWeekAppt.type}</strong> agendada para el <strong>{existingWeekAppt.date}</strong> (semana del {weekRange.startLabel} al {weekRange.endLabel}).
+                      <br />
+                      En Áncora pautamos <strong>un máximo de 1 cita por semana</strong> (hasta 4 al mes) para que tengas tiempo suficiente de asimilar el trabajo terapéutico y registrar tus vivencias en el chat diario con la IA antes del siguiente encuentro.
+                      <br />
+                      <span style={{ color: 'var(--color-amber)', fontWeight: 600, display: 'inline-block', marginTop: '4px' }}>
+                        👉 Por favor, selecciona una fecha en otra semana libre del calendario.
+                      </span>
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <h4 style={{ fontSize: '0.86rem', fontWeight: 800, color: '#ffffff', marginBottom: '12px' }}>
+                    Horas disponibles para el {selectedDate} de {monthNames[currentMonth]}:
+                  </h4>
+
+                  {availableSlots.length === 0 ? (
+                    <p style={{ fontSize: '0.76rem', color: 'var(--text-secondary)', margin: 0 }}>
+                      No hay huecos disponibles en la agenda del profesional para este día. Prueba seleccionando otra fecha.
+                    </p>
+                  ) : (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                      {availableSlots.map(slot => (
+                        <button
+                          key={slot}
+                          type="button"
+                          onClick={() => setSelectedSlot(slot)}
+                          style={{
+                            padding: '8px 16px',
+                            borderRadius: '8px',
+                            border: selectedSlot === slot ? '2px solid var(--color-cyan)' : '1px solid var(--border)',
+                            background: selectedSlot === slot ? 'rgba(68,125,130,0.25)' : 'rgba(255,255,255,0.03)',
+                            color: selectedSlot === slot ? 'var(--color-cyan)' : 'var(--text-primary)',
+                            fontWeight: 700,
+                            fontSize: '0.78rem',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          {slot}h
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {selectedSlot && (
+                    <div style={{ marginTop: '18px', display: 'flex', justifyContent: 'flex-end' }}>
+                      <button
+                        type="button"
+                        onClick={handleProceedToCheckout}
+                        className="btn btn-primary"
+                        style={{ fontSize: '0.82rem', padding: '10px 22px' }}
+                      >
+                        Continuar con la Reserva ({selectedDate} {monthNames[currentMonth]} a las {selectedSlot}h — {sessionType === 'revision' ? 'Revisión 15 min' : 'Consulta 50 min'})
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          );
+        })()}
+      </div>
+
+      {/* Modal de Confirmación y Checkout */}
+      {showCheckout && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(3, 19, 32, 0.8)',
+          backdropFilter: 'blur(6px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 2000,
+          padding: '16px'
+        }}>
+          <div className="glass-panel" style={{
+            maxWidth: '440px',
+            width: '100%',
+            padding: '24px',
+            boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '16px',
+            textAlign: 'left',
+            background: 'rgba(5, 26, 44, 0.95)',
+            border: '1px solid var(--border)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, fontSize: '1.02rem', fontWeight: 800, color: '#ffffff' }}>
+                Confirmar Reserva de Sesión
+              </h3>
               <button 
                 type="button" 
-                onClick={fillTestCard} 
-                className="btn btn-outline" 
-                style={{ height: '26px', fontSize: '0.64rem', padding: '0 8px', borderColor: 'var(--color-cyan)', color: 'var(--color-cyan)' }}
-              >
-                💳 Autorellenar Tarjeta Demo
-              </button>
-            </div>
-
-            {/* Split Fiscal */}
-            <div style={{ background: 'rgba(68, 125, 130, 0.04)', border: '1px solid rgba(68, 125, 130, 0.2)', padding: '16px', borderRadius: '8px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <h5 style={{ fontSize: '0.82rem', fontWeight: 800, color: '#ffffff', margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <Landmark size={14} color="var(--color-cyan)" />
-                Desglose del Pago (Split en Origen)
-              </h5>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.74rem', color: 'var(--text-secondary)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span>Sesión con {assignedPsycho.name} (Exento de IVA - Art. 20.Uno.3 LIVA):</span>
-                  <span style={{ color: '#ffffff', fontWeight: 600 }}>{psychoPrice.toFixed(2)} €</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span>Soporte Software & IA Áncora:</span>
-                  <span style={{ color: '#ffffff', fontWeight: 600 }}>{platformPriceBase.toFixed(2)} €</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span>IVA Soporte Software (21%):</span>
-                  <span style={{ color: '#ffffff', fontWeight: 600 }}>{platformIva.toFixed(2)} €</span>
-                </div>
-                <div style={{ height: '1px', background: 'var(--border)', margin: '4px 0' }} />
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', fontWeight: 800, color: 'var(--color-cyan)' }}>
-                  <span>Total Transacción Seguro Stripe:</span>
-                  <span>{totalAmount.toFixed(2)} €</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Formulario Tarjeta */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <label style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Nombre en Tarjeta</label>
-                <input 
-                  type="text" 
-                  required
-                  value={cardName}
-                  onChange={(e) => setCardName(e.target.value)}
-                  placeholder="Titular de la tarjeta" 
-                  className="form-input"
-                  style={{ height: '36px', fontSize: '0.78rem', background: 'var(--background-tertiary)', border: '1px solid var(--border)', borderRadius: '6px', width: '100%', padding: '0 12px' }}
-                />
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <label style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Número de Tarjeta</label>
-                <div style={{ position: 'relative' }}>
-                  <input 
-                    type="text" 
-                    required
-                    value={cardNumber}
-                    onChange={(e) => setCardNumber(e.target.value.replace(/\D/g, '').substring(0, 16))}
-                    placeholder="4242 4242 4242 4242" 
-                    className="form-input"
-                    style={{ height: '36px', fontSize: '0.78rem', background: 'var(--background-tertiary)', border: '1px solid var(--border)', borderRadius: '6px', width: '100%', padding: '0 40px 0 12px' }}
-                  />
-                  <CreditCard size={16} color="var(--text-tertiary)" style={{ position: 'absolute', right: '12px', top: '10px' }} />
-                </div>
-              </div>
-
-              <div className="grid-2" style={{ gap: '12px' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <label style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Caducidad</label>
-                  <input 
-                    type="text" 
-                    required
-                    value={cardExpiry}
-                    onChange={(e) => setCardExpiry(e.target.value.substring(0, 5))}
-                    placeholder="MM/AA" 
-                    className="form-input"
-                    style={{ height: '36px', fontSize: '0.78rem', background: 'var(--background-tertiary)', border: '1px solid var(--border)', borderRadius: '6px', width: '100%', padding: '0 12px' }}
-                  />
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <label style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>CVC</label>
-                  <input 
-                    type="text" 
-                    required
-                    value={cardCvc}
-                    onChange={(e) => setCardCvc(e.target.value.replace(/\D/g, '').substring(0, 4))}
-                    placeholder="123" 
-                    className="form-input"
-                    style={{ height: '36px', fontSize: '0.78rem', background: 'var(--background-tertiary)', border: '1px solid var(--border)', borderRadius: '6px', width: '100%', padding: '0 12px' }}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Acciones */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '10px' }}>
-              <button
-                type="button"
                 onClick={() => setShowCheckout(false)}
-                className="btn btn-outline"
-                style={{ height: '38px', fontSize: '0.78rem' }}
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}
               >
-                Volver
-              </button>
-              <button
-                type="submit"
-                disabled={checkoutLoading || !cardName || !cardNumber}
-                className="btn btn-emerald"
-                style={{ height: '38px', fontSize: '0.78rem', background: 'var(--color-emerald)', color: '#ffffff', display: 'flex', alignItems: 'center', gap: '8px', padding: '0 20px' }}
-              >
-                {checkoutLoading ? (
-                  <>
-                    <RefreshCw size={14} className="animate-spin" />
-                    <span>Confirmando con Stripe...</span>
-                  </>
-                ) : (
-                  <>
-                    <ShieldCheck size={14} />
-                    <span>Pagar {totalAmount.toFixed(2)} € (Demo)</span>
-                  </>
-                )}
+                <X size={18} />
               </button>
             </div>
-          </form>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            
-            {/* 1. Tipo de Sesión */}
-            <div>
-              <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '8px' }}>1. Selecciona el Tipo de Consulta:</span>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                {[
-                  { id: 'individual', label: '👤 Individual (1h)', desc: `${psychoPrice}€ Sesión clínica` },
-                  { id: 'seguimiento', label: '🔄 Revisión (1h)', desc: `${psychoPrice}€ Sesión de ajuste` },
-                  { id: 'pareja', label: '👥 Pareja (1h)', desc: `${psychoPrice}€ Terapia dual` }
-                ].map(type => (
-                  <button
-                    key={type.id}
-                    type="button"
-                    onClick={() => setSessionType(type.id)}
-                    style={{
-                      flex: 1,
-                      padding: '12px',
-                      borderRadius: 'var(--radius-md)',
-                      border: '1px solid',
-                      borderColor: sessionType === type.id ? 'var(--color-cyan)' : 'var(--border)',
-                      background: sessionType === type.id ? 'rgba(68,125,130,0.08)' : 'rgba(255,255,255,0.01)',
-                      cursor: 'pointer',
-                      textAlign: 'left',
-                      transition: 'all var(--transition-fast)'
-                    }}
-                  >
-                    <strong style={{ fontSize: '0.78rem', color: '#ffffff', display: 'block' }}>{type.label}</strong>
-                    <span style={{ fontSize: '0.62rem', color: 'var(--text-secondary)' }}>{type.desc}</span>
-                  </button>
-                ))}
-              </div>
+
+            <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', padding: '14px', borderRadius: '10px', fontSize: '0.78rem', color: 'var(--text-primary)', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <div><strong>Profesional:</strong> {assignedPsycho?.name}</div>
+              <div><strong>Fecha y Hora:</strong> {selectedDate} de {monthNames[currentMonth]} {currentYear} a las {selectedSlot}h</div>
+              <div><strong>Importe:</strong> {assignedPsycho?.price || 55} € (Sesión Clínica 50 min)</div>
             </div>
 
-            {/* 2. Calendario y Horas */}
-            <div className="grid-2" style={{ gap: '24px', alignItems: 'flex-start' }}>
-              
-              {/* Calendario Mensual */}
-              <div style={{ background: 'var(--background-secondary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-                  <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#ffffff' }}>{monthNames[currentMonth]} {currentYear}</span>
-                  <div style={{ display: 'flex', gap: '6px' }}>
-                    <button type="button" onClick={handlePrevMonth} style={{ color: '#ffffff', cursor: 'pointer', background: 'transparent', border: 'none' }}><ChevronLeft size={16} /></button>
-                    <button type="button" onClick={handleNextMonth} style={{ color: '#ffffff', cursor: 'pointer', background: 'transparent', border: 'none' }}><ChevronRight size={16} /></button>
-                  </div>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '6px', textAlign: 'center', marginBottom: '8px' }}>
-                  {['L', 'M', 'X', 'J', 'V', 'S', 'D'].map(d => (
-                    <span key={d} style={{ fontSize: '0.62rem', fontWeight: 700, color: 'var(--text-tertiary)' }}>{d}</span>
-                  ))}
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '6px' }}>
-                  {/* Celdas vacías de desfase */}
-                  {Array.from({ length: (new Date(currentYear, currentMonth, 1).getDay() + 6) % 7 }).map((_, idx) => (
-                    <div key={`empty-${idx}`} />
-                  ))}
-                  
-                  {getDaysInMonth().map(day => {
-                    const isSelected = selectedDate === day;
-                    const dateObj = new Date(currentYear, currentMonth, day);
-                    const dayNames = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
-                    const dayName = dayNames[dateObj.getDay()];
-                    
-                    const isWorkingDay = workingDaysList.includes(dayName);
-                    const isBlocked = !isWorkingDay;
-                    
-                    return (
-                      <button
-                        key={day}
-                        type="button"
-                        onClick={() => !isBlocked && handleDaySelect(day)}
-                        disabled={isBlocked}
-                        style={{
-                          height: '32px',
-                          borderRadius: '50%',
-                          fontSize: '0.72rem',
-                          fontWeight: 600,
-                          cursor: isBlocked ? 'default' : 'pointer',
-                          background: isSelected ? 'var(--color-cyan)' : (isBlocked ? 'rgba(255,255,255,0.01)' : 'transparent'),
-                          color: isSelected ? '#ffffff' : (isBlocked ? 'rgba(255,255,255,0.12)' : 'var(--text-primary)'),
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          border: isSelected ? 'none' : '1px solid transparent',
-                          transition: 'all var(--transition-fast)',
-                          opacity: isBlocked ? 0.35 : 1,
-                          textDecoration: isBlocked ? 'line-through' : 'none'
-                        }}
-                        onMouseEnter={(e) => {
-                          if (!isBlocked && !isSelected) e.currentTarget.style.borderColor = 'var(--color-cyan)';
-                        }}
-                        onMouseLeave={(e) => {
-                          if (!isBlocked && !isSelected) e.currentTarget.style.borderColor = 'transparent';
-                        }}
-                        title={isBlocked ? "Día Libre (No laborable)" : `Disponible (${dayName})`}
-                      >
-                        {day}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Slots de Horas */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
-                  {selectedDate ? `Horarios disponibles para el ${selectedDate} de ${monthNames[currentMonth]}:` : 'Selecciona un día en el calendario:'}
-                </span>
-
-                {selectedDate ? (
-                  currentAvailableSlots.length > 0 ? (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
-                      {currentAvailableSlots.map(slot => {
-                        const isSelected = selectedSlot === slot;
-                        return (
-                          <button
-                            key={slot}
-                            type="button"
-                            onClick={() => setSelectedSlot(slot)}
-                            style={{
-                              height: '36px',
-                              borderRadius: '6px',
-                              border: '1px solid',
-                              borderColor: isSelected ? 'var(--color-cyan)' : 'var(--border)',
-                              background: isSelected ? 'rgba(68,125,130,0.1)' : 'rgba(255,255,255,0.01)',
-                              fontSize: '0.75rem',
-                              fontWeight: 700,
-                              color: isSelected ? 'var(--color-cyan)' : '#ffffff',
-                              cursor: 'pointer',
-                              transition: 'all var(--transition-fast)'
-                            }}
-                          >
-                            {slot}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div style={{ padding: '20px 10px', textAlign: 'center', border: '1px dashed var(--border)', borderRadius: '8px', color: 'var(--text-tertiary)', fontSize: '0.75rem' }}>
-                      <AlertCircle size={16} style={{ marginBottom: '6px', opacity: 0.5, color: 'var(--color-rose)' }} />
-                      <p style={{ margin: 0 }}>El terapeuta no tiene disponibilidad configurada para este día de la semana. Por favor, selecciona otra fecha.</p>
-                    </div>
-                  )
-                ) : (
-                  <div style={{ padding: '30px 10px', textAlign: 'center', border: '1px dashed var(--border)', borderRadius: '8px', color: 'var(--text-tertiary)', fontSize: '0.75rem' }}>
-                    <AlertCircle size={16} style={{ marginBottom: '6px', opacity: 0.5 }} />
-                    <p>Por favor, haz clic en un día laborable del calendario para cargar los horarios de consulta.</p>
-                  </div>
-                )}
-
-                <button
-                  type="button"
-                  onClick={handleProceedToCheckout}
-                  disabled={!selectedDate || !selectedSlot}
-                  className="btn btn-emerald"
-                  style={{ height: '40px', fontSize: '0.78rem', marginTop: '10px', opacity: (selectedDate && selectedSlot) ? 1 : 0.6 }}
+            <form onSubmit={handleCheckoutSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
+                <button 
+                  type="button" 
+                  onClick={() => setShowCheckout(false)}
+                  className="btn btn-outline" 
+                  style={{ flex: 1, height: '36px', fontSize: '0.78rem' }}
                 >
-                  Proceder al Pago Seguro (Stripe Connect)
+                  Cancelar
+                </button>
+                <button 
+                  type="submit" 
+                  disabled={checkoutLoading}
+                  className="btn btn-primary" 
+                  style={{ flex: 1, height: '36px', fontSize: '0.78rem' }}
+                >
+                  {checkoutLoading ? 'Confirmando...' : 'Confirmar Cita'}
                 </button>
               </div>
-
-            </div>
-
+            </form>
           </div>
-        )}
-      </div>
+        </div>
+      )}
+
+      {/* Modal Éxito */}
+      {bookingSuccess && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(3, 19, 32, 0.8)',
+          backdropFilter: 'blur(6px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 2000,
+          padding: '16px'
+        }}>
+          <div className="glass-panel" style={{
+            maxWidth: '380px',
+            width: '100%',
+            padding: '28px',
+            textAlign: 'center',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '12px',
+            background: 'rgba(5, 26, 44, 0.95)',
+            border: '1px solid var(--border)'
+          }}>
+            <CheckCircle2 size={44} color="var(--color-emerald)" />
+            <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#ffffff' }}>¡Sesión Agendada!</h4>
+            <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+              La cita ha sido guardada en Firestore y notificada a tu psicólogo ({assignedPsycho?.name}).
+            </p>
+            <button
+              type="button"
+              onClick={() => setBookingSuccess(false)}
+              className="btn btn-primary"
+              style={{ width: '100%', height: '36px', fontSize: '0.78rem', marginTop: '8px' }}
+            >
+              Aceptar
+            </button>
+          </div>
+        </div>
+      )}
 
     </div>
   );

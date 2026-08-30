@@ -2,7 +2,7 @@
 
 ## 1. Dictamen ejecutivo
 
-El repositorio actual es un **borrador avanzado de demo**, no una base limpia de producción clínica. Tiene valor porque ya contiene una primera web, login, roles, landing, marketplace, módulos de paciente, dashboard de psicólogo, Supabase, Edge Functions y un primer motor clínico. Pero no analiza bien los datos todavía porque la arquitectura está mezclada y el flujo de datos clínicos no está cerrado de extremo a extremo.
+El repositorio actual es un **borrador avanzado de demo**, no una base limpia de producción clínica. Tiene valor porque ya contiene una primera web, login, roles, landing, marketplace, módulos de paciente, dashboard de psicólogo, Firebase, Edge Functions y un primer motor clínico. Pero no analiza bien los datos todavía porque la arquitectura está mezclada y el flujo de datos clínicos no está cerrado de extremo a extremo.
 
 La decisión recomendada no es “tirarlo todo”, sino hacer una **reconstrucción controlada**:
 
@@ -20,8 +20,8 @@ La decisión recomendada no es “tirarlo todo”, sino hacer una **reconstrucci
 
 - React 19 + Vite.
 - Capacitor para Android/iOS.
-- Supabase Auth, Database, Storage y Edge Functions.
-- Supabase migrations.
+- Firebase Auth, Database, Storage y Edge Functions.
+- Firebase migrations.
 - Edge Functions Deno/TypeScript.
 - OpenRouter para modelos LLM en funciones `chat-terapeuta`, `clinical-ingest` y `clinical-synthesize`.
 - Vanilla CSS grande (`App.css`, `index.css`).
@@ -33,7 +33,7 @@ La decisión recomendada no es “tirarlo todo”, sino hacer una **reconstrucci
 src/
   App.jsx
   appConfig.js
-  supabaseClient.js
+  firebaseClient.js
   lib/
     chatTerapeuta.js
     clinicalEngine.js
@@ -55,7 +55,7 @@ src/
       PacientePrivacidadView.jsx
       PacientePerfilView.jsx
       PacientePlanView.jsx
-supabase/
+firebase/
   functions/
     chat-terapeuta/
     clinical-ingest/
@@ -102,7 +102,7 @@ Esto es la semilla del SDK clínico del frontend. Debe mantenerse, pero separars
 
 ### 3.4 Primer pipeline de ingesta
 
-`supabase/functions/clinical-ingest/index.ts` ya realiza:
+`firebase/functions/clinical-ingest/index.ts` ya realiza:
 
 - descarga de documentos de Storage;
 - extracción directa de texto;
@@ -117,7 +117,7 @@ La idea está bien, pero debe modularizarse y endurecerse.
 
 ### 3.5 Primer motor Hermes
 
-`supabase/functions/clinical-synthesize/index.ts` ya intenta sintetizar:
+`firebase/functions/clinical-synthesize/index.ts` ya intenta sintetizar:
 
 - perfil clínico;
 - hechos;
@@ -200,15 +200,15 @@ Archivos con miles de líneas:
 
 Ningún componente sanitario debe superar 300-500 líneas. Dividir por dominios y secciones.
 
-## 4.5 Supabase cliente hardcodeado
+## 4.5 Firebase cliente hardcodeado
 
-`src/supabaseClient.js` contiene URL y anon key hardcodeadas. Aunque la anon key no es un secreto absoluto, debe ir por variables Vite y proyecto separado por entorno.
+`src/firebaseClient.js` contiene URL y anon key hardcodeadas. Aunque la anon key no es un secreto absoluto, debe ir por variables Vite y proyecto separado por entorno.
 
 Target:
 
 ```ts
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const firebaseUrl = import.meta.env.VITE_Firebase_URL;
+const firebaseAnonKey = import.meta.env.VITE_Firebase_ANON_KEY;
 ```
 
 ## 4.6 Roles y migraciones desalineadas
@@ -245,7 +245,7 @@ Las Edge Functions usan `Access-Control-Allow-Origin: *`. Para producción clín
 
 ## 4.9 Datos clínicos sin cifrado aplicativo
 
-El modelo habla de Argon2id y Zero-Knowledge, pero en las tablas aparecen campos `text` normales (`extracted_text`, `content`, `summary_vital`, mensajes). Supabase cifra en reposo a nivel infraestructura, pero eso no es Zero-Knowledge.
+El modelo habla de Argon2id y Zero-Knowledge, pero en las tablas aparecen campos `text` normales (`extracted_text`, `content`, `summary_vital`, mensajes). Firebase cifra en reposo a nivel infraestructura, pero eso no es Zero-Knowledge.
 
 Decisión:
 

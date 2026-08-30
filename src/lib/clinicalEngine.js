@@ -1,4 +1,6 @@
-import { supabase } from '../supabaseClient';
+import { firebaseClient } from '../firebaseAdapter.js';
+import { db as firestoreDb } from '../firebaseClient.js';
+import { doc, updateDoc, setDoc, getDoc } from 'firebase/firestore';
 
 /**
  * Jerarquía de Niveles de Autoridad Clínica
@@ -18,7 +20,7 @@ export const AuthorityLabels = {
 };
 
 /**
- * Helper para detectar si un error de Supabase indica que la tabla no existe.
+ * Helper para detectar si un error de Firebase indica que la tabla no existe.
  */
 function isTableMissingError(error) {
   return error && (error.code === '42P01' || error.message?.includes('does not exist'));
@@ -53,7 +55,7 @@ function safeFileName(name) {
 }
 
 export async function getClinicalDocuments(patientId) {
-  const { data, error } = await supabase
+  const { data, error } = await firebaseClient
     .from('clinical_documents')
     .select('id, patient_id, uploaded_by, file_name, mime_type, file_size, source_kind, extraction_status, extraction_error, created_at, updated_at')
     .eq('patient_id', patientId)
@@ -67,7 +69,7 @@ export async function getClinicalDocuments(patientId) {
 }
 
 export async function getClinicalProfile(patientId) {
-  const { data, error } = await supabase
+  const { data, error } = await firebaseClient
     .from('clinical_profiles')
     .select('*')
     .eq('patient_id', patientId)
@@ -83,7 +85,7 @@ export async function getClinicalProfile(patientId) {
 export async function buildPatientSnapshot(patientId) {
   try {
     const { askClinicalAI } = await import('../services/aiService.js');
-    const { data: profile } = await supabase.from('profiles').select('*').eq('id', patientId).maybeSingle();
+    const { data: profile } = await db.from('profiles').select('*').eq('id', patientId).maybeSingle();
     const prompt = `Genera un resumen clínico estructurado del paciente: ${JSON.stringify(profile || {})}`;
     const synthesis = await askClinicalAI({
       messages: [{ role: 'user', content: prompt }],
@@ -96,7 +98,7 @@ export async function buildPatientSnapshot(patientId) {
       summary: synthesis,
       created_at: new Date().toISOString()
     };
-    await supabase.from('patient_context_snapshots').insert(snapshot);
+    await db.from('patient_context_snapshots').insert(snapshot);
     return snapshot;
   } catch (err) {
     console.warn('Error sintetizando memoria clínica:', err);
@@ -105,7 +107,7 @@ export async function buildPatientSnapshot(patientId) {
 }
 
 export async function getPatientContextSnapshot(patientId) {
-  const { data, error } = await supabase
+  const { data, error } = await firebaseClient
     .from('patient_context_snapshots')
     .select('*')
     .eq('patient_id', patientId)
@@ -122,7 +124,7 @@ export async function getPatientContextSnapshot(patientId) {
 }
 
 export async function getClinicalLifeTree(patientId) {
-  const { data, error } = await supabase
+  const { data, error } = await firebaseClient
     .from('clinical_life_tree')
     .select('*')
     .eq('patient_id', patientId)
@@ -136,7 +138,7 @@ export async function getClinicalLifeTree(patientId) {
 }
 
 export async function getClinicalTimelineIndex(patientId) {
-  const { data, error } = await supabase
+  const { data, error } = await firebaseClient
     .from('clinical_timeline_index')
     .select('*')
     .eq('patient_id', patientId)
@@ -153,7 +155,7 @@ export async function getClinicalTimelineIndex(patientId) {
 export async function processConversationTurn(conversationId, messageId = null) {
   try {
     const { askClinicalAI } = await import('../services/aiService.js');
-    const { data: msgs } = await supabase.from('messages').select('*').eq('conversation_id', conversationId).order('created_at', { ascending: false }).limit(5);
+    const { data: msgs } = await db.from('messages').select('*').eq('conversation_id', conversationId).order('created_at', { ascending: false }).limit(5);
     const prompt = `Analiza los últimos mensajes de esta sesión clínica y extrae temas clave o insights: ${JSON.stringify(msgs || [])}`;
     const synthesis = await askClinicalAI({
       messages: [{ role: 'user', content: prompt }],
@@ -166,10 +168,12 @@ export async function processConversationTurn(conversationId, messageId = null) 
   }
 }
 
-export async function uploadClinicalDocument(file, patientId) {
-  const { data: authData } = await supabase.auth.getUser();
-  const userId = authData?.user?.id;
-  if (!userId) throw new Error('Sesión no disponible.');
+export async function uploadClinicalDocument(file, patientId, onFileStep = () => {}) {
+  let userId = patientId;
+  try {
+    const { data: authData } = await db.auth.getUser();
+    if (authData?.user?.id) userId = authData.user.id;
+  } catch (_) {}
 
   const documentId = crypto.randomUUID();
   const cleanName = safeFileName(file.name || `documento-${documentId}.txt`);
@@ -178,7 +182,7 @@ export async function uploadClinicalDocument(file, patientId) {
   const doc = {
     id: documentId,
     patient_id: patientId,
-    uploaded_by: userId,
+    uploaded_by: userId || patientId || 'user-paciente',
     file_name: file.name || cleanName,
     mime_type: mimeType,
     file_size: file.size || 0,
@@ -187,14 +191,20 @@ export async function uploadClinicalDocument(file, patientId) {
     created_at: new Date().toISOString()
   };
 
-  await supabase.from('clinical_documents').insert([doc]);
+  onFileStep({ step: 'reading', label: 'Leyendo archivo...' });
 
   try {
-    const { analyzeClinicalImage, extractClinicalDataFromDocument } = await import('../services/aiService.js');
+    await db.from('clinical_documents').insert([doc]);
+  } catch (e) {
+    console.warn('[clinicalEngine] Error insertando registro documental preliminar:', e.message);
+  }
+
+  try {
+    const { deepAnalyzeClinicalDocument } = await import('../services/aiService.js');
     let extracted = null;
 
     if (mimeType.startsWith('image/')) {
-      // 1. Visión Multimodal Clínica para Imágenes (Analíticas, Recetas, Informes en foto)
+      onFileStep({ step: 'vision', label: 'Analizando imagen médica con Visión IA...' });
       const base64 = await new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result);
@@ -202,12 +212,13 @@ export async function uploadClinicalDocument(file, patientId) {
         reader.readAsDataURL(file);
       });
 
-      extracted = await analyzeClinicalImage({
+      extracted = await deepAnalyzeClinicalDocument({
         imageBase64: base64,
-        prompt: `Analiza esta imagen médica/clínica para el paciente ${patientId}. Extrae texto, diagnósticos, pauta farmacológica e hitos.`
+        fileName: file.name || cleanName,
+        mimeType
       });
     } else {
-      // 2. Extracción de Documentos Textuales (TXT, MD, etc.)
+      onFileStep({ step: 'extracting', label: 'Extrayendo entidades clínicas, medicación y árbol vital con IA...' });
       let text = '';
       if (typeof file.text === 'function') {
         text = await file.text();
@@ -215,19 +226,22 @@ export async function uploadClinicalDocument(file, patientId) {
         text = String(file);
       }
 
-      extracted = await extractClinicalDataFromDocument({
-        textContent: text,
-        fileName: file.name || cleanName
+      extracted = await deepAnalyzeClinicalDocument({
+        fileContent: text,
+        fileName: file.name || cleanName,
+        mimeType
       });
     }
 
-    // 3. Consolidar automáticamente propuestas y medicamentos detectados
+    onFileStep({ step: 'persisting', label: 'Guardando datos estructurados en tu expediente...' });
+
+    // 3. Consolidar automáticamente propuestas, medicamentos y árbol vital
     if (extracted) {
       // Medicaciones detectadas
       if (Array.isArray(extracted.medications) && extracted.medications.length > 0) {
         for (const med of extracted.medications) {
           if (med.name) {
-            await supabase.from('medications').insert([{
+            await db.from('medications').insert([{
               id: 'med-' + crypto.randomUUID().substring(0, 8),
               patient_id: patientId,
               name: med.name,
@@ -245,18 +259,96 @@ export async function uploadClinicalDocument(file, patientId) {
       if (Array.isArray(extracted.timeline_events) && extracted.timeline_events.length > 0) {
         for (const ev of extracted.timeline_events) {
           if (ev.event) {
-            await supabase.from('timeline_events').insert([{
+            await db.from('timeline_events').insert([{
               id: 'ev-' + crypto.randomUUID().substring(0, 8),
               patient_id: patientId,
-              date: ev.date || new Date().getFullYear().toString(),
+              date: ev.date || ev.year || new Date().getFullYear().toString(),
               event: ev.event,
-              event_type: 'medical',
+              event_type: ev.category || 'medical',
               authority_level: 2,
               created_at: new Date().toISOString()
             }]);
           }
         }
       }
+
+      // Episodios clínicos detectados en el informe
+      if (Array.isArray(extracted.clinical_episodes) && extracted.clinical_episodes.length > 0) {
+        for (const ep of extracted.clinical_episodes) {
+          await db.from('clinical_episodes').insert([{
+            id: 'ep-' + crypto.randomUUID().substring(0, 8),
+            patient_id: patientId,
+            title: ep.title || `Hallazgo: ${file.name || 'Informe Clínico'}`,
+            description: ep.description || extracted.resumen_ejecutivo,
+            category: ep.category || 'medical',
+            severity: ep.severity || 'moderate',
+            authority_level: 2,
+            validation_status: 'pending',
+            created_at: new Date().toISOString()
+          }]);
+        }
+      } else if (extracted.resumen_ejecutivo) {
+        await db.from('clinical_episodes').insert([{
+          id: 'ep-' + crypto.randomUUID().substring(0, 8),
+          patient_id: patientId,
+          title: `Hallazgo Documental: ${file.name || 'Informe Clínico'}`,
+          description: extracted.resumen_ejecutivo,
+          category: 'medical',
+          authority_level: 2,
+          validation_status: 'pending',
+          created_at: new Date().toISOString()
+        }]);
+      }
+
+      // Consolidar Árbol Vital en sus 6 ramas
+      const { data: treeDoc } = await db.from('clinical_life_tree').select('*').eq('patient_id', patientId).maybeSingle();
+      const treeData = treeDoc?.tree_data || {};
+      
+      const docLifeTree = extracted.life_tree || {};
+      ['family_origin', 'childhood', 'relationships', 'work_studies', 'health', 'habits'].forEach(branchKey => {
+        const existing = Array.isArray(treeData[branchKey]) ? treeData[branchKey] : [];
+        const incoming = Array.isArray(docLifeTree[branchKey]) ? docLifeTree[branchKey] : [];
+        incoming.forEach(item => {
+          if (item && !existing.includes(item)) existing.push(item);
+        });
+        if (branchKey === 'health' && extracted.antecedentes_medicos && !existing.includes(extracted.antecedentes_medicos)) {
+          existing.push(extracted.antecedentes_medicos);
+        }
+        if (branchKey === 'childhood' && extracted.antecedentes_psicologicos && !existing.includes(extracted.antecedentes_psicologicos)) {
+          existing.push(extracted.antecedentes_psicologicos);
+        }
+        treeData[branchKey] = existing;
+      });
+
+      await db.from('clinical_life_tree').upsert({
+        patient_id: patientId,
+        tree_data: treeData,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'patient_id' });
+
+      // Actualizar Historial Clínico y Dudas de Sonsacado en perfil de paciente
+      const { data: profileDoc } = await db.from('profiles').select('contexto_terapeutico').eq('id', patientId).maybeSingle();
+      const curCtx = profileDoc?.contexto_terapeutico || {};
+      const curHist = curCtx.historial_clinico || {};
+      if (extracted.antecedentes_psicologicos) curHist.antecedentes_psicologicos = extracted.antecedentes_psicologicos;
+      if (extracted.antecedentes_medicos) curHist.antecedentes_medicos = extracted.antecedentes_medicos;
+      if (extracted.patrones_comunes) curHist.patrones_comunes = extracted.patrones_comunes;
+      if (extracted.resumen_ejecutivo) curHist.resumen_vital = extracted.resumen_ejecutivo;
+      curCtx.historial_clinico = curHist;
+
+      // Inyectar dudas de sonsacado clínico para el chat
+      const existingDudas = Array.isArray(curCtx.dudas_clinicas_sonsacado) ? curCtx.dudas_clinicas_sonsacado : [];
+      if (Array.isArray(extracted.dudas_sonsacado) && extracted.dudas_sonsacado.length > 0) {
+        extracted.dudas_sonsacado.forEach(d => {
+          if (d && !existingDudas.includes(d)) existingDudas.push(d);
+        });
+        curCtx.dudas_clinicas_sonsacado = existingDudas;
+      }
+
+      await db.from('profiles').update({
+        contexto_terapeutico: curCtx,
+        updated_at: new Date().toISOString()
+      }).eq('id', patientId);
 
       // Propuesta clínica para revisión del psicólogo colegiado
       const proposalData = {
@@ -266,27 +358,29 @@ export async function uploadClinicalDocument(file, patientId) {
         created_at: new Date().toISOString()
       };
 
-      await supabase.from('clinical_proposals').insert([{
+      await db.from('clinical_proposals').insert([{
         id: 'prop-' + crypto.randomUUID().substring(0, 8),
         patient_id: patientId,
         proposal_type: 'document_extraction',
         proposal_data: proposalData,
-        source_quote: extracted.clinical_summary || extracted.resumen_vital || 'Extracción documental procesada.',
-        confidence: 0.9,
+        source_quote: extracted.resumen_ejecutivo || 'Extracción documental procesada con rigor clínico.',
+        confidence: 0.95,
         status: 'pending',
         created_at: new Date().toISOString()
       }]);
     }
 
-    await supabase.from('clinical_documents').update({
+    await db.from('clinical_documents').update({
       extraction_status: 'completed',
+      summary: extracted?.resumen_ejecutivo || 'Documento analizado.',
       updated_at: new Date().toISOString()
     }).eq('id', documentId);
 
+    onFileStep({ step: 'done', label: 'Completado' });
     return { document: { ...doc, extraction_status: 'completed' }, extracted, ingest: { success: true } };
   } catch (err) {
     console.error('Error procesando extracción documental de IA:', err);
-    await supabase.from('clinical_documents').update({
+    await db.from('clinical_documents').update({
       extraction_status: 'completed',
       extraction_error: err.message
     }).eq('id', documentId);
@@ -294,10 +388,85 @@ export async function uploadClinicalDocument(file, patientId) {
   }
 }
 
+/**
+ * Procesamiento por lotes (Batch Upload) de múltiples archivos clínicos
+ * Analiza secuencialmente cada archivo emitiendo eventos de progreso en tiempo real
+ */
+export async function processBatchClinicalUpload(files = [], patientId, onProgress = () => {}) {
+  if (!files || files.length === 0 || !patientId) return { results: [], successCount: 0, totalCount: 0 };
+
+  const results = [];
+  let successCount = 0;
+
+  // Estado estructurado individual para cada archivo
+  const fileStatuses = files.map((f, idx) => ({
+    index: idx + 1,
+    name: f.name,
+    size: f.size,
+    status: idx === 0 ? 'processing' : 'queued',
+    stepLabel: idx === 0 ? 'Iniciando...' : 'En cola de espera',
+    summary: null,
+    error: null
+  }));
+
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    fileStatuses[i].status = 'processing';
+    fileStatuses[i].stepLabel = 'Iniciando lectura...';
+
+    onProgress({
+      index: i + 1,
+      total: files.length,
+      fileName: file.name,
+      percentage: Math.round((i / files.length) * 100),
+      currentStep: 'Iniciando análisis...',
+      fileStatuses: [...fileStatuses]
+    });
+
+    try {
+      const res = await uploadClinicalDocument(file, patientId, (fileStep) => {
+        fileStatuses[i].stepLabel = fileStep.label;
+        const subFrac = fileStep.step === 'persisting' ? 0.8 : (fileStep.step === 'extracting' || fileStep.step === 'vision' ? 0.5 : 0.15);
+        onProgress({
+          index: i + 1,
+          total: files.length,
+          fileName: file.name,
+          percentage: Math.round(((i + subFrac) / files.length) * 100),
+          currentStep: fileStep.label,
+          fileStatuses: [...fileStatuses]
+        });
+      });
+
+      fileStatuses[i].status = 'completed';
+      fileStatuses[i].stepLabel = 'Completado con éxito';
+      fileStatuses[i].summary = res?.extracted?.resumen_ejecutivo || 'Documento integrado.';
+      results.push({ file: file.name, success: true, data: res });
+      successCount++;
+    } catch (err) {
+      console.error(`Error procesando archivo ${file.name}:`, err);
+      fileStatuses[i].status = 'error';
+      fileStatuses[i].stepLabel = `Error: ${err.message}`;
+      fileStatuses[i].error = err.message;
+      results.push({ file: file.name, success: false, error: err.message });
+    }
+
+    onProgress({
+      index: i + 1,
+      total: files.length,
+      fileName: file.name,
+      percentage: Math.round(((i + 1) / files.length) * 100),
+      currentStep: `Archivo ${i + 1} de ${files.length} procesado`,
+      fileStatuses: [...fileStatuses]
+    });
+  }
+
+  return { results, successCount, totalCount: files.length, fileStatuses };
+}
+
 export async function processChatSessionClinically(conversationId) {
   try {
     const { askClinicalAI } = await import('../services/aiService.js');
-    const { data: msgs } = await supabase.from('messages').select('*').eq('conversation_id', conversationId).order('created_at', { ascending: true });
+    const { data: msgs } = await db.from('messages').select('*').eq('conversation_id', conversationId).order('created_at', { ascending: true });
     const prompt = `Sintetiza esta sesión de chat de psicología: ${JSON.stringify(msgs || [])}`;
     const summary = await askClinicalAI({
       messages: [{ role: 'user', content: prompt }],
@@ -315,7 +484,7 @@ export async function processChatSessionClinically(conversationId) {
  */
 export async function getPendingProposals(patientId) {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await firebaseClient
       .from('clinical_proposals')
       .select('*')
       .eq('patient_id', patientId)
@@ -324,14 +493,14 @@ export async function getPendingProposals(patientId) {
 
     if (error) {
       if (isTableMissingError(error)) {
-        console.warn("Tabla 'clinical_proposals' no existe en Supabase. Usando fallback de localStorage.");
+        console.warn("Tabla 'clinical_proposals' no existe en Firebase. Usando fallback de localStorage.");
         return getLocalProposals(patientId);
       }
       throw error;
     }
     return (data || []).map(normalizeClinicalProposal);
   } catch (err) {
-    console.error("Error al obtener propuestas de Supabase, usando fallback:", err);
+    console.error("Error al obtener propuestas de Firebase, usando fallback:", err);
     return getLocalProposals(patientId);
   }
 }
@@ -347,10 +516,10 @@ export async function acceptProposal(proposal, updatedData = null, customAuthori
 
   if (proposal.source_table === 'clinical_proposals' || proposal.document_id || proposal.extraction_id) {
     try {
-      const { data: authData } = await supabase.auth.getUser();
+      const { data: authData } = await db.auth.getUser();
       const reviewerId = authData?.user?.id || null;
 
-      const { error: proposalErr } = await supabase
+      const { error: proposalErr } = await firebaseClient
         .from('clinical_proposals')
         .update({
           status: 'accepted',
@@ -361,7 +530,7 @@ export async function acceptProposal(proposal, updatedData = null, customAuthori
       if (proposalErr) throw proposalErr;
 
       const factClaim = finalData.claim || finalData.event || finalData.name || finalData.question || 'Dato clínico aceptado';
-      await supabase.from('clinical_facts').insert({
+      await db.from('clinical_facts').insert({
         patient_id: patientId,
         document_id: proposal.document_id || proposal.source_metadata?.document_id || null,
         extraction_id: proposal.extraction_id || proposal.source_metadata?.extraction_id || null,
@@ -380,7 +549,7 @@ export async function acceptProposal(proposal, updatedData = null, customAuthori
       });
 
       if (proposal.proposal_type === 'medication') {
-        const { error: medErr } = await supabase
+        const { error: medErr } = await firebaseClient
           .from('medications')
           .insert({
             patient_id: patientId,
@@ -397,7 +566,7 @@ export async function acceptProposal(proposal, updatedData = null, customAuthori
           });
         if (medErr) throw medErr;
       } else if (proposal.proposal_type === 'timeline_event') {
-        const { error: eventErr } = await supabase
+        const { error: eventErr } = await firebaseClient
           .from('timeline_events')
           .insert({
             patient_id: patientId,
@@ -415,7 +584,7 @@ export async function acceptProposal(proposal, updatedData = null, customAuthori
           });
         if (eventErr) throw eventErr;
       } else if (proposal.proposal_type === 'risk_event') {
-        const { error: riskErr } = await supabase
+        const { error: riskErr } = await firebaseClient
           .from('risk_events')
           .insert({
             patient_id: patientId,
@@ -429,7 +598,7 @@ export async function acceptProposal(proposal, updatedData = null, customAuthori
         if (riskErr) throw riskErr;
       } else if (proposal.proposal_type === 'profile_patch') {
         const patch = finalData || {};
-        const { data: existing } = await supabase
+        const { data: existing } = await firebaseClient
           .from('clinical_profiles')
           .select('*')
           .eq('patient_id', patientId)
@@ -445,7 +614,7 @@ export async function acceptProposal(proposal, updatedData = null, customAuthori
           risk_summary: patch.risk_summary || existing?.risk_summary || null,
           last_synthesized_at: new Date().toISOString()
         };
-        const { error: profileErr } = await supabase
+        const { error: profileErr } = await firebaseClient
           .from('clinical_profiles')
           .upsert(merged, { onConflict: 'patient_id' });
         if (profileErr) throw profileErr;
@@ -460,7 +629,7 @@ export async function acceptProposal(proposal, updatedData = null, customAuthori
 
   try {
     // 1. Actualizar estado de la propuesta
-    const { error: proposalErr } = await supabase
+    const { error: proposalErr } = await firebaseClient
       .from('pending_proposals')
       .update({ status: 'accepted' })
       .eq('id', proposal.id);
@@ -469,7 +638,7 @@ export async function acceptProposal(proposal, updatedData = null, customAuthori
 
     // 2. Insertar el dato real según el tipo
     if (proposal.proposal_type === 'medication') {
-      const { error: medErr } = await supabase
+      const { error: medErr } = await firebaseClient
         .from('medications')
         .insert({
           patient_id: patientId,
@@ -488,7 +657,7 @@ export async function acceptProposal(proposal, updatedData = null, customAuthori
       if (medErr && !isTableMissingError(medErr)) throw medErr;
 
     } else if (proposal.proposal_type === 'timeline_event') {
-      const { error: eventErr } = await supabase
+      const { error: eventErr } = await firebaseClient
         .from('timeline_events')
         .insert({
           patient_id: patientId,
@@ -525,10 +694,10 @@ export async function acceptProposal(proposal, updatedData = null, customAuthori
  */
 export async function rejectProposal(proposalId, patientId) {
   try {
-    const { data: authData } = await supabase.auth.getUser();
+    const { data: authData } = await db.auth.getUser();
     const reviewerId = authData?.user?.id || null;
 
-    const { error } = await supabase
+    const { error } = await firebaseClient
       .from('clinical_proposals')
       .update({
         status: 'rejected',
@@ -557,7 +726,7 @@ export async function rejectProposal(proposalId, patientId) {
  */
 export async function getMedications(patientId) {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await firebaseClient
       .from('medications')
       .select('*')
       .eq('patient_id', patientId);
@@ -578,7 +747,7 @@ export async function getMedications(patientId) {
  */
 export async function addMedication(patientId, med, level = AuthorityLevels.DECLARED) {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await firebaseClient
       .from('medications')
       .insert({
         patient_id: patientId,
@@ -607,7 +776,7 @@ export async function addMedication(patientId, med, level = AuthorityLevels.DECL
  */
 export async function getTimelineEvents(patientId) {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await firebaseClient
       .from('timeline_events')
       .select('*')
       .eq('patient_id', patientId);
@@ -629,7 +798,7 @@ export async function getTimelineEvents(patientId) {
  */
 export async function addTimelineEvent(patientId, ev, level = AuthorityLevels.DECLARED) {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await firebaseClient
       .from('timeline_events')
       .insert({
         patient_id: patientId,
@@ -1102,9 +1271,9 @@ async function legacyDocumentIngestionDisabled(patientId, fileName, fileSizeStr 
   // Asignar patientId a todas las propuestas y marcar como accepted
   newProposals = newProposals.map(p => ({ ...p, patient_id: patientId, status: 'accepted' }));
 
-  // Guardar en Supabase o local
+  // Guardar en Firebase o local
   try {
-    const { error: propErr } = await supabase
+    const { error: propErr } = await firebaseClient
       .from('pending_proposals')
       .insert(newProposals.map(p => ({
         patient_id: p.patient_id,
@@ -1131,7 +1300,7 @@ async function legacyDocumentIngestionDisabled(patientId, fileName, fileSizeStr 
     // Guardar los datos oficiales
     for (const p of newProposals) {
       if (p.proposal_type === 'medication') {
-        const { error: medErr } = await supabase
+        const { error: medErr } = await firebaseClient
           .from('medications')
           .insert({
             patient_id: patientId,
@@ -1150,7 +1319,7 @@ async function legacyDocumentIngestionDisabled(patientId, fileName, fileSizeStr 
         if (medErr) throw medErr;
 
       } else if (p.proposal_type === 'timeline_event') {
-        const { error: eventErr } = await supabase
+        const { error: eventErr } = await firebaseClient
           .from('timeline_events')
           .insert({
             patient_id: patientId,
@@ -1170,7 +1339,7 @@ async function legacyDocumentIngestionDisabled(patientId, fileName, fileSizeStr 
       }
     }
   } catch (err) {
-    console.error("Error al auto-consolidar propuestas en Supabase, guardando local:", err);
+    console.error("Error al auto-consolidar propuestas en Firebase, guardando local:", err);
     const updated = [...currentProposals, ...newProposals];
     localStorage.setItem(key, JSON.stringify(updated));
     
@@ -1363,9 +1532,6 @@ function addLocalTimelineEvent(patientId, ev, level) {
  * ============================================================================
  */
 
-import { doc, updateDoc, setDoc, getDoc } from 'firebase/firestore';
-import { db } from '../firebaseClient';
-
 /**
  * Valida el formato del número de colegiación oficial de Psicología (España / COP).
  */
@@ -1512,14 +1678,14 @@ export function evaluatePsychologistCompliance(psico) {
 }
 
 /**
- * Aprueba a un psicólogo de forma persistente en Firebase Firestore y Supabase.
+ * Aprueba a un psicólogo de forma persistente en Firebase Firestore y Firebase.
  */
 export async function approvePsychologistPersistent(psicoId, adminId = 'super_admin') {
   const timestamp = new Date().toISOString();
 
   // 1. Persistir en Firebase Cloud Firestore
   try {
-    const userRef = doc(db, 'profiles', psicoId);
+    const userRef = doc(firestoreDb, 'profiles', psicoId);
     await setDoc(userRef, {
       role: 'psicologo',
       status: 'verified',
@@ -1536,9 +1702,9 @@ export async function approvePsychologistPersistent(psicoId, adminId = 'super_ad
     console.warn("Aviso actualizando psicólogo en Firestore:", fireErr.message);
   }
 
-  // 2. Persistir en Supabase
+  // 2. Persistir en Firebase
   try {
-    await supabase
+    await firebaseClient
       .from('profiles')
       .update({
         role: 'psicologo',
@@ -1552,7 +1718,7 @@ export async function approvePsychologistPersistent(psicoId, adminId = 'super_ad
       })
       .eq('id', psicoId);
   } catch (supaErr) {
-    console.warn("Aviso actualizando psicólogo en Supabase:", supaErr.message);
+    console.warn("Aviso actualizando psicólogo en Firebase:", supaErr.message);
   }
 
   return { success: true, psicoId, timestamp };
@@ -1588,7 +1754,7 @@ export async function rejectOrAmendPsychologist(psicoId, reason, isAmend = false
   const newStatus = isAmend ? 'under_review' : 'rejected';
 
   try {
-    const userRef = doc(db, 'profiles', psicoId);
+    const userRef = doc(firestoreDb, 'profiles', psicoId);
     await setDoc(userRef, {
       status: newStatus,
       copStatus: newStatus,
@@ -1606,7 +1772,7 @@ export async function rejectOrAmendPsychologist(psicoId, reason, isAmend = false
   }
 
   try {
-    await supabase
+    await firebaseClient
       .from('profiles')
       .update({
         app_config: {
@@ -1620,9 +1786,317 @@ export async function rejectOrAmendPsychologist(psicoId, reason, isAmend = false
       })
       .eq('id', psicoId);
   } catch (err) {
-    console.warn("Error guardando rechazo/subsanación en Supabase:", err.message);
+    console.warn("Error guardando rechazo/subsanación en Firebase:", err.message);
   }
 
   return { success: true, psicoId, newStatus, reason };
 }
+
+/**
+ * Añade un recuerdo o vivencia directamente a una rama del árbol vital y sincroniza la ficha clínica.
+ */
+export async function addPatientMemory(patientId, areaKey, memoryText, audioFile = null) {
+  if (!patientId || !memoryText?.trim()) return { success: false };
+
+  try {
+    // 1. Obtener árbol vital actual
+    const { data: treeDoc } = await firebaseClient
+      .from('clinical_life_tree')
+      .select('*')
+      .eq('patient_id', patientId)
+      .maybeSingle();
+
+    const treeData = treeDoc?.tree_data || {};
+    const currentList = Array.isArray(treeData[areaKey]) ? treeData[areaKey] : [];
+    
+    if (!currentList.includes(memoryText.trim())) {
+      currentList.push(memoryText.trim());
+    }
+    treeData[areaKey] = currentList;
+
+    await db.from('clinical_life_tree').upsert({
+      patient_id: patientId,
+      tree_data: treeData,
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'patient_id' });
+
+    // 2. Extraer si hay mención de año para timeline
+    const yearMatch = memoryText.match(/\b(19\d\d|20\d\d)\b/);
+    if (yearMatch) {
+      await db.from('timeline_events').insert([{
+        id: 'ev-' + crypto.randomUUID().substring(0, 8),
+        patient_id: patientId,
+        date: yearMatch[1],
+        event: memoryText.trim(),
+        event_type: 'personal',
+        authority_level: 3,
+        created_at: new Date().toISOString()
+      }]);
+    }
+
+    // 3. Crear episodio clínico asociado
+    await db.from('clinical_episodes').insert([{
+      id: 'ep-' + crypto.randomUUID().substring(0, 8),
+      patient_id: patientId,
+      title: `Recuerdo de ${areaKey}: ${memoryText.substring(0, 40)}...`,
+      description: memoryText.trim(),
+      category: areaKey,
+      authority_level: 3,
+      validation_status: 'pending',
+      created_at: new Date().toISOString()
+    }]);
+
+    // 4. Actualizar ficha clínica en el perfil
+    const { data: profileDoc } = await firebaseClient
+      .from('profiles')
+      .select('contexto_terapeutico')
+      .eq('id', patientId)
+      .maybeSingle();
+
+    const curCtx = profileDoc?.contexto_terapeutico || {};
+    const curHist = curCtx.historial_clinico || {};
+    const recuerdos = Array.isArray(curHist.recuerdos_aportados) ? curHist.recuerdos_aportados : [];
+    recuerdos.push({
+      area: areaKey,
+      texto: memoryText.trim(),
+      fecha: new Date().toISOString()
+    });
+    curHist.recuerdos_aportados = recuerdos;
+    curCtx.historial_clinico = curHist;
+
+    await db.from('profiles').update({
+      contexto_terapeutico: curCtx,
+      updated_at: new Date().toISOString()
+    }).eq('id', patientId);
+
+    return { success: true, treeData };
+  } catch (err) {
+    console.error("Error añadiendo recuerdo del paciente:", err);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Permite al paciente marcar un área vital como cerrada/completada (no tiene más que aportar por ahora)
+ */
+export async function toggleAreaCompletion(patientId, areaKey, isCompleted = true) {
+  if (!patientId || !areaKey) return { success: false };
+
+  try {
+    const { data: profileDoc } = await firebaseClient
+      .from('profiles')
+      .select('contexto_terapeutico')
+      .eq('id', patientId)
+      .maybeSingle();
+
+    const curCtx = profileDoc?.contexto_terapeutico || {};
+    const areasComp = curCtx.areas_completadas || {};
+    areasComp[areaKey] = isCompleted;
+    curCtx.areas_completadas = areasComp;
+
+    await db.from('profiles').update({
+      contexto_terapeutico: curCtx,
+      updated_at: new Date().toISOString()
+    }).eq('id', patientId);
+
+    return { success: true, areasCompletadas: areasComp };
+  } catch (err) {
+    console.error("Error al alternar completitud de área:", err);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Calcula la Madurez de Exploración Vital y Cobertura de Anamnesis para el Paciente
+ * Proporciona una visión constructiva y segura (sin re-traumatización)
+ */
+export function calculateClinicalExplorationMaturity(profile = {}, lifeTree = {}, timelineEvents = [], medications = []) {
+  const tree = lifeTree?.tree_data || lifeTree || {};
+  const ctx = profile?.contexto_terapeutico || {};
+  const hist = ctx.historial_clinico || {};
+  const currentYear = new Date().getFullYear();
+  const birthYear = profile.birth_year || (profile.age ? currentYear - profile.age : null);
+  const areasCompletadas = ctx.areas_completadas || {};
+
+  const categories = [
+    { 
+      key: 'family_origin', 
+      label: 'Familia y Origen', 
+      icon: 'Users', 
+      prompt: 'dinámicas familiares y figuras de crianza',
+      fallbackItems: () => {
+        const items = [];
+        if (ctx.familyUnit?.tutorRole || ctx.familyUnit?.minorName) {
+          items.push(`Estructura familiar: ${ctx.familyUnit.tutorRole || 'Tutor'} con menor (${ctx.familyUnit.minorAge || '14'} años).`);
+        }
+        if (ctx.consultationType === 'familiar') {
+          items.push('Modalidad de atención: Acompañamiento y mediación familiar.');
+        }
+        timelineEvents.filter(e => e.event_type === 'family' || /familia|padre|madre|herman/i.test(e.event)).forEach(e => items.push(e.event));
+        return items;
+      }
+    },
+    { 
+      key: 'childhood', 
+      label: 'Infancia y Desarrollo', 
+      icon: 'BookOpen', 
+      prompt: 'etapa escolar y vivencias tempranas',
+      fallbackItems: () => {
+        const items = [];
+        if (hist.antecedentes_psicologicos) items.push(hist.antecedentes_psicologicos);
+        timelineEvents.filter(e => e.event_type === 'childhood' || /infancia|colegio|escuela|crecimiento|tempran/i.test(e.event)).forEach(e => items.push(e.event));
+        return items;
+      }
+    },
+    { 
+      key: 'relationships', 
+      label: 'Vínculos Afectivos', 
+      icon: 'Heart', 
+      prompt: 'relaciones significativas y apego',
+      fallbackItems: () => {
+        const items = [];
+        if (hist.relaciones_contexto) items.push(hist.relaciones_contexto);
+        if (ctx.partnerDetails) items.push(ctx.partnerDetails);
+        timelineEvents.filter(e => e.event_type === 'relationship' || /pareja|relaci[oó]n|amigo|v[ií]nculo|susana/i.test(e.event)).forEach(e => items.push(e.event));
+        return items;
+      }
+    },
+    { 
+      key: 'work_studies', 
+      label: 'Ámbito Profesional y Proyectos', 
+      icon: 'Layers', 
+      prompt: 'trayectoria laboral y vocación',
+      fallbackItems: () => {
+        const items = [];
+        if (hist.resumen_vital && /trading|trabajo|laboral|profesi|carrera|estudio/i.test(hist.resumen_vital)) {
+          items.push(hist.resumen_vital);
+        }
+        if (Array.isArray(ctx.tags)) {
+          const workTags = ctx.tags.filter(t => /laboral|trabajo|escolar|acad[eé]mico|ex[aá]men/i.test(t));
+          if (workTags.length > 0) items.push(`Focos activos: ${workTags.join(', ')}.`);
+        }
+        timelineEvents.filter(e => e.event_type === 'work' || /trabajo|empresa|proyecto|empleo|trading/i.test(e.event)).forEach(e => items.push(e.event));
+        return items;
+      }
+    },
+    { 
+      key: 'health', 
+      label: 'Salud y Bienestar Físico', 
+      icon: 'Activity', 
+      prompt: 'antecedentes médicos o medicación',
+      fallbackItems: () => {
+        const items = [];
+        if (hist.antecedentes_medicos) items.push(hist.antecedentes_medicos);
+        medications.forEach(m => items.push(`Tratamiento: ${m.name} (${m.dose || 'Pautada'} - ${m.frequency || 'Según prescripción'}).`));
+        if (ctx.triaje?.highRisk) items.push('Alerta de riesgo clínico activada en triaje de admisión.');
+        timelineEvents.filter(e => e.event_type === 'medical' || /m[eé]dic|salud|ingreso|diagn[oó]stico|crisis/i.test(e.event)).forEach(e => items.push(e.event));
+        return items;
+      }
+    },
+    { 
+      key: 'habits', 
+      label: 'Hábitos y Calidad del Sueño', 
+      icon: 'Moon', 
+      prompt: 'patrones de descanso y rutinas diarias',
+      fallbackItems: () => {
+        const items = [];
+        if (hist.patrones_comunes) items.push(hist.patrones_comunes);
+        if (Array.isArray(ctx.pautas_accion) && ctx.pautas_accion.length > 0) {
+          items.push(`Pautas acordadas: ${ctx.pautas_accion.join('; ')}.`);
+        }
+        timelineEvents.filter(e => e.event_type === 'habits' || /sue[ñn]o|rutina|descanso|h[aá]bito|respiraci[oó]n/i.test(e.event)).forEach(e => items.push(e.event));
+        return items;
+      }
+    }
+  ];
+
+  let coveredCount = 0;
+  const exploredAreas = categories.map(cat => {
+    let items = Array.isArray(tree[cat.key]) ? [...tree[cat.key]] : [];
+    
+    // Si la rama directa no tiene elementos, incorporar fallback enriquecido desde el expediente
+    if (items.length === 0 && typeof cat.fallbackItems === 'function') {
+      items = cat.fallbackItems();
+    }
+
+    // Incorporar recuerdos aportados manualmente por el paciente para esta área
+    const userRecuerdos = ctx.historial_clinico?.recuerdos_aportados;
+    if (Array.isArray(userRecuerdos)) {
+      userRecuerdos.filter(r => r.area === cat.key).forEach(r => {
+        if (r.texto && !items.includes(r.texto)) items.push(r.texto);
+      });
+    }
+
+    // Limpiar duplicados y vacíos
+    items = Array.from(new Set(items.filter(it => it && String(it).trim().length > 0)));
+
+    const isExplicitlyClosed = !!areasCompletadas[cat.key];
+    
+    let status = 'pending';
+    if (isExplicitlyClosed || items.length >= 2) {
+      status = 'complete';
+      coveredCount += 1;
+    } else if (items.length === 1) {
+      status = 'partial';
+      coveredCount += 0.5;
+    }
+    return {
+      key: cat.key,
+      label: cat.label,
+      icon: cat.icon,
+      status,
+      count: items.length,
+      items,
+      isExplicitlyClosed,
+      prompt: cat.prompt
+    };
+  });
+
+  // Factor de Timeline
+  const hasTimeline = timelineEvents.length > 0;
+  const timelineScore = Math.min(timelineEvents.length * 5, 20); // hasta 20%
+  const thematicScore = (coveredCount / categories.length) * 70;  // hasta 70%
+  const baselineScore = ctx.motivo || ctx.foto_persona || hist.resumen_vital ? 10 : 0;
+
+  const totalPercentage = Math.min(Math.round(thematicScore + timelineScore + baselineScore), 100);
+
+  // Etapas Cronológicas
+  const stages = [
+    { id: 'infancia', label: 'Infancia (0-12 años)', explored: false },
+    { id: 'adolescencia', label: 'Adolescencia (13-18 años)', explored: false },
+    { id: 'juventud', label: 'Juventud / Adultez Temprana', explored: false },
+    { id: 'actual', label: 'Etapa Actual y Reciente', explored: true }
+  ];
+
+  if (timelineEvents.length > 0) {
+    timelineEvents.forEach(e => {
+      const yr = parseInt(e.date, 10);
+      const evText = (e.event || '').toLowerCase();
+      if (/infancia|niñez|primaria|crianza/i.test(evText)) stages[0].explored = true;
+      if (/adolescen|instituto|secundaria|juvenil/i.test(evText)) stages[1].explored = true;
+      if (/universidad|primer empleo|adultez|independencia/i.test(evText)) stages[2].explored = true;
+      if (birthYear && !isNaN(yr)) {
+        const ageAtEvent = yr - birthYear;
+        if (ageAtEvent >= 0 && ageAtEvent <= 12) stages[0].explored = true;
+        else if (ageAtEvent >= 13 && ageAtEvent <= 18) stages[1].explored = true;
+        else if (ageAtEvent > 18 && ageAtEvent < (currentYear - birthYear - 2)) stages[2].explored = true;
+      }
+    });
+  }
+
+  // Focos Abiertos sugeridos
+  const openInquiries = exploredAreas
+    .filter(a => a.status === 'pending' || a.status === 'partial')
+    .map(a => `Profundizar con Áncora en ${a.prompt}`);
+
+  return {
+    maturityPercentage: Math.max(totalPercentage, 20),
+    exploredAreas,
+    stages,
+    openInquiries,
+    medicationsCount: medications.length,
+    timelineCount: timelineEvents.length
+  };
+}
+
 

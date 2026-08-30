@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { supabase } from '../supabaseClient';
+import { firebaseClient as db, firebaseClient } from '../firebaseAdapter.js';
 import { invokeChatTerapeuta } from '../lib/chatTerapeuta';
 import { MemoryRepositoryFactory } from '../infrastructure/storage/MemoryRepositoryFactory';
 import { CognitiveMemoryEngine } from '../services/memory/CognitiveMemoryEngine';
@@ -374,7 +374,7 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
     
     try {
       // 1. Crear tarea de agente
-      const { data, error } = await supabase
+      const { data, error } = await firebaseClient
         .from('agent_tasks')
         .insert({
           user_id: user.id,
@@ -402,7 +402,7 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
           return;
         }
         
-        const { data: taskData, error: fetchErr } = await supabase
+        const { data: taskData, error: fetchErr } = await firebaseClient
           .from('agent_tasks')
           .select('status, result')
           .eq('id', taskId)
@@ -434,7 +434,7 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
               fuentes_ayuda: updatedFuentes
             };
             
-            const { error: profileErr } = await supabase
+            const { error: profileErr } = await firebaseClient
               .from('profiles')
               .update({ contexto_terapeutico: updatedCtx })
               .eq('id', user.id);
@@ -519,7 +519,7 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
     if (!user) return;
     setSourceLoading(true);
     try {
-      const { data, error } = await supabase
+      const { data, error } = await firebaseClient
         .from('mente_sources')
         .select('*')
         .eq('user_id', user.id)
@@ -537,7 +537,7 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
   const fetchCompletedConversations = async () => {
     if (!user) return;
     try {
-      const { data, error } = await supabase
+      const { data, error } = await firebaseClient
         .from('conversations')
         .select('*')
         .eq('user_id', user.id)
@@ -556,7 +556,7 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
     if (!user || !noteTitle.trim() || !noteContent.trim()) return;
     setUploadLoading(true);
     try {
-      const { error } = await supabase
+      const { error } = await firebaseClient
         .from('mente_sources')
         .insert([{
           user_id: user.id,
@@ -608,7 +608,7 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
     });
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { session } } = await db.auth.getSession();
       if (!session) {
         throw new Error("No se pudo obtener la sesión activa de Áncora.");
       }
@@ -779,7 +779,7 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
     setIsEditingMente(true);
   };
 
-  // Guardar cambios manuales de Mente en la base de datos Supabase
+  // Guardar cambios manuales de Mente en la base de datos Firebase
   const handleSaveMente = async (e) => {
     if (e) e.preventDefault();
     if (!user) return;
@@ -796,7 +796,7 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
         pautas_accion: editPautasAccion.split('\n').map(x => x.trim()).filter(Boolean)
       };
 
-      const { error } = await supabase
+      const { error } = await firebaseClient
         .from('profiles')
         .update({ contexto_terapeutico: updatedCtx })
         .eq('id', user.id);
@@ -854,7 +854,7 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
             try {
               const content = event.target.result;
               const extractionReady = isText;
-              const { error } = await supabase
+              const { error } = await firebaseClient
                 .from('mente_sources')
                 .insert([{
                   user_id: user.id,
@@ -900,7 +900,7 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
   const handleDeleteSource = async (id) => {
     if (!confirm("¿Deseas eliminar esta fuente de contexto? Ánquer ya no la usará de referencia.")) return;
     try {
-      const { error } = await supabase
+      const { error } = await firebaseClient
         .from('mente_sources')
         .delete()
         .eq('user_id', user.id)
@@ -916,7 +916,7 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
   const loadSessionMessages = async (convId) => {
     setTranscriptLoading(true);
     try {
-      const { data, error } = await supabase
+      const { data, error } = await firebaseClient
         .from('messages')
         .select('*')
         .eq('conversation_id', convId)
@@ -1096,7 +1096,7 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
 
   async function fetchHistory() {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await firebaseClient
         .from('daily_moods')
         .select('*')
         .eq('user_id', user.id)
@@ -1169,7 +1169,7 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
       };
 
       // Upsert using date and user_id constraint
-      const { data, error } = await supabase
+      const { data, error } = await firebaseClient
         .from('daily_moods')
         .upsert(payload, { onConflict: 'user_id, date' })
         .select();

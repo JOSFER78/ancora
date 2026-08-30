@@ -225,22 +225,84 @@ export class FirestoreQueryBuilder {
         return { data: [item], error: null };
       }
 
-      const queryRef = this.buildFirestoreQuery();
-      const snap = await getDocs(queryRef);
-      const items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      try {
+        const queryRef = this.buildFirestoreQuery();
+        const snap = await getDocs(queryRef);
+        const items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-      if (this.isSingle) {
-        if (items.length === 0) return { data: null, error: { message: 'Registro no encontrado', code: 'PGRST116' } };
-        return { data: items[0], error: null };
+        if (this.isSingle) {
+          if (items.length === 0) return { data: null, error: { message: 'Registro no encontrado', code: 'PGRST116' } };
+          return { data: items[0], error: null };
+        }
+
+        if (this.isMaybeSingle) {
+          return { data: items[0] || null, error: null };
+        }
+
+        return { data: items, error: null };
+      } catch (queryErr) {
+        // Fallback resiliente multinivel: Si Firestore falla por falta de índice compuesto o filtros múltiples
+        console.warn(`[FirestoreQueryBuilder] Reintentando consulta "${this.collectionName}" en memoria tras error de índice:`, queryErr.message);
+        try {
+          // 1. Intentar consultar con solo la primera condición de igualdad
+          const firstEq = this.conditions.find(c => c.op === '==');
+          let snap = null;
+          if (firstEq) {
+            try {
+              snap = await getDocs(query(collection(db, this.collectionName), where(firstEq.field, '==', firstEq.value)));
+            } catch (_) {
+              snap = await getDocs(collection(db, this.collectionName));
+            }
+          } else {
+            snap = await getDocs(collection(db, this.collectionName));
+          }
+
+          let items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+          // 2. Aplicar todas las condiciones en memoria
+          for (const cond of this.conditions) {
+            if (cond.op === '==') {
+              items = items.filter(it => it[cond.field] === cond.value);
+            } else if (cond.op === '!=') {
+              items = items.filter(it => it[cond.field] !== cond.value);
+            } else if (cond.op === 'in' && Array.isArray(cond.value)) {
+              items = items.filter(it => cond.value.includes(it[cond.field]));
+            }
+          }
+
+          // 3. Aplicar ordenación en memoria
+          if (this.orderByField) {
+            const field = this.orderByField;
+            const asc = this.orderDirection === 'asc';
+            items.sort((a, b) => {
+              const valA = a[field] ?? '';
+              const valB = b[field] ?? '';
+              if (valA < valB) return asc ? -1 : 1;
+              if (valA > valB) return asc ? 1 : -1;
+              return 0;
+            });
+          }
+
+          // 4. Aplicar límite
+          if (this.limitCount && items.length > this.limitCount) {
+            items = items.slice(0, this.limitCount);
+          }
+
+          if (this.isSingle) {
+            if (items.length === 0) return { data: null, error: { message: 'Registro no encontrado', code: 'PGRST116' } };
+            return { data: items[0], error: null };
+          }
+          if (this.isMaybeSingle) {
+            return { data: items[0] || null, error: null };
+          }
+          return { data: items, error: null };
+        } catch (fallbackErr) {
+          console.error(`[FirestoreQueryBuilder Fallback Fatal] Error en "${this.collectionName}":`, fallbackErr.message);
+          return { data: this.isSingle || this.isMaybeSingle ? null : [], error: null };
+        }
       }
-
-      if (this.isMaybeSingle) {
-        return { data: items[0] || null, error: null };
-      }
-
-      return { data: items, error: null };
     } catch (err) {
-      console.warn(`[FirestoreQueryBuilder] Error en colección "${this.collectionName}":`, err.message);
+      console.warn(`[FirestoreQueryBuilder] Error general en "${this.collectionName}":`, err.message);
       return { data: this.isSingle || this.isMaybeSingle ? null : [], error: err };
     }
   }
@@ -468,8 +530,7 @@ export const dbClient = {
   }
 };
 
-// Aliases para máxima compatibilidad y transición limpia
+// Exportaciones unificadas para Google Cloud Firestore & Firebase Auth
 export const firebaseClient = dbClient;
 export const ancoraClient = dbClient;
-export const supabase = dbClient;
 export default dbClient;

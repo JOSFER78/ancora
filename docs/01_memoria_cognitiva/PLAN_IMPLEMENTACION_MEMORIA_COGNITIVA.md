@@ -2,7 +2,7 @@
 
 **Estado:** Documento de Planificación e Investigación Pura (Sin Modificación de Código).  
 **Alcance:** Exclusivamente el Núcleo de Memoria Cognitiva (Cognitive Memory Engine).  
-**Principio:** Aislamiento total de otros subsistemas (sin mezclar landings, facturación ni Supabase/Firebase de forma desordenada).
+**Principio:** Aislamiento total de otros subsistemas (sin mezclar landings, facturación ni Firebase/Firebase de forma desordenada).
 
 ---
 
@@ -44,7 +44,7 @@ El Cognitive Memory Engine se diseñará como un **paquete de software autónomo
 │          CAPA DE ABSTRACCIÓN DE PERSISTENCIA (SAL)          │
 │  • IMemoryRepository (Contrato universal)                   │
 │  • FirestoreMemoryAdapter (Multitenant subcolecciones)      │
-│  • SupabaseMemoryAdapter (Puente PostgreSQL)                │
+│  • FirebaseMemoryAdapter (Puente PostgreSQL)                │
 └─────────────────────────────────────────────────────────────┘
 ```
 

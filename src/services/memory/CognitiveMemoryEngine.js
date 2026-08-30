@@ -85,9 +85,9 @@ export class CognitiveMemoryEngine {
    * @param {Object} [emotionalState] Estado emocional del día (ansiedad, impulsividad).
    * @returns {Promise<{ systemPrompt: string, contextMessages: Array<Object>, telemetry: Object }>}
    */
-  async retrieve(patientId, currentQuery = '', recentMessages = [], emotionalState = null, patientProfile = {}) {
+  async retrieve(patientId, currentQuery = '', recentMessages = [], emotionalState = null, patientProfile = {}, meta = {}) {
     if (!patientId) {
-      return this.contextBuilder.buildContext({ currentQuery, recentMessages, emotionalState, patientProfile });
+      return this.contextBuilder.buildContext({ currentQuery, recentMessages, emotionalState, patientProfile, ...meta });
     }
 
     try {
@@ -115,11 +115,14 @@ export class CognitiveMemoryEngine {
         lifeTreeNodes,
         recentMessages,
         currentQuery,
-        emotionalState
+        emotionalState,
+        conversationTitle: meta.conversationTitle,
+        topicFolder: meta.topicFolder,
+        recentCycleSummaries: meta.recentCycleSummaries
       });
     } catch (err) {
       console.warn('[CognitiveMemoryEngine] Fallback en retrieve:', err.message);
-      return this.contextBuilder.buildContext({ currentQuery, recentMessages, emotionalState, patientProfile });
+      return this.contextBuilder.buildContext({ currentQuery, recentMessages, emotionalState, patientProfile, ...meta });
     }
   }
 

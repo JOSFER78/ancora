@@ -8,7 +8,7 @@ import { useState, useCallback, useMemo, useRef } from 'react';
 import { CognitiveMemoryEngine } from '../services/memory/CognitiveMemoryEngine.js';
 import { MemoryRepositoryFactory } from '../infrastructure/storage/MemoryRepositoryFactory.js';
 import { generateTherapistResponse } from '../services/aiService.js';
-import { supabase } from '../supabaseClient.js';
+import { firebaseClient as db, firebaseClient } from '../firebaseAdapter.js';
 import { AuthorityLevel } from '../domain/memory/MemoryTypes.js';
 
 export function usePatientChat(patientId, initialMessages = [], currentMood = null) {
@@ -50,7 +50,7 @@ export function usePatientChat(patientId, initialMessages = [], currentMood = nu
       // 2. Invocar el LLM con el contexto optimizado y Cero Complacencia
       let patientProfile = {};
       try {
-        const { data: profile } = await supabase.from('profiles').select('*').eq('id', patientId).maybeSingle();
+        const { data: profile } = await db.from('profiles').select('*').eq('id', patientId).maybeSingle();
         if (profile) patientProfile = profile;
       } catch (_) {}
 
@@ -75,7 +75,7 @@ export function usePatientChat(patientId, initialMessages = [], currentMood = nu
 
       // Guardar en tabla messages si hay conversationId
       if (conversationId) {
-        supabase.from('messages').insert([
+        db.from('messages').insert([
           { conversation_id: conversationId, role: 'user', content: trimmedText },
           { conversation_id: conversationId, role: 'assistant', content: replyText }
         ]).catch(err => console.warn('[usePatientChat] Error guardando mensajes:', err.message));

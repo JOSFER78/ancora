@@ -5,7 +5,7 @@
 Este documento convierte la auditoría del repo en una secuencia de Pull Requests pequeños, revisables y ejecutables.
 La idea no es “arreglarlo todo a la vez”, sino transformar el borrador actual en una plataforma clínica mantenible.
 
-El repo actual tiene una base útil de frontend, Supabase, Edge Functions, motor clínico inicial, landing y pantallas, pero todavía mezcla:
+El repo actual tiene una base útil de frontend, Firebase, Edge Functions, motor clínico inicial, landing y pantallas, pero todavía mezcla:
 
 - producto sanitario real,
 - demo comercial,
@@ -13,7 +13,7 @@ El repo actual tiene una base útil de frontend, Supabase, Edge Functions, motor
 - trading/deudas/INSS,
 - mocks,
 - datos locales,
-- Supabase real,
+- Firebase real,
 - OpenRouter,
 - promesas de IA local,
 - componentes demasiado grandes.
@@ -320,7 +320,7 @@ El análisis IA puede aparecer, pero siempre con evidencia: cita literal, fuente
 **Mejorar:**
 
 - `src/lib/clinicalEngine.js`
-- `supabase/functions/clinical-ingest/index.ts`
+- `firebase/functions/clinical-ingest/index.ts`
 - migraciones de `clinical_documents`, `clinical_extractions`, `clinical_proposals`, `clinical_facts`.
 
 **Definition of Done:**
@@ -352,8 +352,8 @@ El análisis IA puede aparecer, pero siempre con evidencia: cita literal, fuente
 
 - `src/views/ChatView.jsx` o nuevo `src/features/chat/*`
 - `src/lib/chatTerapeuta.js`
-- `supabase/functions/chat-terapeuta/index.ts`
-- `supabase/functions/clinical-synthesize/index.ts`
+- `firebase/functions/chat-terapeuta/index.ts`
+- `firebase/functions/clinical-synthesize/index.ts`
 
 **Definition of Done:**
 
@@ -377,12 +377,12 @@ src/server/ai/promptRegistry.ts
 src/server/ai/policyGuard.ts
 ```
 
-Si se mantiene Supabase Edge Functions, crear funciones separadas:
+Si se mantiene Firebase Edge Functions, crear funciones separadas:
 
 ```text
-supabase/functions/ai-context-harness/index.ts
-supabase/functions/ai-retrieve/index.ts
-supabase/functions/ai-policy-guard/index.ts
+firebase/functions/ai-context-harness/index.ts
+firebase/functions/ai-retrieve/index.ts
+firebase/functions/ai-policy-guard/index.ts
 ```
 
 **Entradas del harness:**

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../supabaseClient';
+import { firebaseClient as db, firebaseClient } from '../firebaseAdapter.js';
 import { 
   ShieldAlert, 
   ShieldCheck, 
@@ -40,7 +40,7 @@ export default function DashboardView({ user, profile, dailyMoodToday, totalDebt
       try {
         // 1. Cargar gastos (relevante para Emilio)
         if (!appMode?.isGeneric) {
-          const { data: expData } = await supabase
+          const { data: expData } = await firebaseClient
             .from('expenses')
             .select('amount');
           const expensesTotal = (expData || []).reduce((sum, item) => sum + parseFloat(item.amount || 0), 0);
@@ -54,7 +54,7 @@ export default function DashboardView({ user, profile, dailyMoodToday, totalDebt
 
         // 2. Cargar historial de diario (últimos 3 días) - relevante para ambos si tienen datos
         setHistoryLoading(true);
-        const { data: moodData } = await supabase
+        const { data: moodData } = await firebaseClient
           .from('daily_moods')
           .select('*')
           .eq('user_id', user.id)
@@ -88,7 +88,7 @@ export default function DashboardView({ user, profile, dailyMoodToday, totalDebt
         onboarding_paid: true
       };
 
-      const { error } = await supabase
+      const { error } = await firebaseClient
         .from('profiles')
         .upsert({
           id: user.id,
@@ -281,7 +281,7 @@ export default function DashboardView({ user, profile, dailyMoodToday, totalDebt
                   </div>
                   <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                     <Star size={14} color="var(--color-emerald)" />
-                    <span>Historia clínica portable estructurada en DOCKER/Supabase.</span>
+                    <span>Historia clínica portable estructurada en DOCKER/Firebase.</span>
                   </div>
                 </div>
               </div>

@@ -2,7 +2,7 @@
 
 ## 1. Nota de alcance actualizada
 
-En la v2 esta auditoría era funcional porque todavía no se había inspeccionado el repositorio. En la v4 se ha revisado el `.zip` subido (`ancora-main.zip`) y se confirma que la web existe como prototipo React/Vite/Supabase con pantallas reales, Edge Functions y migraciones clínicas, pero todavía no está organizada como producto sanitario robusto.
+En la v2 esta auditoría era funcional porque todavía no se había inspeccionado el repositorio. En la v4 se ha revisado el `.zip` subido (`ancora-main.zip`) y se confirma que la web existe como prototipo React/Vite/Firebase con pantallas reales, Edge Functions y migraciones clínicas, pero todavía no está organizada como producto sanitario robusto.
 
 La conclusión es clara:
 
@@ -20,7 +20,7 @@ El producto actual parece una mezcla de:
 - diario emocional;
 - pruebas personales de terapia/trading;
 - herramientas de agentes;
-- Supabase real;
+- Firebase real;
 - funciones IA en Edge;
 - documentos internos dentro del repo.
 
@@ -42,7 +42,7 @@ Esto provoca que la intención de Áncora se diluya. El usuario debe sentir que 
 
 ### 4.1 Separar demo de producto real
 
-El repo tiene datos mock y perfiles hardcodeados mezclados con Supabase real. Eso sirve para enseñar una demo, pero no para construir un producto sanitario. Deben existir tres modos separados:
+El repo tiene datos mock y perfiles hardcodeados mezclados con Firebase real. Eso sirve para enseñar una demo, pero no para construir un producto sanitario. Deben existir tres modos separados:
 
 1. `demo` con datos ficticios;
 2. `staging` con usuarios de prueba y datos sintéticos;
@@ -115,9 +115,9 @@ Las Edge Functions actuales son útiles como prototipo, pero deben dejar de ser 
 
 ### P0 — Seguridad / credenciales / privacidad
 
-- Supabase URL y anon key hardcodeadas en `src/supabaseClient.js` y scripts.
+- Firebase URL y anon key hardcodeadas en `src/firebaseClient.js` y scripts.
 - `.env.example` incluye datos reales de proyecto.
-- Uso de `SUPABASE_SERVICE_ROLE_KEY` en Edge Functions correcto solo si nunca llega al cliente, pero hay que auditar logs.
+- Uso de `Firebase_SERVICE_ROLE_KEY` en Edge Functions correcto solo si nunca llega al cliente, pero hay que auditar logs.
 - CORS `*` en funciones clínicas.
 - Promesa de IA local contradicha por OpenRouter.
 - El repo contiene documentos y datos personales/sensibles de prueba.
@@ -126,7 +126,7 @@ Las Edge Functions actuales son útiles como prototipo, pero deben dejar de ser 
 
 - `App.jsx` funciona como router, auth manager, layout, permisos y estado global a la vez.
 - Componentes de más de 4000 líneas.
-- Estado clínico mezclado en localStorage, mocks y Supabase.
+- Estado clínico mezclado en localStorage, mocks y Firebase.
 - RLS parcial y migraciones no alineadas.
 - No hay separación clara `domain/application/infrastructure/ui`.
 

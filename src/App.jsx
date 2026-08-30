@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from './supabaseClient';
+import { firebaseClient as db, firebaseClient } from './firebaseAdapter.js';
 import { MemoryRepositoryFactory } from './infrastructure/storage/MemoryRepositoryFactory';
 import { CognitiveMemoryEngine } from './services/memory/CognitiveMemoryEngine';
 import { App as CapApp } from '@capacitor/app';
@@ -62,11 +62,11 @@ import {
 
 
 const MOCK_PROFILES = {
-  // 1. Paciente Emilio (Pruebas con Dataset Clínico Real)
+  // 1. Paciente Real (tisute@gmail.com)
   'tisute@gmail.com': {
-    id: 'C9aHCBohV7dC5q5oB0u7y49LIEx1',
+    id: 'qXj1JXqkcVbJvvRWParVfmUWwN13',
     role: 'paciente',
-    display_name: 'Emilio',
+    display_name: 'Emilio Naranjo',
     avatar: 'https://lh3.googleusercontent.com/a/ACg8ocKwdrtZUzAQ-8ZRmjfpqBk_ItBtYhQQJ1n1V6BvNklS_butsq7LFw=s96-c',
     contexto_terapeutico: {
       displayName: 'Emilio',
@@ -99,7 +99,7 @@ const MOCK_PROFILES = {
     }
   },
   'davidsevilla101@gmail.com': {
-    id: 'davidsevilla101_uid',
+    id: 'PbygqVfkfGhdRDDXoDNos1KCXvO2',
     role: 'psicologo',
     display_name: 'David Sevilla',
     avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=150&h=150',
@@ -250,7 +250,7 @@ export default function App() {
   async function fetchUserProfile(currentUser) {
     if (isVirtualDemo) return;
     try {
-      let { data, error } = await supabase
+      let { data, error } = await firebaseClient
         .from('profiles')
         .select('*')
         .eq('id', currentUser.id)
@@ -260,7 +260,7 @@ export default function App() {
         if (error.code === 'PGRST116') {
           const savedRole = localStorage.getItem('pending_oauth_role') || currentUser.user_metadata?.role || 'paciente';
           localStorage.removeItem('pending_oauth_role');
-          const { data: newProfile, error: createError } = await supabase
+          const { data: newProfile, error: createError } = await firebaseClient
             .from('profiles')
             .insert([{ id: currentUser.id, role: savedRole }])
             .select()
@@ -285,7 +285,7 @@ export default function App() {
     if (isVirtualDemo) return;
     try {
       const todayDate = new Date().toISOString().split('T')[0];
-      const { data, error } = await supabase
+      const { data, error } = await firebaseClient
         .from('daily_moods')
         .select('*')
         .eq('user_id', currentUser.id)
@@ -303,7 +303,7 @@ export default function App() {
   async function fetchTotalDebts(currentUser) {
     if (isVirtualDemo) return;
     try {
-      const { data, error } = await supabase
+      const { data, error } = await firebaseClient
         .from('debts')
         .select('*')
         .eq('user_id', currentUser.id);
@@ -323,7 +323,7 @@ export default function App() {
 
   useEffect(() => {
     // Check initial session
-    supabase.auth.getSession().then(({ data: { session: initialSession } }) => {
+    db.auth.getSession().then(({ data: { session: initialSession } }) => {
       if (isVirtualDemo) return;
       setSession(initialSession);
       setUser(initialSession?.user ?? null);
@@ -337,7 +337,7 @@ export default function App() {
     });
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, currentSession) => {
+    const { data: { subscription } } = db.auth.onAuthStateChange((_event, currentSession) => {
       if (isVirtualDemo) return;
       setSession(currentSession);
       setUser(currentSession?.user ?? null);
@@ -378,7 +378,7 @@ export default function App() {
     setDailyMoodToday(newMood);
     if (user?.id) {
       try {
-        await supabase.from('daily_moods').upsert([{
+        await db.from('daily_moods').upsert([{
           user_id: user.id,
           date: newMood.date || new Date().toISOString().split('T')[0],
           anxiety_level: newMood.anxiety_level,
@@ -453,7 +453,7 @@ export default function App() {
     try {
       setProfileDropdownOpen(false);
       if (!isVirtualDemo) {
-        const { error } = await supabase.auth.signOut();
+        const { error } = await db.auth.signOut();
         if (error) throw error;
       }
       handleLogout();
@@ -535,13 +535,14 @@ export default function App() {
         ]
       },
       {
-        id: 'chat_menu',
+        id: 'chat',
         label: 'Ánquer',
         icon: MessageSquare,
-        subItems: [
-          { id: 'chat', label: 'Ánquer Chat', icon: MessageSquare },
-          { id: 'privacidad', label: 'Privacidad', icon: Shield }
-        ]
+        directAction: () => {
+          setActiveTab('chat');
+          setBottomMenuCollapsed(true);
+          setActiveMobileMenu(null);
+        }
       },
       {
         id: 'cuenta_menu',
@@ -739,93 +740,95 @@ export default function App() {
       {/* Main Content Pane */}
       <div className="main-content">
         {/* Topbar Header */}
-        {/* Topbar Header */}
-        <header className="topbar">
-          <div className="topbar-title-section" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '12px' }}>
-            {/* Cabecera para Móviles (Con Logo y Marca) */}
-            <div className="mobile-only" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <img src="/ancora_logo.png" alt="ÁNCORA" style={{ width: '26px', height: '26px', borderRadius: '50%', objectFit: 'cover', border: '1px solid rgba(6, 182, 212, 0.4)', boxShadow: '0 0 6px rgba(6, 182, 212, 0.25)' }} />
-              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                <h1 style={{ fontSize: '0.95rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#ffffff', lineHeight: 1.1, fontWeight: 800, margin: 0 }}>
-                  ÁNCORA
-                </h1>
-                <span className="topbar-subtitle" style={{ fontSize: '0.55rem', color: 'var(--text-secondary)' }}>
-                  {appMode.isPsicologo ? 'Portal Clínico' : 'Acompañamiento'}
-                </span>
+        {/* Topbar Header (Oculta en vista de chat para interfaz pura y unificada de chat) */}
+        {activeTab !== 'chat' && (
+          <header className="topbar">
+            <div className="topbar-title-section" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '12px' }}>
+              {/* Cabecera para Móviles (Con Logo y Marca) */}
+              <div className="mobile-only" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <img src="/ancora_logo.png" alt="ÁNCORA" style={{ width: '26px', height: '26px', borderRadius: '50%', objectFit: 'cover', border: '1px solid rgba(6, 182, 212, 0.4)', boxShadow: '0 0 6px rgba(6, 182, 212, 0.25)' }} />
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <h1 style={{ fontSize: '0.95rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#ffffff', lineHeight: 1.1, fontWeight: 800, margin: 0 }}>
+                    ÁNCORA
+                  </h1>
+                  <span className="topbar-subtitle" style={{ fontSize: '0.55rem', color: 'var(--text-secondary)' }}>
+                    {appMode.isPsicologo ? 'Portal Clínico' : 'Acompañamiento'}
+                  </span>
+                </div>
+                <div style={{ width: '1px', height: '16px', background: 'var(--border)', marginInline: '4px' }} />
               </div>
-              <div style={{ width: '1px', height: '16px', background: 'var(--border)', marginInline: '4px' }} />
+
+              {/* Título de la Sección Activa (Principal en Desktop, Secundario en Móvil) */}
+              <span className="topbar-section-title" style={{ 
+                fontSize: 'clamp(0.95rem, 2vw, 1.25rem)', 
+                fontWeight: 800, 
+                color: '#ffffff', 
+                fontFamily: "'Outfit', sans-serif",
+                letterSpacing: '-0.01em',
+                whiteSpace: 'nowrap' 
+              }}>
+                {navTitle[activeTab] || 'Panel Principal'}
+              </span>
             </div>
 
-            {/* Título de la Sección Activa (Principal en Desktop, Secundario en Móvil) */}
-            <span className="topbar-section-title" style={{ 
-              fontSize: 'clamp(0.95rem, 2vw, 1.25rem)', 
-              fontWeight: 800, 
-              color: '#ffffff', 
-              fontFamily: "'Outfit', sans-serif",
-              letterSpacing: '-0.01em',
-              whiteSpace: 'nowrap' 
-            }}>
-              {navTitle[activeTab] || 'Panel Principal'}
-            </span>
-          </div>
+            <div className="topbar-actions">
+              {isSuperAdmin && (
+                <div className="flex-center" style={{
+                  background: 'rgba(68,125,130,0.08)',
+                  border: '1px solid rgba(68,125,130,0.3)',
+                  borderRadius: 'var(--radius-sm)',
+                  padding: '6px 12px',
+                  gap: '8px'
+                }}>
+                  <span style={{ fontSize: '0.62rem', fontWeight: 800, color: 'var(--color-cyan)', textTransform: 'uppercase' }}>Super Admin CRM:</span>
+                  <select
+                    value={adminViewRole || 'admin_crm'}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setAdminViewRole(val === 'admin_crm' ? null : val);
+                    }}
+                    style={{
+                      fontSize: '0.7rem',
+                      fontWeight: 700,
+                      background: 'transparent',
+                      color: '#ffffff',
+                      border: 'none',
+                      outline: 'none',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <option value="admin_crm" style={{ background: 'var(--background-secondary)', color: '#ffffff' }}>CRM / Consola Admin</option>
+                    <option value="paciente" style={{ background: 'var(--background-secondary)', color: '#ffffff' }}>Vista Paciente</option>
+                    <option value="psicologo" style={{ background: 'var(--background-secondary)', color: '#ffffff' }}>Vista Psicólogo</option>
+                  </select>
+                </div>
+              )}
 
-          <div className="topbar-actions">
-                {isSuperAdmin && (
-                  <div className="flex-center" style={{
-                    background: 'rgba(68,125,130,0.08)',
-                    border: '1px solid rgba(68,125,130,0.3)',
-                    borderRadius: 'var(--radius-sm)',
-                    padding: '6px 12px',
-                    gap: '8px'
-                  }}>
-                    <span style={{ fontSize: '0.62rem', fontWeight: 800, color: 'var(--color-cyan)', textTransform: 'uppercase' }}>Super Admin CRM:</span>
-                    <select
-                      value={adminViewRole || 'admin_crm'}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setAdminViewRole(val === 'admin_crm' ? null : val);
-                      }}
-                      style={{
-                        fontSize: '0.7rem',
-                        fontWeight: 700,
-                        background: 'transparent',
-                        color: '#ffffff',
-                        border: 'none',
-                        outline: 'none',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      <option value="admin_crm" style={{ background: 'var(--background-secondary)', color: '#ffffff' }}>CRM / Consola Admin</option>
-                      <option value="paciente" style={{ background: 'var(--background-secondary)', color: '#ffffff' }}>Vista Paciente</option>
-                      <option value="psicologo" style={{ background: 'var(--background-secondary)', color: '#ffffff' }}>Vista Psicólogo</option>
-                    </select>
-                  </div>
-                )}
-
-                {/* Diario de Sensaciones Status Indicator (Solo Pacientes) */}
-                {appMode.isGeneric && (
-                  <div className="flex-center" style={{
-                    background: 'var(--background-tertiary)',
-                    border: '1px solid var(--border)',
-                    borderRadius: 'var(--radius-sm)',
-                    padding: '6px 12px',
-                    gap: '8px',
-                    cursor: 'pointer'
-                  }} onClick={() => setActiveTab('mente')}>
-                    <div style={{
-                      width: '7px',
-                      height: '7px',
-                      borderRadius: '50%',
-                      backgroundColor: dailyMoodToday ? 'var(--color-emerald)' : 'var(--color-rose)',
-                      boxShadow: `0 0 6px ${dailyMoodToday ? 'var(--color-emerald)' : 'var(--color-rose)'}`
-                    }} />
-                    <span className="diario-status-text" style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-                      {dailyMoodToday ? 'Diario Completado Hoy' : 'Diario de Sensaciones Pendiente'}
-                    </span>
-                  </div>
-                )}                {/* Profile dropdown removed from topbar - consolidated in sidebar/bottombar */}
-              </div>
-            </header>
+              {/* Diario de Sensaciones Status Indicator (Solo Pacientes) */}
+              {appMode.isGeneric && (
+                <div className="flex-center" style={{
+                  background: 'var(--background-tertiary)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius-sm)',
+                  padding: '6px 12px',
+                  gap: '8px',
+                  cursor: 'pointer'
+                }} onClick={() => setActiveTab('mente')}>
+                  <div style={{
+                    width: '7px',
+                    height: '7px',
+                    borderRadius: '50%',
+                    backgroundColor: dailyMoodToday ? 'var(--color-emerald)' : 'var(--color-rose)',
+                    boxShadow: `0 0 6px ${dailyMoodToday ? 'var(--color-emerald)' : 'var(--color-rose)'}`
+                  }} />
+                  <span className="diario-status-text" style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                    {dailyMoodToday ? 'Diario Completado Hoy' : 'Diario de Sensaciones Pendiente'}
+                  </span>
+                </div>
+              )}
+            </div>
+          </header>
+        )}
 
         {/* View content injection */}
         <main 
@@ -882,7 +885,7 @@ export default function App() {
 
                   try {
                     const updatedCT = { ...(profile?.contexto_terapeutico || {}), assigned_psychologist_id: psychoId };
-                    const { data, error } = await supabase
+                    const { data, error } = await firebaseClient
                       .from('profiles')
                       .update({ contexto_terapeutico: updatedCT })
                       .eq('id', user.id)
@@ -891,7 +894,7 @@ export default function App() {
                     if (error) throw error;
 
                     if (appointment) {
-                      const { error: apptError } = await supabase
+                      const { error: apptError } = await firebaseClient
                         .from('appointments')
                         .insert({
                           patient_id: user.id,
@@ -1008,6 +1011,9 @@ export default function App() {
                 setSidebarCollapsed={setSidebarCollapsed}
                 bottomMenuHidden={bottomMenuHidden || bottomMenuCollapsed}
                 setBottomMenuHidden={setBottomMenuHidden}
+                bottomMenuCollapsed={bottomMenuCollapsed}
+                setBottomMenuCollapsed={setBottomMenuCollapsed}
+                onNavigate={setActiveTab}
               />
             ) : (
               <ChatView
@@ -1170,8 +1176,8 @@ export default function App() {
         />
       )}
 
-      {/* Tirador para colapsar/expandir el menú inferior móvil */}
-      {!bottomMenuHidden && (
+      {/* Tirador para colapsar/expandir el menú inferior móvil (Oculto en chat para no tapar la interfaz) */}
+      {!bottomMenuHidden && activeTab !== 'chat' && (
         <div className="mobile-only" style={{
           position: 'fixed',
           bottom: bottomMenuCollapsed ? '16px' : '62px',
@@ -1254,7 +1260,9 @@ export default function App() {
               {/* Botón Principal de la Barra Inferior */}
               <button
                 onClick={() => {
-                  if (hasSubItems) {
+                  if (item.directAction) {
+                    item.directAction();
+                  } else if (hasSubItems) {
                     setActiveMobileMenu(isMenuOpen ? null : item.id);
                   } else {
                     if (item.action === 'logout') {

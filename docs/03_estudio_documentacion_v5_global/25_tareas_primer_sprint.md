@@ -88,7 +88,7 @@ src/demo/patient360.js
 
 Los datos deben ser ficticios y no basados en personas reales.
 
-**Aceptación:** modo demo carga sin Supabase y sin localStorage clínico.
+**Aceptación:** modo demo carga sin Firebase y sin localStorage clínico.
 
 ---
 

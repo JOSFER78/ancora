@@ -7,6 +7,18 @@ export default defineConfig({
   base: './',
   server: {
     port: 5180,
-    strictPort: true
+    strictPort: true,
+    proxy: {
+      '/v1': {
+        target: 'https://143-47-35-167.sslip.io/pro/freellmapi',
+        changeOrigin: true,
+        secure: false
+      },
+      '/pro/freellmapi': {
+        target: 'https://143-47-35-167.sslip.io',
+        changeOrigin: true,
+        secure: false
+      }
+    }
   }
 })

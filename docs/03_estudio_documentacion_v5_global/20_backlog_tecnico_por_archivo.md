@@ -1,6 +1,6 @@
 # 20 · Backlog técnico por archivo/carpeta del repo actual
 
-## 1. `src/supabaseClient.js`
+## 1. `src/firebaseClient.js`
 
 ### Problema
 
@@ -11,10 +11,10 @@ URL y anon key hardcodeadas.
 Crear:
 
 ```ts
-src/integrations/supabase/client.ts
+src/integrations/firebase/client.ts
 ```
 
-Usar `import.meta.env.VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY`.
+Usar `import.meta.env.VITE_Firebase_URL` y `VITE_Firebase_ANON_KEY`.
 
 ### Prioridad
 
@@ -245,7 +245,7 @@ domain/clinical/types.ts
 
 P0.
 
-## 11. `supabase/functions/clinical-ingest/index.ts`
+## 11. `firebase/functions/clinical-ingest/index.ts`
 
 ### Valor
 
@@ -280,7 +280,7 @@ functions/clinical-ingest/index.ts
 
 P0.
 
-## 12. `supabase/functions/clinical-synthesize/index.ts`
+## 12. `firebase/functions/clinical-synthesize/index.ts`
 
 ### Valor
 
@@ -304,7 +304,7 @@ Crear snapshots:
 
 P0/P1.
 
-## 13. `supabase/functions/chat-terapeuta/index.ts`
+## 13. `firebase/functions/chat-terapeuta/index.ts`
 
 ### Problema
 
@@ -328,7 +328,7 @@ chat-orchestrator/
 
 P0.
 
-## 14. `supabase/migrations/*`
+## 14. `firebase/migrations/*`
 
 ### Problema
 

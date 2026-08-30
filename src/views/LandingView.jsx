@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { supabase } from '../supabaseClient';
+import { firebaseClient as db, firebaseClient } from '../firebaseAdapter.js';
 import { 
   ArrowRight, Brain, FileText, MessageSquare, ShieldCheck, Sparkles, Check, 
   Heart, User, ClipboardList, Lock, Award, Search, Calendar, Star, 
@@ -64,7 +64,7 @@ export default function LandingView({ onAuthSuccess, onEnterDemo }) {
     const fetchPsychologists = async () => {
       try {
         setLoadingPsychologists(true);
-        const { data, error } = await supabase
+        const { data, error } = await firebaseClient
           .from('psychologist_profiles')
           .select('*')
           .order('rating_avg', { ascending: false });
@@ -850,7 +850,7 @@ export default function LandingView({ onAuthSuccess, onEnterDemo }) {
         </div>
       </section>
 
-      {/* MARKETPLACE DE PSICÓLOGOS (DIRECTORIO PÚBLICO CON CONSULTA REAL A SUPABASE) */}
+      {/* MARKETPLACE DE PSICÓLOGOS (DIRECTORIO PÚBLICO CON CONSULTA REAL A FIREBASE FIRESTORE) */}
       <section ref={marketplaceRef} style={{ padding: '60px 24px' }}>
         <div style={{ maxWidth: '1180px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '30px' }}>
           

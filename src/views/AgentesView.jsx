@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { supabase } from '../supabaseClient';
+import { firebaseClient as db, firebaseClient } from '../firebaseAdapter.js';
 import { invokeChatTerapeuta } from '../lib/chatTerapeuta';
 import {
   Bot,
@@ -1141,7 +1141,7 @@ export default function AgentesView({ user, profile, sidebarCollapsed = false, s
   const sendDebateAudioToTranscribe = async (base64Audio) => {
     setDebateTranscribingAudio(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { session } } = await db.auth.getSession();
       if (!session) throw new Error("Sesión no disponible.");
 
       const resData = await invokeChatTerapeuta({
@@ -1201,7 +1201,7 @@ export default function AgentesView({ user, profile, sidebarCollapsed = false, s
     if (!user) return;
     try {
       // 1. Tareas completadas
-      const { data: completedTasks, error: taskErr } = await supabase
+      const { data: completedTasks, error: taskErr } = await firebaseClient
         .from('agent_tasks')
         .select('*')
         .eq('user_id', user.id)
@@ -1211,7 +1211,7 @@ export default function AgentesView({ user, profile, sidebarCollapsed = false, s
       if (taskErr) throw taskErr;
 
       // 2. Debates del usuario
-      const { data: userDebates, error: debErr } = await supabase
+      const { data: userDebates, error: debErr } = await firebaseClient
         .from('agent_debates')
         .select('id, title')
         .eq('user_id', user.id);
@@ -1220,7 +1220,7 @@ export default function AgentesView({ user, profile, sidebarCollapsed = false, s
 
       let debateMessages = [];
       if (debateIds.length > 0) {
-        const { data: messages, error: msgErr } = await supabase
+        const { data: messages, error: msgErr } = await firebaseClient
           .from('agent_debate_messages')
           .select('*')
           .in('debate_id', debateIds)
@@ -1377,7 +1377,7 @@ export default function AgentesView({ user, profile, sidebarCollapsed = false, s
       if (activeTask && activeTask.debate_id) {
         setLoadingReportDebateMessages(true);
         try {
-          const { data, error } = await supabase
+          const { data, error } = await firebaseClient
             .from('agent_debate_messages')
             .select('*')
             .eq('debate_id', activeTask.debate_id)
@@ -1437,7 +1437,7 @@ export default function AgentesView({ user, profile, sidebarCollapsed = false, s
     if (!user) return;
     if (!silent) setLoadingAgents(true);
     try {
-      const { data, error } = await supabase
+      const { data, error } = await firebaseClient
         .from('agents')
         .select('*')
         .order('name', { ascending: true });
@@ -1454,7 +1454,7 @@ export default function AgentesView({ user, profile, sidebarCollapsed = false, s
     if (!user) return;
     if (!silent) setLoadingTasks(true);
     try {
-      const { data, error } = await supabase
+      const { data, error } = await firebaseClient
         .from('agent_tasks')
         .select('*')
         .eq('user_id', user.id)
@@ -1504,7 +1504,7 @@ export default function AgentesView({ user, profile, sidebarCollapsed = false, s
     if (!user) return;
     if (!silent) setLoadingDebates(true);
     try {
-      const { data, error } = await supabase
+      const { data, error } = await firebaseClient
         .from('agent_debates')
         .select('*')
         .eq('user_id', user.id)
@@ -1530,7 +1530,7 @@ export default function AgentesView({ user, profile, sidebarCollapsed = false, s
     if (!selectedDebate) return;
     if (!silent) setLoadingMessages(true);
     try {
-      const { data, error } = await supabase
+      const { data, error } = await firebaseClient
         .from('agent_debate_messages')
         .select('*')
         .eq('debate_id', selectedDebate.id)
@@ -1621,7 +1621,7 @@ export default function AgentesView({ user, profile, sidebarCollapsed = false, s
       const isRecurrent = newTaskRecurrenceType !== 'none';
       const cronExpr = (newTaskRecurrenceType === 'custom' ? newTaskCron : buildCronFromUI(newTaskRecurrenceType, newTaskRecurrenceTime, newTaskRecurrenceDay, newTaskRecurrenceInterval)) || null;
       
-      const { error } = await supabase
+      const { error } = await firebaseClient
         .from('agent_tasks')
         .insert({
           user_id: user.id,
@@ -1664,7 +1664,7 @@ export default function AgentesView({ user, profile, sidebarCollapsed = false, s
     
     setSubmittingDebate(true);
     try {
-      const { data, error } = await supabase
+      const { data, error } = await firebaseClient
         .from('agent_debates')
         .insert({
           user_id: user.id,
@@ -1678,7 +1678,7 @@ export default function AgentesView({ user, profile, sidebarCollapsed = false, s
       if (error) throw error;
 
       // Crear también una tarea de agente para iniciar el debate en local
-      const { error: taskErr } = await supabase
+      const { error: taskErr } = await firebaseClient
         .from('agent_tasks')
         .insert({
           user_id: user.id,
@@ -1717,7 +1717,7 @@ export default function AgentesView({ user, profile, sidebarCollapsed = false, s
 
     try {
       // 1. Insertar el mensaje del usuario en la tabla de mensajes del debate
-      const { error: msgErr } = await supabase
+      const { error: msgErr } = await firebaseClient
         .from('agent_debate_messages')
         .insert({
           debate_id: selectedDebate.id,
@@ -1730,7 +1730,7 @@ export default function AgentesView({ user, profile, sidebarCollapsed = false, s
 
       // 2. Si el debate estaba completado, reabrirlo a 'active' para que los agentes debatan de nuevo
       if (selectedDebate.status === 'completed') {
-        const { error: statusErr } = await supabase
+        const { error: statusErr } = await firebaseClient
           .from('agent_debates')
           .update({ status: 'active', conclusion: null })
           .eq('id', selectedDebate.id);
@@ -1739,7 +1739,7 @@ export default function AgentesView({ user, profile, sidebarCollapsed = false, s
       }
 
       // 3. Crear una tarea en agent_tasks para que los agentes respondan
-      const { error: taskErr } = await supabase
+      const { error: taskErr } = await firebaseClient
         .from('agent_tasks')
         .insert({
           user_id: user.id,
@@ -1769,7 +1769,7 @@ export default function AgentesView({ user, profile, sidebarCollapsed = false, s
     setLoadingInsist(true);
     try {
       // 1. Poner el debate en activo y limpiar conclusión anterior
-      const { error: statusErr } = await supabase
+      const { error: statusErr } = await firebaseClient
         .from('agent_debates')
         .update({ status: 'active', conclusion: null })
         .eq('id', selectedDebate.id);
@@ -1777,7 +1777,7 @@ export default function AgentesView({ user, profile, sidebarCollapsed = false, s
       if (statusErr) throw statusErr;
 
       // 2. Crear una tarea de insistencia crítica en agent_tasks
-      const { error: taskErr } = await supabase
+      const { error: taskErr } = await firebaseClient
         .from('agent_tasks')
         .insert({
           user_id: user.id,
@@ -1807,7 +1807,7 @@ export default function AgentesView({ user, profile, sidebarCollapsed = false, s
 
     try {
       // 1. Guardar la solución elegida en la conclusión del debate y marcar como completado
-      const { error: debateErr } = await supabase
+      const { error: debateErr } = await firebaseClient
         .from('agent_debates')
         .update({
           status: 'completed',
@@ -1834,7 +1834,7 @@ export default function AgentesView({ user, profile, sidebarCollapsed = false, s
         fecha_aplicacion: new Date().toISOString()
       };
 
-      const { error: profileErr } = await supabase
+      const { error: profileErr } = await firebaseClient
         .from('profiles')
         .update({
           contexto_terapeutico: currentContext,
@@ -1889,7 +1889,7 @@ export default function AgentesView({ user, profile, sidebarCollapsed = false, s
         }
       };
 
-      const { error } = await supabase
+      const { error } = await firebaseClient
         .from('profiles')
         .update({
           app_config: nextConfig,
@@ -1910,7 +1910,7 @@ export default function AgentesView({ user, profile, sidebarCollapsed = false, s
 
   const handleForceExecuteTask = async (taskId) => {
     try {
-      const { error } = await supabase
+      const { error } = await firebaseClient
         .from('agent_tasks')
         .update({
           status: 'pending',
@@ -1988,7 +1988,7 @@ export default function AgentesView({ user, profile, sidebarCollapsed = false, s
     if (!editingAgent || submittingAgent) return;
     setSubmittingAgent(true);
     try {
-      const { error } = await supabase
+      const { error } = await firebaseClient
         .from('agents')
         .update({
           name: editAgentName,
@@ -2041,7 +2041,7 @@ export default function AgentesView({ user, profile, sidebarCollapsed = false, s
       const isRecurrent = editTaskRecurrenceType !== 'none';
       const cronExpr = (editTaskRecurrenceType === 'custom' ? editTaskCron : buildCronFromUI(editTaskRecurrenceType, editTaskRecurrenceTime, editTaskRecurrenceDay, editTaskRecurrenceInterval)) || null;
 
-      const { error } = await supabase
+      const { error } = await firebaseClient
         .from('agent_tasks')
         .update({
           title: editTaskTitle,
@@ -2069,7 +2069,7 @@ export default function AgentesView({ user, profile, sidebarCollapsed = false, s
   const handleDeleteTask = async (taskId) => {
     if (!window.confirm("¿Seguro que deseas eliminar esta tarea?")) return;
     try {
-      const { error } = await supabase
+      const { error } = await firebaseClient
         .from('agent_tasks')
         .delete()
         .eq('id', taskId);
@@ -2083,7 +2083,7 @@ export default function AgentesView({ user, profile, sidebarCollapsed = false, s
 
   const handleForceRunTask = async (task) => {
     try {
-      const { error } = await supabase
+      const { error } = await firebaseClient
         .from('agent_tasks')
         .update({
           scheduled_at: new Date().toISOString(),

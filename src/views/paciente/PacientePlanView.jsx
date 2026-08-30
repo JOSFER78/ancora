@@ -1,13 +1,20 @@
 import { useState, useEffect } from 'react';
 import { 
   Target, CheckSquare, RefreshCw, Calendar, Sparkles, 
-  TrendingUp, Award, Clock, ArrowRight, ShieldCheck 
+  TrendingUp, Award, Clock, ArrowRight, ShieldCheck, Plus, Trash2, MessageSquare
 } from 'lucide-react';
-import { supabase } from '../../supabaseClient';
+import { firebaseClient as db, firebaseClient } from '../../firebaseAdapter.js';
+import { 
+  getClinicalTasksSync, 
+  saveClinicalTasksSync, 
+  calculateAdherence,
+  getAgendaTopicsSync,
+  saveAgendaTopicsSync
+} from '../../services/clinicalSyncService.js';
 
-export default function PacientePlanView({ profile, user, isVirtualDemo }) {
+export default function PacientePlanView({ profile, user, isVirtualDemo, onNavigate }) {
   const [loading, setLoading] = useState(false);
-  const [adherence, setAdherence] = useState(78);
+  const userId = user?.id || profile?.id || 'guest';
   
   // Objetivos clínicos demo/reales
   const [objectives, setObjectives] = useState([
@@ -16,13 +23,68 @@ export default function PacientePlanView({ profile, user, isVirtualDemo }) {
     { id: 'obj-3', title: 'Establecer Límites Asertivos', desc: 'Aprender a delegar tareas y comunicar disponibilidad sin culpa a iguales.', category: 'Asertividad' }
   ]);
 
-  // Tareas y ejercicios semanales interactivos
-  const [tasks, setTasks] = useState([
-    { id: 'task-1', title: 'Registro diario de pensamientos negativos (TCC)', done: true, points: 20 },
-    { id: 'task-2', title: 'Práctica de Respiración Diafragmática (5 min, 2 veces/día)', done: false, points: 25 },
-    { id: 'task-3', title: 'Rutina de Desactivación Digital (22:30h en adelante)', done: true, points: 15 },
-    { id: 'task-4', title: 'Redactar borrador de límites para la reunión semanal', done: false, points: 40 }
-  ]);
+  // Tareas y ejercicios semanales interactivos sincronizados
+  const [tasks, setTasks] = useState(() => getClinicalTasksSync(userId));
+  const [adherence, setAdherence] = useState(() => calculateAdherence(getClinicalTasksSync(userId)));
+
+  // Temas y puntos a tratar en consulta sincronizados
+  const [agendaTopics, setAgendaTopics] = useState(() => getAgendaTopicsSync(userId));
+  const [newTopicText, setNewTopicText] = useState('');
+
+  // Escuchar eventos reactivos de sincronización
+  useEffect(() => {
+    const handleTasksUpdated = (e) => {
+      if (e.detail) {
+        setTasks(e.detail);
+        setAdherence(calculateAdherence(e.detail));
+      }
+    };
+    const handleAgendaUpdated = (e) => {
+      if (e.detail) setAgendaTopics(e.detail);
+    };
+
+    window.addEventListener('ancora_tasks_updated', handleTasksUpdated);
+    window.addEventListener('ancora_agenda_updated', handleAgendaUpdated);
+    return () => {
+      window.removeEventListener('ancora_tasks_updated', handleTasksUpdated);
+      window.removeEventListener('ancora_agenda_updated', handleAgendaUpdated);
+    };
+  }, []);
+
+  const handleToggleTask = (taskId) => {
+    const updated = tasks.map(t => t.id === taskId ? { ...t, done: !t.done } : t);
+    setTasks(updated);
+    setAdherence(calculateAdherence(updated));
+    saveClinicalTasksSync(userId, updated);
+  };
+
+  const handleAddTopic = (e) => {
+    e?.preventDefault();
+    if (!newTopicText || !newTopicText.trim()) return;
+    const newTopic = {
+      id: `top-${Date.now()}`,
+      text: newTopicText.trim(),
+      done: false,
+      source: 'plan',
+      date: 'Hoy'
+    };
+    const updated = [newTopic, ...agendaTopics];
+    setAgendaTopics(updated);
+    saveAgendaTopicsSync(userId, updated);
+    setNewTopicText('');
+  };
+
+  const handleToggleTopic = (id) => {
+    const updated = agendaTopics.map(t => t.id === id ? { ...t, done: !t.done } : t);
+    setAgendaTopics(updated);
+    saveAgendaTopicsSync(userId, updated);
+  };
+
+  const handleDeleteTopic = (id) => {
+    const updated = agendaTopics.filter(t => t.id !== id);
+    setAgendaTopics(updated);
+    saveAgendaTopicsSync(userId, updated);
+  };
 
   // Rutinas recomendadas por el terapeuta
   const routines = [
@@ -30,24 +92,6 @@ export default function PacientePlanView({ profile, user, isVirtualDemo }) {
     { title: 'Paseo al aire libre sin dispositivos', frequency: '3 veces/semana', icon: Clock, color: 'var(--color-emerald)' },
     { title: 'Toma de Medicación (si está pautada)', frequency: 'Diario (Mañanas)', icon: ShieldCheck, color: 'var(--color-cyan)' }
   ];
-
-  // Calcular la adherencia dinámicamente cuando cambian las tareas
-  useEffect(() => {
-    const totalPoints = tasks.reduce((sum, t) => sum + t.points, 0);
-    const completedPoints = tasks.filter(t => t.done).reduce((sum, t) => sum + t.points, 0);
-    if (totalPoints > 0) {
-      setAdherence(Math.round((completedPoints / totalPoints) * 100));
-    }
-  }, [tasks]);
-
-  const handleToggleTask = (taskId) => {
-    setTasks(prev => prev.map(t => {
-      if (t.id === taskId) {
-        return { ...t, done: !t.done };
-      }
-      return t;
-    }));
-  };
 
   const getAdherenceColor = (val) => {
     if (val >= 80) return 'var(--color-emerald)';
@@ -289,6 +333,100 @@ export default function PacientePlanView({ profile, user, isVirtualDemo }) {
                 );
               })}
             </div>
+          </div>
+
+          {/* Temas Sincronizados para Consulta */}
+          <div className="glass-panel" style={{ padding: '24px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '8px', marginBottom: '14px' }}>
+              <h3 style={{ fontSize: '0.9rem', fontWeight: 800, color: '#ffffff', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <MessageSquare size={16} color="var(--color-cyan)" />
+                Temas para tu Consulta
+              </h3>
+              <span className="badge badge-cyan" style={{ fontSize: '0.55rem' }}>
+                {agendaTopics.filter(t => !t.done).length} pendientes
+              </span>
+            </div>
+
+            <p style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginBottom: '12px', lineHeight: 1.3 }}>
+              Puntos anotados que se sincronizan en tiempo real con tu historial del chat para tratar con tu terapeuta.
+            </p>
+
+            <form onSubmit={handleAddTopic} style={{ display: 'flex', gap: '6px', marginBottom: '12px' }}>
+              <input
+                type="text"
+                placeholder="+ Anotar duda o tema clínico..."
+                value={newTopicText}
+                onChange={(e) => setNewTopicText(e.target.value)}
+                style={{
+                  flex: 1,
+                  fontSize: '0.72rem',
+                  background: 'rgba(255,255,255,0.03)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '6px',
+                  padding: '6px 10px',
+                  color: '#ffffff',
+                  outline: 'none'
+                }}
+              />
+              <button
+                type="submit"
+                className="btn btn-primary"
+                style={{ padding: '6px 10px', background: 'var(--color-cyan)', fontSize: '0.7rem' }}
+                title="Añadir tema"
+              >
+                <Plus size={14} />
+              </button>
+            </form>
+
+            {agendaTopics.length === 0 ? (
+              <span style={{ fontSize: '0.66rem', color: 'var(--text-tertiary)', fontStyle: 'italic', display: 'block', padding: '6px 0' }}>
+                No tienes temas pendientes anotados para tu próxima consulta.
+              </span>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '180px', overflowY: 'auto' }}>
+                {agendaTopics.map(topic => (
+                  <div
+                    key={topic.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      justifyContent: 'space-between',
+                      gap: '8px',
+                      padding: '8px 10px',
+                      borderRadius: '6px',
+                      background: topic.done ? 'rgba(255,255,255,0.01)' : 'rgba(6,182,212,0.05)',
+                      border: '1px solid',
+                      borderColor: topic.done ? 'rgba(255,255,255,0.03)' : 'rgba(6,182,212,0.18)'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', flex: 1 }}>
+                      <input
+                        type="checkbox"
+                        checked={topic.done}
+                        onChange={() => handleToggleTopic(topic.id)}
+                        style={{ cursor: 'pointer', marginTop: '2px', accentColor: 'var(--color-cyan)' }}
+                      />
+                      <span style={{
+                        fontSize: '0.7rem',
+                        color: topic.done ? 'var(--text-tertiary)' : '#ffffff',
+                        textDecoration: topic.done ? 'line-through' : 'none',
+                        lineHeight: 1.3
+                      }}>
+                        {topic.text}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteTopic(topic.id)}
+                      style={{ background: 'transparent', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '2px' }}
+                      title="Eliminar"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
         </div>

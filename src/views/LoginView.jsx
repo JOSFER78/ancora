@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../supabaseClient';
-import { db, auth } from '../firebaseClient';
+import { firebaseClient } from '../firebaseAdapter.js';
+import { db as firestoreDb, auth } from '../firebaseClient';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { getRedirectResult } from 'firebase/auth';
 import { LegalModals } from '../components/LegalModals';
@@ -71,7 +71,7 @@ export default function LoginView({
       getRedirectResult(auth).then(async (result) => {
         if (result?.user) {
           console.log('[Firebase Auth] Resultado de login por redirección:', result.user.email);
-          const profileDocRef = doc(db, 'profiles', String(result.user.uid));
+          const profileDocRef = doc(firestoreDb, 'profiles', String(result.user.uid));
           const snap = await getDoc(profileDocRef);
           if (snap.exists() && onAuthSuccess) {
             onAuthSuccess(result.user, snap.data());
@@ -269,7 +269,7 @@ export default function LoginView({
     setError(null);
     setSuccessMsg(null);
     try {
-      const { data, error: authError } = await supabase.auth.signInWithPassword({
+      const { data, error: authError } = await firebaseClient.auth.signInWithPassword({
         email: email.trim(),
         password: password,
       });
@@ -279,7 +279,7 @@ export default function LoginView({
       if (data?.user) {
         // Verificar si el usuario requiere triaje inicial (solo para pacientes)
         if (role === 'paciente') {
-          const profileDocRef = doc(db, 'profiles', String(data.user.uid));
+          const profileDocRef = doc(firestoreDb, 'profiles', String(data.user.uid));
           const profileSnap = await getDoc(profileDocRef);
           const profileData = profileSnap.exists() ? profileSnap.data() : null;
 
@@ -324,7 +324,7 @@ export default function LoginView({
     setSuccessMsg(null);
     try {
       localStorage.setItem('pending_oauth_role', role);
-      const { data, error: oauthError } = await supabase.auth.signInWithOAuth({
+      const { data, error: oauthError } = await firebaseClient.auth.signInWithOAuth({
         provider: 'google',
         options: {
           redirectTo: window.location.origin
@@ -333,7 +333,7 @@ export default function LoginView({
       if (oauthError) throw oauthError;
 
       if (data?.user) {
-        const profileDocRef = doc(db, 'profiles', String(data.user.uid));
+        const profileDocRef = doc(firestoreDb, 'profiles', String(data.user.uid));
         const profileSnap = await getDoc(profileDocRef);
         const profileData = profileSnap.exists() ? profileSnap.data() : null;
 
@@ -399,7 +399,7 @@ export default function LoginView({
 
       // Si no es un usuario de Google ya autenticado, creamos la cuenta en Firebase
       if (!finalUser) {
-        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+        const { data: signUpData, error: signUpError } = await firebaseClient.auth.signUp({
           email: email.trim(),
           password: password,
           options: {
@@ -529,14 +529,14 @@ export default function LoginView({
           created_at: formattedDate
         };
 
-        const profileDocRef = doc(db, 'profiles', String(finalUser.uid || finalUser.id));
+        const profileDocRef = doc(firestoreDb, 'profiles', String(finalUser.uid || finalUser.id));
         await setDoc(profileDocRef, completePatientData, { merge: true });
 
         // Sincronizar simultáneamente en clinical_profiles, timeline_events y clinical_life_tree
         try {
           const userIdStr = String(finalUser.uid || finalUser.id);
           
-          await supabase.from('clinical_profiles').upsert({
+          await firebaseClient.from('clinical_profiles').upsert({
             patient_id: userIdStr,
             summary_vital: patientProfile.motivo || `Paciente registrado (${patientProfile.consultationType}).`,
             psychological_history: initialClinicalHistory.antecedentes_psicologicos,
@@ -548,7 +548,7 @@ export default function LoginView({
             last_synthesized_at: formattedDate
           }, { onConflict: 'patient_id' });
 
-          await supabase.from('timeline_events').insert([{
+          await firebaseClient.from('timeline_events').insert([{
             patient_id: userIdStr,
             date: dateOnly,
             event: `Registro y triaje completado en Áncora ⚓ (${patientProfile.consultationType})`,
@@ -557,7 +557,7 @@ export default function LoginView({
             created_at: formattedDate
           }]);
 
-          await supabase.from('clinical_life_tree').upsert({
+          await firebaseClient.from('clinical_life_tree').upsert({
             patient_id: userIdStr,
             tree_data: {
               current_situation: [
@@ -583,7 +583,7 @@ export default function LoginView({
 
         // Insertar registro formal de consentimiento clínico (Ley 41/2002 / RGPD Art. 9)
         try {
-          await supabase.from('consents').insert([{
+          await db.from('consents').insert([{
             user_id: finalUser.uid || finalUser.id,
             version: 'v1.0-2026',
             terms_accepted: true,
@@ -625,7 +625,7 @@ export default function LoginView({
       let finalUser = googleAuthUser;
 
       if (!finalUser) {
-        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+        const { data: signUpData, error: signUpError } = await db.auth.signUp({
           email: email.trim(),
           password: password,
           options: {
@@ -697,7 +697,7 @@ export default function LoginView({
     setLoading(true);
     setError(null);
     try {
-      const { error: resendError } = await supabase.auth.resendVerificationEmail();
+      const { error: resendError } = await firebaseClient.auth.resendVerificationEmail();
       if (resendError) throw resendError;
       setSuccessMsg(`Correo de verificación reenviado con éxito a ${emailSentTo || email}. Revisa tu bandeja de entrada y spam.`);
       setResendCooldown(60);
@@ -719,7 +719,7 @@ export default function LoginView({
     setLoading(true);
     setError(null);
     try {
-      const { error: resetErr } = await supabase.auth.resetPasswordForEmail(email.trim());
+      const { error: resetErr } = await firebaseClient.auth.resetPasswordForEmail(email.trim());
       if (resetErr) throw resetErr;
       setSuccessMsg(`Te hemos enviado un enlace de recuperación a ${email}. Revisa tu correo.`);
     } catch (err) {

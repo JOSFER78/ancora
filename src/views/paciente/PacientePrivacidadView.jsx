@@ -3,7 +3,7 @@ import {
   Shield, ShieldCheck, Eye, Download, 
   Trash2, Lock, CheckCircle2, AlertTriangle
 } from 'lucide-react';
-import { supabase } from '../../supabaseClient';
+import { firebaseClient as db, firebaseClient } from '../../firebaseAdapter.js';
 
 export default function PacientePrivacidadView({ user, onProfileUpdated, profile }) {
   const [shareTherapist, setShareTherapist] = useState(true);
@@ -56,7 +56,7 @@ export default function PacientePrivacidadView({ user, onProfileUpdated, profile
     
     try {
       // Borrar perfil en Áncora
-      const { error } = await supabase
+      const { error } = await firebaseClient
         .from('profiles')
         .delete()
         .eq('id', user.id);

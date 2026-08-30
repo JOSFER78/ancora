@@ -63,14 +63,14 @@ Para lograrlo, la arquitectura se fundamenta en cinco pilares inquebrantables:
 ## 1. Auditoría del Repositorio Actual (`ancora_repo`) y Puntos de Fricción
 
 El análisis exhaustivo del código fuente actual revela que el sistema cuenta con módulos clínicos y de contención muy potentes pero estructurados como un **"Smart View Monolith"**:
-- **Acoplamiento Directo UI-DB:** Vistas como `PacienteChatView.jsx` (1.935 líneas), `PsicologoDashboardView.jsx` (4.360 líneas) y `MenteView.jsx` (4.188 líneas) ejecutan consultas directas a tablas de Supabase (`profiles`, `conversations`, `messages`, `daily_moods`, `agent_tasks`) en lugar de usar servicios aislados.
+- **Acoplamiento Directo UI-DB:** Vistas como `PacienteChatView.jsx` (1.935 líneas), `PsicologoDashboardView.jsx` (4.360 líneas) y `MenteView.jsx` (4.188 líneas) ejecutan consultas directas a tablas de Firebase (`profiles`, `conversations`, `messages`, `daily_moods`, `agent_tasks`) en lugar de usar servicios aislados.
 - **Condiciones de Carrera en JSONB:** `profiles.contexto_terapeutico` se sobreescribe como un blob JSON completo, con riesgo de que una actualización de chat destruya notas añadidas concurrentemente por el psicólogo.
 - **Fallbacks Silenciosos a `localStorage`:** En `clinicalEngine.js`, cuando una tabla de base de datos no está disponible o falla por RLS, se recurre a mocks locales en `localStorage`, provocando que la UI aparente funcionar pero perdiendo datos al recargar.
 
 ### La Solución: Arquitectura Hexagonal Limpia
 Se desacopla la aplicación en 4 capas estrictas:
 ```text
-UI (React 19 Components) ──► Custom Hooks ──► Application Services ──► Storage Abstraction Layer (SAL) ──► Firestore / Supabase
+UI (React 19 Components) ──► Custom Hooks ──► Application Services ──► Storage Abstraction Layer (SAL) ──► Firestore / Firebase
 ```
 
 ---
@@ -192,7 +192,7 @@ FASE 1: Implementación del resolvedor jerárquico de Feature Flags.
 FASE 2: Capa de Abstracción de Persistencia (SAL) con contratos desacoplados.
 FASE 3: Despliegue de colecciones Firestore, subcolecciones e índices $O(1)$.
 FASE 4: Parser universal para extraer texto de los 7 documentos .docx de datos/.
-FASE 5: Pipeline ETL automatizado para migrar datos de Supabase a Firestore.
+FASE 5: Pipeline ETL automatizado para migrar datos de Firebase a Firestore.
 FASE 6: Conciliación matemática de integridad (0.00% de discrepancia en checksums).
 FASE 7: Activación del Motor Clínico con 4 niveles de autoridad y citas verbatim.
 FASE 8: Motor de Memoria Jerárquica Hermes (Life Tree y Context Snapshots <1.200 tokens).

@@ -37,14 +37,14 @@ Panel psicólogo "Caso Clínico IA" (ClinicalCasePanel.jsx) consume todo lo ante
 
 ## 3. Estado actual — HECHO ✅
 
-### Desplegado en Supabase (proyecto `ysnorelkaccaikvuqgnv`)
+### Desplegado en Firebase (proyecto `ysnorelkaccaikvuqgnv`)
 
 | Pieza | Estado | Archivo |
 |---|---|---|
-| Migración modelo de datos | ✅ aplicada en remoto | `supabase/migrations/20260629210000_clinical_case_model.sql` |
-| Edge `clinical-extract` | ✅ desplegada (ACTIVE) | `supabase/functions/clinical-extract/index.ts` |
-| Edge `clinical-correct` | ✅ desplegada (ACTIVE) | `supabase/functions/clinical-correct/index.ts` |
-| Edge `clinical-nightly` | ✅ escrita, NO desplegada | `supabase/functions/clinical-nightly/index.ts` |
+| Migración modelo de datos | ✅ aplicada en remoto | `firebase/migrations/20260629210000_clinical_case_model.sql` |
+| Edge `clinical-extract` | ✅ desplegada (ACTIVE) | `firebase/functions/clinical-extract/index.ts` |
+| Edge `clinical-correct` | ✅ desplegada (ACTIVE) | `firebase/functions/clinical-correct/index.ts` |
+| Edge `clinical-nightly` | ✅ escrita, NO desplegada | `firebase/functions/clinical-nightly/index.ts` |
 | Secrets modelo LLM | ✅ DeepSeek V4 Flash | (env del proyecto) |
 
 ### Tablas nuevas creadas (modelo de caso clínico)
@@ -77,7 +77,7 @@ Panel psicólogo "Caso Clínico IA" (ClinicalCasePanel.jsx) consume todo lo ante
 - ✅ **3/4 documentos extraídos** con DeepSeek V4 Flash: historia y terapia (8ep), eje cronológico (14ep), pensamiento negativo (12ep).
 - ❌ **sensaciones ansiedad** falló: DeepSeek devolvió JSON inválido (trailing commas). Re-intentar con prompt más estricto o reparación automática.
 - ✅ **SQL generado**: `c:/tmp/emilio_clinical_inserts.sql` (3 documentos).
-- ⏳ **Pendiente**: `npx supabase db query --linked -f c:/tmp/emilio_clinical_inserts.sql` (INSERTs en BD remota).
+- ⏳ **Pendiente**: `npx firebase db query --linked -f c:/tmp/emilio_clinical_inserts.sql` (INSERTs en BD remota).
 - ⏳ **Pendiente**: Verificar panel "Caso Clínico IA" en localhost:5180 con datos reales.
 
 ### 4.2 Limpiar mocks (lo que el usuario reporta: "datos mockeados en plan y diario")
@@ -94,8 +94,8 @@ El panel y el diario emocional tienen **datos de ejemplo inventados** que hay qu
 
 ### 4.4 Desplegar `clinical-nightly` (cron nocturno)
 - La edge function `clinical-nightly` está escrita pero **no desplegada**. Hace la consolidación nocturna (extrae chat cerrado + regenera memoria Hermes) para todos los pacientes activos.
-- Migración del cron: `supabase/migrations/20260629200000_clinical_nightly_cron.sql` (pg_cron) **no aplicada**.
-- **Acción**: `npx supabase functions deploy clinical-nightly` + aplicar migración del cron.
+- Migración del cron: `firebase/migrations/20260629200000_clinical_nightly_cron.sql` (pg_cron) **no aplicada**.
+- **Acción**: `npx firebase functions deploy clinical-nightly` + aplicar migración del cron.
 
 ### 4.5 Probar el flujo completo end-to-end
 - Subir documentos de Emilio vía la app (upload) → `clinical-ingest` extrae texto → `clinical-extract` los procesa → panel se llena. Hoy la prueba es directa vía script + SQL; falta validar el flujo real desde la UI.
@@ -104,11 +104,11 @@ El panel y el diario emocional tienen **datos de ejemplo inventados** que hay qu
 
 ## 5. Notas operativas para el próximo agente
 
-- **Supabase CLI** v2.105.0 instalado y linkeado a `ysnorelkaccaikvuqgnv`. Access token en entorno.
-- Para aplicar SQL en remoto: `npx supabase db query --linked -f <archivo.sql>` o `npx supabase db query --linked "<sql>"`.
-- **NO usar `supabase db push`**: el histórico de migraciones local y remoto está desincronizado (hay migraciones en remoto que no existen localmente). Usar `db query --linked -f` para aplicar migraciones nuevas.
+- **Firebase CLI** v2.105.0 instalado y linkeado a `ysnorelkaccaikvuqgnv`. Access token en entorno.
+- Para aplicar SQL en remoto: `npx firebase db query --linked -f <archivo.sql>` o `npx firebase db query --linked "<sql>"`.
+- **NO usar `firebase db push`**: el histórico de migraciones local y remoto está desincronizado (hay migraciones en remoto que no existen localmente). Usar `db query --linked -f` para aplicar migraciones nuevas.
 - El paciente de test Emilio: `aeb78e97-5a44-4c24-9390-c32508dda09d` (rol `emilio`, nombre puesto en `contexto_terapeutico.nombre`).
-- Las edge functions leen `SUPABASE_SERVICE_ROLE_KEY` y `SUPABASE_URL` de los secrets del proyecto (ya configurados).
+- Las edge functions leen `Firebase_SERVICE_ROLE_KEY` y `Firebase_URL` de los secrets del proyecto (ya configurados).
 - **Modelo LLM**: DeepSeek V4 Flash (`deepseek/deepseek-v4-flash`). Más rápido y barato que el nemotron `:free`.
 - Documentos de test extraídos (texto plano) en `datos/datos paciente test/_extracted_*.txt` (generados desde los .docx con PowerShell zipfile).
 

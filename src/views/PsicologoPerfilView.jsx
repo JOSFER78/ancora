@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../supabaseClient';
+import { firebaseClient as db, firebaseClient } from '../firebaseAdapter.js';
 import { 
   User, Mail, CreditCard, Clock, FileText, 
   ShieldCheck, Sparkles, CheckCircle2, Award, ShieldAlert, LogOut,
@@ -62,7 +62,7 @@ export default function PsicologoPerfilView({ profile, onProfileUpdated, user, i
     const loadPsychologistProfile = async () => {
       if (!user?.id || isVirtualDemo) return;
       try {
-        const { data, error } = await supabase
+        const { data, error } = await firebaseClient
           .from('psychologist_profiles')
           .select('*')
           .eq('id', user.id)
@@ -104,12 +104,12 @@ export default function PsicologoPerfilView({ profile, onProfileUpdated, user, i
   const context = profile?.contexto_terapeutico || {};
   const appConfig = profile?.app_config || {};
   
-  const currentName = context.name || profile?.display_name || 'Dr. José Fernández';
-  const currentAvatar = profile?.avatar || context.avatar || 'https://lh3.googleusercontent.com/a/ACg8ocKTiCRCGtON7UckYXir1hkqxQPP9jHgd0A8aQx3mqswe2yNcA=s96-c';
-  const currentLicense = appConfig.license_number || context.licenseNumber || 'M-49ccc';
-  const currentQualification = appConfig.qualification || 'Especialista Clínico Sanitario';
-  const currentInsurance = appConfig.rc_insurance || 'Seguro RC Activo (Mapfre)';
-  const currentPrice = context.sessionPrice || appConfig.session_price || 55;
+  const currentName = context.name || profile?.display_name || user?.user_metadata?.full_name || '';
+  const currentAvatar = profile?.avatar || context.avatar || user?.photoURL || '';
+  const currentLicense = appConfig.license_number || context.licenseNumber || '';
+  const currentQualification = appConfig.qualification || '';
+  const currentInsurance = appConfig.rc_insurance || '';
+  const currentPrice = context.sessionPrice || appConfig.session_price || 50;
 
   const [nameInput, setNameInput] = useState(currentName);
   const [avatarUrl, setAvatarUrl] = useState(currentAvatar);
@@ -117,23 +117,48 @@ export default function PsicologoPerfilView({ profile, onProfileUpdated, user, i
   const [qualificationInput, setQualificationInput] = useState(currentQualification);
   const [insuranceInput, setInsuranceInput] = useState(currentInsurance);
   const [priceInput, setPriceInput] = useState(currentPrice);
-  const [bioInput, setBioInput] = useState('Especialista en regulación emocional, estrés, ansiedad y protocolos cognitivo-conductuales con monitorización digital.');
-  const [specialtiesInput, setSpecialtiesInput] = useState('Ansiedad, Estrés, Terapia Cognitiva, EMDR');
-  const [approachInput, setApproachInput] = useState('Terapia Cognitivo-Conductual & Regulación Emocional');
+  const [bioInput, setBioInput] = useState(profile?.bio || context.bio || '');
+  const [specialtiesInput, setSpecialtiesInput] = useState(profile?.specialties ? (Array.isArray(profile.specialties) ? profile.specialties.join(', ') : profile.specialties) : '');
+  const [approachInput, setApproachInput] = useState(profile?.approach || context.approach || '');
+
+  // Liquidaciones reales desde Firestore
+  const [payoutHistory, setPayoutHistory] = useState([]);
+  const [loadingPayouts, setLoadingPayouts] = useState(false);
+
+  // Stripe Account ID real del profesional
+  const stripeAccountId = appConfig.stripe_account_id || context.stripe_account_id || null;
+  const isStripeConnected = Boolean(stripeAccountId);
 
   // Lista de avatares predefinidos para psicólogos
   const PRESET_AVATARS = [
-    { label: 'Google Profile', url: user?.user_metadata?.avatar_url || user?.photoURL || 'https://lh3.googleusercontent.com/a/ACg8ocKTiCRCGtON7UckYXir1hkqxQPP9jHgd0A8aQx3mqswe2yNcA=s96-c' },
-    { label: 'José (Clínico)', url: 'https://lh3.googleusercontent.com/a/ACg8ocKTiCRCGtON7UckYXir1hkqxQPP9jHgd0A8aQx3mqswe2yNcA=s96-c' },
+    { label: 'Google Profile', url: user?.user_metadata?.avatar_url || user?.photoURL || '' },
     { label: 'Profesional 1', url: 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&q=80&w=150&h=150' },
     { label: 'Profesional 2', url: 'https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?auto=format&fit=crop&q=80&w=150&h=150' }
-  ];
+  ].filter(a => a.url);
 
-  // Historial de liquidaciones Stripe Connect mockeados
-  const payoutHistory = [
-    { id: 'po_1Nf8x9L2x9o4', date: '01/06/2026', concept: 'Liquidación Mensual Stripe Connect - Consultas Clínicas', method: 'Stripe Split', amount: '345.00 €', status: 'completed' },
-    { id: 'po_1Me9u2P1x8p9', date: '01/05/2026', concept: 'Liquidación Mensual Stripe Connect - Consultas Clínicas', method: 'Stripe Split', amount: '412.50 €', status: 'completed' }
-  ];
+  // Cargar liquidaciones reales desde Firestore
+  useEffect(() => {
+    const loadRealPayouts = async () => {
+      if (!user?.id) return;
+      try {
+        setLoadingPayouts(true);
+        const { data, error } = await firebaseClient
+          .from('settlements')
+          .select('*')
+          .eq('psychologist_id', user.id)
+          .order('created_at', { ascending: false });
+
+        if (!error && Array.isArray(data)) {
+          setPayoutHistory(data);
+        }
+      } catch (err) {
+        console.warn("No se pudieron cargar liquidaciones:", err.message);
+      } finally {
+        setLoadingPayouts(false);
+      }
+    };
+    loadRealPayouts();
+  }, [user?.id]);
 
   const handleToggleSync = async (type) => {
     const nextState = type === 'google' ? !googleConnected : !deviceConnected;
@@ -160,7 +185,7 @@ export default function PsicologoPerfilView({ profile, onProfileUpdated, user, i
         return;
       }
       
-      const { error } = await supabase
+      const { error } = await firebaseClient
         .from('psychologist_profiles')
         .update({
           availability: JSON.stringify(availabilityObj)
@@ -177,7 +202,7 @@ export default function PsicologoPerfilView({ profile, onProfileUpdated, user, i
         localStorage.setItem(`calendar_sync_device_${user?.id}`, String(nextState));
       }
     } catch (err) {
-      console.error("Error updating calendar sync in Supabase:", err.message);
+      console.error("Error updating calendar sync in Firebase:", err.message);
       alert("Error al guardar la sincronización: " + err.message);
     } finally {
       setIsSyncing(null);
@@ -221,8 +246,8 @@ export default function PsicologoPerfilView({ profile, onProfileUpdated, user, i
         return;
       }
 
-      // En modo real, actualizamos Supabase profiles
-      const { data, error } = await supabase
+      // En modo real, actualizamos Firebase profiles
+      const { data, error } = await firebaseClient
         .from('profiles')
         .update({ 
           avatar: avatarUrl,
@@ -249,7 +274,7 @@ export default function PsicologoPerfilView({ profile, onProfileUpdated, user, i
 
       const specsArray = specialtiesInput.split(',').map(s => s.trim()).filter(Boolean);
 
-      const { error: psychoProfileError } = await supabase
+      const { error: psychoProfileError } = await firebaseClient
         .from('psychologist_profiles')
         .update({
           name: nameInput,
@@ -761,15 +786,22 @@ export default function PsicologoPerfilView({ profile, onProfileUpdated, user, i
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           
           {/* Tarjeta de Stripe Connect */}
-          <div className="glass-panel" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '14px', borderLeft: '4px solid var(--color-cyan)', background: 'rgba(6,182,212,0.02)' }}>
+          <div className="glass-panel" style={{ 
+            padding: '24px', 
+            display: 'flex', 
+            flexDirection: 'column', 
+            gap: '14px', 
+            borderLeft: `4px solid ${isStripeConnected ? 'var(--color-emerald)' : 'var(--color-cyan)'}`, 
+            background: 'rgba(6,182,212,0.02)' 
+          }}>
             <h3 style={{ fontSize: '0.9rem', fontWeight: 800, color: '#ffffff', margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <CreditCard size={16} color="var(--color-cyan)" />
+              <CreditCard size={16} color={isStripeConnected ? "var(--color-emerald)" : "var(--color-cyan)"} />
               Pasarela de Pagos Stripe Connect
             </h3>
 
             <div>
               <strong style={{ fontSize: '1.05rem', color: '#ffffff', display: 'block' }}>
-                Cuenta Conectada (Stripe Split)
+                {isStripeConnected ? 'Cuenta Conectada (Stripe Split)' : 'Vincular Pasarela de Honorarios'}
               </strong>
               <span style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', marginTop: '2px', display: 'block' }}>
                 Tus honorarios clínicos se ingresan directamente exentos de IVA. Áncora solo recauda automáticamente su cuota de servicio.
@@ -778,16 +810,16 @@ export default function PsicologoPerfilView({ profile, onProfileUpdated, user, i
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '12px', marginTop: '4px' }}>
               <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>ID Stripe Account:</span>
-              <strong style={{ fontSize: '0.82rem', color: 'var(--color-cyan)', fontFamily: 'monospace' }}>
-                acct_1Mv8x9L2x9o4
+              <strong style={{ fontSize: '0.82rem', color: isStripeConnected ? 'var(--color-cyan)' : 'var(--text-tertiary)', fontFamily: 'monospace' }}>
+                {stripeAccountId || 'Sin vincular'}
               </strong>
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: 'var(--text-secondary)' }}>
               <span>Estado de verificación:</span>
-              <strong style={{ color: 'var(--color-emerald)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <CheckCircle2 size={12} />
-                Vinculado y Verificado
+              <strong style={{ color: isStripeConnected ? 'var(--color-emerald)' : 'var(--color-amber)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                {isStripeConnected ? <CheckCircle2 size={12} /> : <Clock size={12} />}
+                {isStripeConnected ? 'Vinculado y Verificado' : 'Pendiente de Configuración'}
               </strong>
             </div>
           </div>
@@ -799,40 +831,58 @@ export default function PsicologoPerfilView({ profile, onProfileUpdated, user, i
               Liquidaciones de Honorarios
             </h3>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {payoutHistory.map((invoice, idx) => (
-                <div 
-                  key={idx} 
-                  style={{ 
-                    padding: '12px', 
-                    borderRadius: '8px', 
-                    background: 'var(--background-secondary)', 
-                    border: '1px solid var(--border)',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    flexWrap: 'wrap',
-                    gap: '10px'
-                  }}
-                >
-                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <FileText size={16} color="var(--color-cyan)" style={{ flexShrink: 0 }} />
-                    <div style={{ textAlign: 'left' }}>
-                      <strong style={{ fontSize: '0.74rem', color: '#ffffff', display: 'block', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {invoice.concept}
+            {loadingPayouts ? (
+              <div style={{ textAlign: 'center', padding: '16px', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                Cargando historial de liquidaciones...
+              </div>
+            ) : payoutHistory.length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {payoutHistory.map((invoice, idx) => (
+                  <div 
+                    key={invoice.id || idx} 
+                    style={{ 
+                      padding: '12px', 
+                      borderRadius: '8px', 
+                      background: 'var(--background-secondary)', 
+                      border: '1px solid var(--border)',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      flexWrap: 'wrap',
+                      gap: '10px'
+                    }}
+                  >
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <FileText size={16} color="var(--color-cyan)" style={{ flexShrink: 0 }} />
+                      <div style={{ textAlign: 'left' }}>
+                        <strong style={{ fontSize: '0.74rem', color: '#ffffff', display: 'block', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {invoice.concept || invoice.title || 'Liquidación Mensual Stripe Connect'}
+                        </strong>
+                        <span style={{ fontSize: '0.62rem', color: 'var(--text-secondary)' }}>
+                          Fecha: {invoice.date || invoice.created_at?.substring(0, 10) || 'Reciente'} · {invoice.method || 'Stripe Split'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <strong style={{ fontSize: '0.78rem', color: 'var(--color-emerald)' }}>
+                        {invoice.amount ? `${invoice.amount} €` : '0.00 €'}
                       </strong>
-                      <span style={{ fontSize: '0.62rem', color: 'var(--text-secondary)' }}>
-                        Fecha: {invoice.date} · {invoice.method}
-                      </span>
                     </div>
                   </div>
-
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <strong style={{ fontSize: '0.78rem', color: 'var(--color-emerald)' }}>{invoice.amount}</strong>
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ textAlign: 'center', padding: '24px 16px', background: 'rgba(255,255,255,0.015)', borderRadius: '8px', border: '1px dashed var(--border)' }}>
+                <FileText size={24} style={{ color: 'var(--text-tertiary)', margin: '0 auto 8px auto', display: 'block' }} />
+                <span style={{ fontSize: '0.78rem', color: '#ffffff', fontWeight: 600, display: 'block' }}>
+                  Sin liquidaciones emitidas todavía
+                </span>
+                <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', display: 'block', marginTop: '4px', lineHeight: 1.4 }}>
+                  Las transferencias y liquidaciones automáticas aparecerán aquí conforme se completen las sesiones clínicas de tus pacientes.
+                </span>
+              </div>
+            )}
           </div>
 
         </div>

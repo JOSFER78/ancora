@@ -11,7 +11,7 @@ Archivos más grandes detectados por recuento de líneas. Úsalo para priorizar 
 | 3946 | `package-lock.json` |
 | 3450 | `datos/informes/t4_gestion_datos_privacidad.md` |
 | 2957 | `src/components/trading/ViabilityWidget.jsx` |
-| 2140 | `supabase/functions/chat-terapeuta/index.ts` |
+| 2140 | `firebase/functions/chat-terapeuta/index.ts` |
 | 2081 | `src/index.css` |
 | 1971 | `src/views/paciente/PacienteHistoriaView.jsx` |
 | 1934 | `src/views/paciente/PacienteChatView.jsx` |
@@ -36,11 +36,11 @@ Archivos más grandes detectados por recuento de líneas. Úsalo para priorizar 
 | 831 | `src/views/AjustesView.jsx` |
 | 793 | `src/views/PsicologoPerfilView.jsx` |
 | 749 | `datos/informes/t3_doble_facturacion_saas.md` |
-| 718 | `supabase/functions/clinical-ingest/index.ts` |
+| 718 | `firebase/functions/clinical-ingest/index.ts` |
 | 704 | `src/views/DashboardView.jsx` |
 | 619 | `tradingview-mcp/src/core/pine.js` |
 | 571 | `src/components/PlanConsumptionWidget.jsx` |
-| 515 | `supabase/functions/clinical-synthesize/index.ts` |
+| 515 | `firebase/functions/clinical-synthesize/index.ts` |
 | 513 | `handoff_sync_issue_report.md` |
-| 501 | `supabase/migrations/20260606190000_clinical_engine.sql` |
+| 501 | `firebase/migrations/20260606190000_clinical_engine.sql` |
 | 454 | `tradingview-mcp/src/core/data.js` |

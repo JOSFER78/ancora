@@ -13,7 +13,7 @@ El repo contiene partes rescatables, pero no debe seguir creciendo tal como est�
 | `src/views/AgentesView.jsx` | 5033 | Archivar o dividir; no pertenece al MVP clínico general |
 | `src/views/PsicologoDashboardView.jsx` | 4359 | Reescribir en `features/patient360`, `features/pro-dashboard`, `features/soap` |
 | `src/views/MenteView.jsx` | 4187 | Extraer partes útiles a historia/diario; eliminar partes personales |
-| `supabase/functions/chat-terapeuta/index.ts` | 2140 | Dividir en chat, memoria, riesgo, provider adapter |
+| `firebase/functions/chat-terapeuta/index.ts` | 2140 | Dividir en chat, memoria, riesgo, provider adapter |
 | `src/index.css` | 2081 | Convertir en tokens + componentes; eliminar estilos no usados |
 | `src/views/LandingView.jsx` | 1810 | Reescribir por secciones reutilizables |
 | `src/views/ChatView.jsx` | 1810 | Reescribir como feature de chat con session lifecycle |
@@ -136,7 +136,7 @@ src/features/clinical/api/timelineApi.js
 
 ---
 
-### `supabase/functions/chat-terapeuta/index.ts`
+### `firebase/functions/chat-terapeuta/index.ts`
 
 **Problema:** función gigante; combina chat, proveedor, contexto, extracción y acciones.
 
@@ -145,16 +145,16 @@ src/features/clinical/api/timelineApi.js
 **Destino:**
 
 ```text
-supabase/functions/chat-message/index.ts
-supabase/functions/chat-close-session/index.ts
-supabase/functions/ai-context-harness/index.ts
-supabase/functions/clinical-risk-detect/index.ts
-supabase/functions/model-provider/index.ts
+firebase/functions/chat-message/index.ts
+firebase/functions/chat-close-session/index.ts
+firebase/functions/ai-context-harness/index.ts
+firebase/functions/clinical-risk-detect/index.ts
+firebase/functions/model-provider/index.ts
 ```
 
 ---
 
-### `supabase/functions/clinical-ingest/index.ts`
+### `firebase/functions/clinical-ingest/index.ts`
 
 **Problema:** es una buena base, pero debe convertirse en pipeline con estados y errores.
 
@@ -170,7 +170,7 @@ supabase/functions/model-provider/index.ts
 
 ---
 
-### `supabase/functions/clinical-synthesize/index.ts`
+### `firebase/functions/clinical-synthesize/index.ts`
 
 **Problema:** síntesis útil, pero debe versionar snapshot y separar tareas.
 
@@ -185,7 +185,7 @@ supabase/functions/model-provider/index.ts
 
 ---
 
-### `supabase/migrations/*clinical*`
+### `firebase/migrations/*clinical*`
 
 **Problema:** hay buena intención, pero necesita normalización y RLS auditada.
 
@@ -262,7 +262,7 @@ src/
     styles/
   demo/
 
-supabase/
+firebase/
   functions/
     chat-message/
     chat-close-session/

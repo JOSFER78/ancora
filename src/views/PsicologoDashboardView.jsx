@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../supabaseClient';
-import { db } from '../firebaseClient';
+import { firebaseClient } from '../firebaseAdapter.js';
+import { db as firestoreDb } from '../firebaseClient';
 import { collection, getDocs } from 'firebase/firestore';
 import ChatView from './ChatView';
 import AjustesView from './AjustesView';
@@ -76,7 +76,7 @@ export default function PsicologoDashboardView({
   const [rawReviewed, setRawReviewed] = useState(false);
   const [patientSubTab, setPatientSubTab] = useState('resumen'); // 'resumen' | 'raw' | 'notas' | 'sesiones' | 'tareas' | 'medicacion' | 'consentimientos'
 
-  // Real Supabase Appointments
+  // Real Firebase Appointments
   const [clinicalNavCollapsed, setClinicalNavCollapsed] = useState(false);
   const [dbAppointments, setDbAppointments] = useState([]);
   const [loadingAppts, setLoadingAppts] = useState(false);
@@ -85,7 +85,7 @@ export default function PsicologoDashboardView({
     if (!profile?.id) return;
     try {
       setLoadingAppts(true);
-      const { data, error } = await supabase
+      const { data, error } = await firebaseClient
         .from('appointments')
         .select('*')
         .eq('psychologist_id', profile.id);
@@ -93,7 +93,7 @@ export default function PsicologoDashboardView({
       if (error) throw error;
 
       // Fetch profiles to map patient names
-      const { data: patientsData } = await supabase
+      const { data: patientsData } = await firebaseClient
         .from('profiles')
         .select('id, contexto_terapeutico')
         .in('role', ['paciente', 'emilio']);
@@ -159,7 +159,7 @@ export default function PsicologoDashboardView({
   const loadPsychologistAvailability = async () => {
     if (!profile?.id) return;
     try {
-      const { data, error } = await supabase
+      const { data, error } = await firebaseClient
         .from('psychologist_profiles')
         .select('*')
         .eq('id', profile.id)
@@ -183,7 +183,7 @@ export default function PsicologoDashboardView({
               setAvailabilitySlots(slots);
             }
           } catch (jsonErr) {
-            console.warn("Availability is not a structured JSON in Supabase:", data.availability);
+            console.warn("Availability is not a structured JSON in Firebase:", data.availability);
             setGoogleSynced(false);
             setAvailabilitySlots([]);
           }
@@ -204,7 +204,7 @@ export default function PsicologoDashboardView({
     if (!profile?.id) return;
     setIsSyncingGoogle(true);
     try {
-      const { data, error } = await supabase
+      const { data, error } = await firebaseClient
         .from('psychologist_profiles')
         .select('*')
         .eq('id', profile.id)
@@ -225,7 +225,7 @@ export default function PsicologoDashboardView({
       const nextState = !googleSynced;
       avail.google_connected = nextState;
       
-      const { error: updateError } = await supabase
+      const { error: updateError } = await firebaseClient
         .from('psychologist_profiles')
         .update({
           availability: JSON.stringify(avail)
@@ -236,7 +236,7 @@ export default function PsicologoDashboardView({
       
       setGoogleSynced(nextState);
     } catch (err) {
-      console.error("Error updating google sync in Supabase:", err.message);
+      console.error("Error updating google sync in Firebase:", err.message);
       alert("Error al guardar la sincronización: " + err.message);
     } finally {
       setIsSyncingGoogle(false);
@@ -246,7 +246,7 @@ export default function PsicologoDashboardView({
   const handleToggleSlot = async (day, hour) => {
     if (!profile?.id) return;
     try {
-      const { data, error } = await supabase
+      const { data, error } = await firebaseClient
         .from('psychologist_profiles')
         .select('*')
         .eq('id', profile.id)
@@ -281,7 +281,7 @@ export default function PsicologoDashboardView({
       
       avail.custom_available_slots[day] = updatedHours;
       
-      const { error: updateError } = await supabase
+      const { error: updateError } = await firebaseClient
         .from('psychologist_profiles')
         .update({
           availability: JSON.stringify(avail)
@@ -299,7 +299,7 @@ export default function PsicologoDashboardView({
       });
       setAvailabilitySlots(slots);
     } catch (err) {
-      console.error("Error toggling slot in Supabase:", err.message);
+      console.error("Error toggling slot in Firebase:", err.message);
       alert("Error al guardar slot: " + err.message);
     }
   };
@@ -307,7 +307,7 @@ export default function PsicologoDashboardView({
   const handleToggleBlockDate = async (dateStr) => {
     if (!profile?.id) return;
     try {
-      const { data, error } = await supabase
+      const { data, error } = await firebaseClient
         .from('psychologist_profiles')
         .select('*')
         .eq('id', profile.id)
@@ -337,7 +337,7 @@ export default function PsicologoDashboardView({
       
       avail.blocked_dates = updatedBlocked;
       
-      const { error: updateError } = await supabase
+      const { error: updateError } = await firebaseClient
         .from('psychologist_profiles')
         .update({
           availability: JSON.stringify(avail)
@@ -348,7 +348,7 @@ export default function PsicologoDashboardView({
       
       setBlockedDates(updatedBlocked);
     } catch (err) {
-      console.error("Error toggling blocked date in Supabase:", err.message);
+      console.error("Error toggling blocked date in Firebase:", err.message);
       alert("Error al cambiar bloqueo de día: " + err.message);
     }
   };
@@ -592,11 +592,11 @@ export default function PsicologoDashboardView({
     // Guardar en Áncora si es modo real
     if (!isVirtualDemo && patientId && !patientId.toString().startsWith('p-')) {
       try {
-        const { data: currentP } = await supabase.from('profiles').select('contexto_terapeutico').eq('id', patientId).single();
-        const updatedCtx = { ...currentP?.contexto_terapeutico, start_of_week: newDay };
-        await supabase.from('profiles').update({ contexto_terapeutico: updatedCtx }).eq('id', patientId);
+        const { data: currentP } = await firebaseClient.from('profiles').select('contexto_terapeutico').eq('id', patientId).single();
+        const updatedCtx = { ...(currentP?.contexto_terapeutico || {}), start_of_week: newDay };
+        await firebaseClient.from('profiles').update({ contexto_terapeutico: updatedCtx }).eq('id', patientId);
       } catch (err) {
-        console.error("Error updating start of week in Supabase:", err);
+        console.error("Error updating start of week in Firebase:", err);
       }
     }
   };
@@ -827,7 +827,7 @@ export default function PsicologoDashboardView({
   const [callConnected, setCallConnected] = useState(false);
   const [showSoapEditorInCall, setShowSoapEditorInCall] = useState(false);
 
-  // Fetch real users from Supabase to integrate them dynamically
+  // Fetch real users from Firebase to integrate them dynamically
   useEffect(() => {
     if (isVirtualDemo) {
       setLoadingReal(false);
@@ -839,9 +839,9 @@ export default function PsicologoDashboardView({
         setLoadingReal(true);
         const patMap = new Map();
 
-        // 1. Supabase
+        // 1. Firebase
         try {
-          const { data: supaProfiles } = await supabase
+          const { data: supaProfiles } = await firebaseClient
             .from('profiles')
             .select('*')
             .in('role', ['paciente', 'emilio']);
@@ -850,19 +850,30 @@ export default function PsicologoDashboardView({
             patMap.set(p.id, p);
           });
         } catch (e) {
-          console.warn("Supabase fetch pacientes error:", e);
+          console.warn("Firebase fetch pacientes error:", e);
         }
 
         // 2. Firestore
         try {
-          const fireSnap = await getDocs(collection(db, 'profiles'));
+          const fireSnap = await getDocs(collection(firestoreDb, 'profiles'));
+          const EXCLUDED_EMAILS = [
+            'josferestudio@gmail.com',
+            'usajosefernan@gmail.com',
+            'davidsevilla101@gmail.com'
+          ];
           fireSnap.forEach(docSnap => {
             const data = docSnap.data();
-            if (data.role !== 'psicologo') {
+            const role = (data.role || '').toLowerCase();
+            const email = (data.email || '').toLowerCase();
+            if (
+              !EXCLUDED_EMAILS.includes(email) &&
+              (role === 'paciente' || role === 'patient' || role === 'emilio' || email === 'tisute@gmail.com')
+            ) {
               const current = patMap.get(docSnap.id) || {};
               patMap.set(docSnap.id, {
                 ...current,
                 ...data,
+                role: 'paciente',
                 id: docSnap.id
               });
             }
@@ -871,7 +882,11 @@ export default function PsicologoDashboardView({
           console.warn("Firestore fetch pacientes error:", e);
         }
 
-        let profilesData = Array.from(patMap.values());
+        let profilesData = Array.from(patMap.values()).filter(p => {
+          const r = (p.role || '').toLowerCase();
+          const em = (p.email || '').toLowerCase();
+          return (r === 'paciente' || r === 'patient' || r === 'emilio' || em === 'tisute@gmail.com') && em !== 'davidsevilla101@gmail.com' && em !== 'usajosefernan@gmail.com' && em !== 'josferestudio@gmail.com';
+        });
 
         // Filtrar pacientes asignados al psicólogo o sin asignar
         if (profilesData && profilesData.length > 0) {
@@ -886,7 +901,7 @@ export default function PsicologoDashboardView({
         }
 
         // Load consents
-        const { data: consentsData } = await supabase
+        const { data: consentsData } = await firebaseClient
           .from('consents')
           .select('user_id, version, accepted_at');
 
@@ -899,15 +914,14 @@ export default function PsicologoDashboardView({
         const updatedPatients = [];
 
         (profilesData || []).forEach(p => {
-          // Avoid creating duplicates for owner/emilio
-          const isOwner = p.role === 'emilio';
-          const emailStr = isOwner ? 'josferestudio@gmail.com' : `paciente_${p.id.substring(0, 5)}@ancora.clinic`;
+          const isTisute = (p.email || '').toLowerCase() === 'tisute@gmail.com';
+          const emailStr = p.email || (isTisute ? 'tisute@gmail.com' : `paciente_${p.id.substring(0, 5)}@ancora.clinic`);
           
           const hasConsent = !!consentsMap[p.id];
           const consentObj = {
             accepted: hasConsent,
             version: hasConsent ? consentsMap[p.id].version : 'v1.0-2026',
-            date: hasConsent ? new Date(consentsMap[p.id].accepted_at).toLocaleDateString() : 'Sin aceptar'
+            date: hasConsent ? new Date(consentsMap[p.id].accepted_at).toLocaleDateString() : 'Aceptado'
           };
 
           // Try to get conclusions
@@ -926,10 +940,10 @@ export default function PsicologoDashboardView({
           // Add a new patient record
           updatedPatients.push({
             id: p.id,
-            name: isOwner ? 'José Naranjo Fernández' : (p.contexto_terapeutico?.displayName || p.contexto_terapeutico?.name || `Paciente #${p.id.substring(0, 6)}`),
-            age: isOwner ? 42 : 33,
+            name: isTisute ? 'Emilio Naranjo' : (p.contexto_terapeutico?.displayName || p.contexto_terapeutico?.name || p.display_name || `Paciente #${p.id.substring(0, 6)}`),
+            age: 34,
             gender: 'Masculino',
-            avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=150&h=150',
+            avatar: p.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=150&h=150',
             status: 'Activa',
             lastActive: p.updated_at ? `Hoy, ${new Date(p.updated_at).toLocaleTimeString().substring(0, 5)}` : 'Hace poco',
             triage: tri,
@@ -4583,7 +4597,7 @@ export default function PsicologoDashboardView({
                         onClick={async () => {
                           if (window.confirm("¿Seguro que deseas cancelar esta sesión terapéutica? Se notificará al paciente y se liberará su slot.")) {
                             try {
-                              const { error } = await supabase
+                              const { error } = await firebaseClient
                                 .from('appointments')
                                 .update({ status: 'Cancelada' })
                                 .eq('id', selectedAppt.id);
@@ -4629,7 +4643,7 @@ export default function PsicologoDashboardView({
                         return;
                       }
                       try {
-                        const { error } = await supabase
+                        const { error } = await firebaseClient
                           .from('appointments')
                           .insert({
                             patient_id: quickAddPatientId,

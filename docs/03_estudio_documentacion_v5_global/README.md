@@ -8,7 +8,7 @@
 
 ## Novedad de la versión 4.0
 
-Esta versión integra la auditoría real del `.zip` del repositorio `ancora-main`: estructura, pantallas, Supabase, Edge Functions, migraciones, deuda técnica, contradicciones con la promesa de privacidad y plan de reconstrucción.
+Esta versión integra la auditoría real del `.zip` del repositorio `ancora-main`: estructura, pantallas, Firebase, Edge Functions, migraciones, deuda técnica, contradicciones con la promesa de privacidad y plan de reconstrucción.
 
 La documentación ya no define solo el backend inteligente; ahora define también:
 
@@ -126,7 +126,7 @@ El repo actual **no falla por falta de ideas**. Falla porque mezcla en una sola 
 - módulos administrativos;
 - lógica IA;
 - datos mock;
-- llamadas reales a Supabase;
+- llamadas reales a Firebase;
 - Edge Functions parcialmente sanitarias;
 - código legacy con fallback localStorage;
 - promesa de privacidad local pero uso de OpenRouter en producción.

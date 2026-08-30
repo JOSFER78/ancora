@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../supabaseClient';
+import { firebaseClient as db, firebaseClient } from '../firebaseAdapter.js';
 import { CheckSquare, Square, Download, AlertTriangle, Info, ListTodo, RefreshCw } from 'lucide-react';
 
 export default function EscudoLegalView({ user, profile }) {
@@ -72,7 +72,7 @@ export default function EscudoLegalView({ user, profile }) {
   async function fetchRoadmap() {
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      const { data, error } = await firebaseClient
         .from('legal_roadmap')
         .select('*')
         .eq('user_id', user.id)
@@ -92,7 +92,7 @@ export default function EscudoLegalView({ user, profile }) {
           tasks: ph.tasks
         }));
 
-        const { data: insertedData, error: insertError } = await supabase
+        const { data: insertedData, error: insertError } = await firebaseClient
           .from('legal_roadmap')
           .insert(initialData)
           .select();
@@ -134,10 +134,10 @@ export default function EscudoLegalView({ user, profile }) {
 
     setPhases(updatedPhases);
 
-    // Save to Supabase
+    // Save to Firebase
     try {
       const targetPhase = updatedPhases.find(p => p.phase_number === phaseNum);
-      const { error } = await supabase
+      const { error } = await firebaseClient
         .from('legal_roadmap')
         .update({
           tasks: targetPhase.tasks,

@@ -47,7 +47,7 @@ src/
     psychologist-panel/
     admin-console/
   integrations/
-    supabase/
+    firebase/
     model-gateway/
 ```
 
@@ -55,7 +55,7 @@ src/
 
 ### Tareas
 
-- Mover Supabase URL y anon key a `.env`.
+- Mover Firebase URL y anon key a `.env`.
 - Rotar credenciales si el proyecto real ha quedado expuesto.
 - Eliminar documentos personales/sensibles del repo.
 - Quitar `.temp`, logs, reportes personales y scripts experimentales del repositorio público.

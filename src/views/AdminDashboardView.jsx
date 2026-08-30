@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../supabaseClient';
-import { db } from '../firebaseClient';
+import { firebaseClient } from '../firebaseAdapter.js';
+import { db as firestoreDb } from '../firebaseClient';
 import { collection, getDocs, doc, setDoc, updateDoc } from 'firebase/firestore';
 import { MemoryRepositoryFactory } from '../infrastructure/storage/MemoryRepositoryFactory';
 import { CognitiveMemoryEngine } from '../services/memory/CognitiveMemoryEngine';
@@ -145,16 +145,16 @@ export default function AdminDashboardView({ user, profile }) {
   };
 
   /**
-   * Carga psicólogos 100% reales desde Firestore y Supabase
+   * Carga psicólogos 100% reales desde Firestore y Firebase
    */
   const fetchRealPsychologists = async () => {
     setLoadingPsicos(true);
     try {
       const psicosMap = new Map();
 
-      // 1. Cargar desde Supabase
+      // 1. Cargar desde Firebase
       try {
-        const { data: supaPsicos, error: supaErr } = await supabase
+        const { data: supaPsicos, error: supaErr } = await firebaseClient
           .from('profiles')
           .select('*')
           .eq('role', 'psicologo');
@@ -177,12 +177,12 @@ export default function AdminDashboardView({ user, profile }) {
           });
         }
       } catch (e) {
-        console.warn("Supabase psicos:", e.message);
+        console.warn("Firebase psicos:", e.message);
       }
 
       // 2. Cargar desde Cloud Firestore
       try {
-        const querySnapshot = await getDocs(collection(db, 'profiles'));
+        const querySnapshot = await getDocs(collection(firestoreDb, 'profiles'));
         querySnapshot.forEach(docSnap => {
           const p = docSnap.data();
           if (p.role === 'psicologo') {
@@ -232,49 +232,75 @@ export default function AdminDashboardView({ user, profile }) {
   };
 
   /**
-   * Carga pacientes 100% reales desde Firestore y Supabase
+   * Carga pacientes 100% reales desde Firestore y Firebase
    */
   const fetchRealPatientsAndCrm = async () => {
     setLoadingCrm(true);
     try {
       const patientsMap = new Map();
+      const EXCLUDED_EMAILS = [
+        'josferestudio@gmail.com',
+        'usajosefernan@gmail.com',
+        'davidsevilla101@gmail.com'
+      ];
+      const EXCLUDED_IDS = [
+        'C9aHCBohV7dC5q5oB0u7y49LIEx1',
+        'C9aHCBohv7dC5q5cb8u7y49LIEe1',
+        '2TOfkVIRccgIgz5WamAIVmUPtD63',
+        '4TG5w9rwZVa6jikp5PKVOduFKNg2',
+        'PbygqVfkfGhdRDDXoDNos1KCXvO2',
+        'davidsevilla101_uid'
+      ];
 
-      // 1. Supabase
+      // 1. Firebase
       try {
-        const { data: supaPatients } = await supabase
+        const { data: supaPatients } = await firebaseClient
           .from('profiles')
-          .select('*')
-          .in('role', ['paciente', 'emilio', 'admin', 'supervisor']);
+          .select('*');
 
         (supaPatients || []).forEach(p => {
-          patientsMap.set(p.id, {
-            id: p.id,
-            role: p.role || 'paciente',
-            name: p.contexto_terapeutico?.displayName || p.contexto_terapeutico?.name || p.display_name || `Paciente #${p.id.substring(0, 6)}`,
-            email: p.email || `paciente_${p.id.substring(0, 6)}@ancora.clinic`,
-            triage: p.contexto_terapeutico?.triaje || null,
-            assignedPsychologistId: p.contexto_terapeutico?.assigned_psychologist_id || null,
-            paymentStatus: p.contexto_terapeutico?.paymentStatus || 'free_trial',
-            createdAt: p.created_at || new Date().toISOString()
-          });
+          const role = (p.role || '').toLowerCase();
+          const email = (p.email || '').toLowerCase();
+          if (
+            !EXCLUDED_EMAILS.includes(email) &&
+            !EXCLUDED_IDS.includes(p.id) &&
+            (role === 'paciente' || role === 'patient' || role === 'emilio' || email === 'tisute@gmail.com')
+          ) {
+            patientsMap.set(p.id, {
+              id: p.id,
+              role: 'paciente',
+              name: p.contexto_terapeutico?.displayName || p.contexto_terapeutico?.name || p.display_name || 'Emilio Naranjo',
+              email: p.email || 'tisute@gmail.com',
+              triage: p.contexto_terapeutico?.triaje || null,
+              assignedPsychologistId: p.contexto_terapeutico?.assigned_psychologist_id || null,
+              paymentStatus: p.contexto_terapeutico?.paymentStatus || 'free_trial',
+              createdAt: p.created_at || new Date().toISOString()
+            });
+          }
         });
       } catch (e) {
-        console.warn("Supabase patients error:", e.message);
+        console.warn("Firebase patients error:", e.message);
       }
 
       // 2. Firestore
       try {
-        const querySnapshot = await getDocs(collection(db, 'profiles'));
+        const querySnapshot = await getDocs(collection(firestoreDb, 'profiles'));
         querySnapshot.forEach(docSnap => {
           const p = docSnap.data();
-          if (p.role !== 'psicologo') {
+          const role = (p.role || '').toLowerCase();
+          const email = (p.email || '').toLowerCase();
+          if (
+            !EXCLUDED_EMAILS.includes(email) &&
+            !EXCLUDED_IDS.includes(docSnap.id) &&
+            (role === 'paciente' || role === 'patient' || role === 'emilio' || email === 'tisute@gmail.com')
+          ) {
             const current = patientsMap.get(docSnap.id) || {};
             patientsMap.set(docSnap.id, {
               ...current,
               id: docSnap.id,
-              role: p.role || current.role || 'paciente',
-              name: p.contexto_terapeutico?.displayName || p.contexto_terapeutico?.name || p.fullName || p.display_name || current.name || `Paciente #${docSnap.id.substring(0, 6)}`,
-              email: p.email || current.email || `paciente_${docSnap.id.substring(0, 6)}@ancora.clinic`,
+              role: 'paciente',
+              name: p.contexto_terapeutico?.displayName || p.contexto_terapeutico?.name || p.fullName || p.display_name || current.name || 'Emilio Naranjo',
+              email: p.email || current.email || 'tisute@gmail.com',
               triage: p.contexto_terapeutico?.triaje || p.triaje || current.triage || null,
               assignedPsychologistId: p.contexto_terapeutico?.assigned_psychologist_id || p.assigned_psychologist_id || current.assignedPsychologistId || null,
               paymentStatus: p.contexto_terapeutico?.paymentStatus || p.paymentStatus || current.paymentStatus || 'free_trial',
@@ -302,9 +328,9 @@ export default function AdminDashboardView({ user, profile }) {
     try {
       const apptMap = new Map();
 
-      // Supabase appointments
+      // Firebase appointments
       try {
-        const { data: supaAppts } = await supabase.from('appointments').select('*');
+        const { data: supaAppts } = await firebaseClient.from('appointments').select('*');
         (supaAppts || []).forEach(a => {
           apptMap.set(a.id, {
             id: a.id,
@@ -344,7 +370,7 @@ export default function AdminDashboardView({ user, profile }) {
    */
   const fetchRealAuditLogs = async () => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await firebaseClient
         .from('consents')
         .select('*')
         .order('accepted_at', { ascending: false })
@@ -527,13 +553,13 @@ export default function AdminDashboardView({ user, profile }) {
 
   const handleReassignPsychologist = async (patientId, psychoId) => {
     try {
-      // 1. Supabase
-      const { data: prof } = await supabase.from('profiles').select('contexto_terapeutico').eq('id', patientId).single();
+      // 1. Firebase
+      const { data: prof } = await firebaseClient.from('profiles').select('contexto_terapeutico').eq('id', patientId).single();
       const updatedCT = { ...(prof?.contexto_terapeutico || {}), assigned_psychologist_id: psychoId };
-      await supabase.from('profiles').update({ contexto_terapeutico: updatedCT }).eq('id', patientId);
+      await firebaseClient.from('profiles').update({ contexto_terapeutico: updatedCT }).eq('id', patientId);
 
       // 2. Firestore
-      const userRef = doc(db, 'profiles', patientId);
+      const userRef = doc(firestoreDb, 'profiles', patientId);
       await updateDoc(userRef, {
         "contexto_terapeutico.assigned_psychologist_id": psychoId,
         assigned_psychologist_id: psychoId,
@@ -809,7 +835,7 @@ export default function AdminDashboardView({ user, profile }) {
             {loadingPsicos ? (
               <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
                 <RefreshCw size={24} className="animate-spin" style={{ margin: '0 auto 10px', display: 'block', color: 'var(--color-cyan)' }} />
-                Cotejando registros de psicólogos con Cloud Firestore y Supabase...
+                Cotejando registros de psicólogos con Cloud Firestore y Firebase...
               </div>
             ) : filteredPsicos.length === 0 ? (
               <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>

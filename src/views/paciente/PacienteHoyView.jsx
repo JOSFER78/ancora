@@ -5,8 +5,15 @@ import {
   Video, Star, CreditCard, ShieldCheck, CheckCircle, ArrowLeft,
   RefreshCw
 } from 'lucide-react';
-import { supabase } from '../../supabaseClient';
+import { firebaseClient as db, firebaseClient } from '../../firebaseAdapter.js';
 import PlanConsumptionWidget from '../../components/PlanConsumptionWidget';
+import { 
+  getCleanPsychologistName, 
+  getDailyMoodSync, 
+  saveDailyMoodSync, 
+  getClinicalTasksSync, 
+  calculateAdherence 
+} from '../../services/clinicalSyncService.js';
 
 export default function PacienteHoyView({ 
   user,
@@ -17,8 +24,26 @@ export default function PacienteHoyView({
   onAssignPsychologist,
   isVirtualDemo = false
 }) {
-  const [selectedMood, setSelectedMood] = useState(dailyMoodToday?.anxiety_level ? Math.round((10 - dailyMoodToday.anxiety_level) / 2.5) : null);
-  const [moodSavedLocal, setMoodSavedLocal] = useState(!!dailyMoodToday);
+  const userId = user?.id || profile?.id || 'guest';
+  const initialMoodSync = getDailyMoodSync(userId);
+  const [selectedMood, setSelectedMood] = useState(
+    dailyMoodToday?.anxiety_level 
+      ? Math.round((10 - dailyMoodToday.anxiety_level) / 2.5) 
+      : (initialMoodSync?.score || null)
+  );
+  const [moodSavedLocal, setMoodSavedLocal] = useState(!!dailyMoodToday || !!initialMoodSync);
+
+  // Escuchar sincronización de ánimo y tareas
+  useEffect(() => {
+    const handleMoodUpdated = (e) => {
+      if (e.detail?.score) {
+        setSelectedMood(e.detail.score);
+        setMoodSavedLocal(true);
+      }
+    };
+    window.addEventListener('ancora_mood_updated', handleMoodUpdated);
+    return () => window.removeEventListener('ancora_mood_updated', handleMoodUpdated);
+  }, []);
 
   // Función helper para generar slots reales dinámicos basados en la fecha de hoy
   const getDynamicSlots = (offset) => {
@@ -77,7 +102,7 @@ export default function PacienteHoyView({
   useEffect(() => {
     const fetchPsychologists = async () => {
       try {
-        const { data, error } = await supabase
+        const { data, error } = await firebaseClient
           .from('psychologist_profiles')
           .select('*');
         if (!error && data && data.length > 0) {
@@ -205,6 +230,9 @@ export default function PacienteHoyView({
     setSelectedMood(carita.value);
     setMoodSavedLocal(true);
     
+    // Sincronización central del estado de ánimo diario
+    saveDailyMoodSync(userId, carita.value, `Check-in de carita: ${carita.label}`);
+
     // Si tenemos callback, guardamos en la base de datos o simulamos
     if (onMoodSaved) {
       const todayDate = new Date().toISOString().split('T')[0];
@@ -257,7 +285,7 @@ export default function PacienteHoyView({
       if (!profile?.id) return;
       try {
         setLoadingStreak(true);
-        const { data, error } = await supabase
+        const { data, error } = await firebaseClient
           .from('daily_moods')
           .select('date, anxiety_level')
           .eq('user_id', profile.id)
@@ -378,7 +406,7 @@ export default function PacienteHoyView({
       }
 
       try {
-        const { data, error } = await supabase
+        const { data, error } = await firebaseClient
           .from('appointments')
           .select('*')
           .eq('patient_id', profile.id)
@@ -1321,7 +1349,7 @@ export default function PacienteHoyView({
                 </h3>
                 <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--color-emerald)' }} />
-                  Con {psychologistsList.find(p => p.id === nextAppt.psychologist_id)?.name || 'Tu psicólogo'} (Videollamada en vivo)
+                  Con {getCleanPsychologistName(nextAppt.psychologist_id, nextAppt.psychologist_name, psychologistsList)} (Videollamada en vivo)
                 </p>
               </div>
               

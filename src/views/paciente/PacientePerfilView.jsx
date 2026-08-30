@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../../supabaseClient';
+import { firebaseClient } from '../../firebaseAdapter.js';
 import { doc, deleteDoc, setDoc } from 'firebase/firestore';
-import { db } from '../../firebaseClient';
+import { db as firestoreDb } from '../../firebaseClient';
 import { 
   User, Mail, CreditCard, Clock, FileText, 
   Download, ShieldCheck, Heart, Sparkles, CheckCircle2, ArrowRight, LogOut,
@@ -71,7 +71,7 @@ export default function PacientePerfilView({ profile, onProfileUpdated, user, is
       
       const userId = profile?.id || user?.id || user?.uid;
       if (userId) {
-        await supabase.from('profiles').update({ app_config: appConfigObj }).eq('id', userId);
+        await firebaseClient.from('profiles').update({ app_config: appConfigObj }).eq('id', userId);
         if (onProfileUpdated) {
           onProfileUpdated({ ...profile, app_config: appConfigObj });
         }
@@ -101,7 +101,7 @@ export default function PacientePerfilView({ profile, onProfileUpdated, user, is
       };
 
       if (userId) {
-        await supabase.from('profiles').update({
+        await firebaseClient.from('profiles').update({
           display_name: nameInput,
           avatar: avatarUrl,
           contexto_terapeutico: updatedProfile.contexto_terapeutico
@@ -133,24 +133,24 @@ export default function PacientePerfilView({ profile, onProfileUpdated, user, is
         // 1. Borrar de Firestore
         if (targetId) {
           try {
-            await deleteDoc(doc(db, 'profiles', targetId));
+            await deleteDoc(doc(firestoreDb, 'profiles', targetId));
           } catch (fsErr) {
             console.warn('[DeleteUser] Firestore deleteDoc notice:', fsErr);
           }
         }
 
-        // 2. Borrar de Supabase
+        // 2. Borrar de Firebase
         if (targetId) {
           await Promise.allSettled([
-            supabase.from('clinical_profiles').delete().eq('patient_id', targetId),
-            supabase.from('timeline_events').delete().eq('patient_id', targetId),
-            supabase.from('clinical_life_tree').delete().eq('patient_id', targetId),
-            supabase.from('medications').delete().eq('patient_id', targetId),
-            supabase.from('clinical_documents').delete().eq('patient_id', targetId),
-            supabase.from('consents').delete().eq('user_id', targetId),
-            supabase.from('chat_messages').delete().eq('patient_id', targetId),
-            supabase.from('diario_entries').delete().eq('user_id', targetId),
-            supabase.from('profiles').delete().eq('id', targetId)
+            firebaseClient.from('clinical_profiles').delete().eq('patient_id', targetId),
+            firebaseClient.from('timeline_events').delete().eq('patient_id', targetId),
+            firebaseClient.from('clinical_life_tree').delete().eq('patient_id', targetId),
+            firebaseClient.from('medications').delete().eq('patient_id', targetId),
+            firebaseClient.from('clinical_documents').delete().eq('patient_id', targetId),
+            firebaseClient.from('consents').delete().eq('user_id', targetId),
+            firebaseClient.from('chat_messages').delete().eq('patient_id', targetId),
+            firebaseClient.from('diario_entries').delete().eq('user_id', targetId),
+            firebaseClient.from('profiles').delete().eq('id', targetId)
           ]);
         }
 
@@ -160,7 +160,7 @@ export default function PacientePerfilView({ profile, onProfileUpdated, user, is
 
         // 4. Cerrar sesión
         try {
-          await supabase.auth.signOut();
+          await firebaseClient.auth.signOut();
         } catch (e) {}
 
         if (onLogout) {
@@ -187,10 +187,10 @@ export default function PacientePerfilView({ profile, onProfileUpdated, user, is
           }
 
           await Promise.allSettled([
-            supabase.from('clinical_profiles').delete().eq('patient_id', targetId),
-            supabase.from('timeline_events').delete().eq('patient_id', targetId),
-            supabase.from('clinical_life_tree').delete().eq('patient_id', targetId),
-            supabase.from('medications').delete().eq('patient_id', targetId)
+            db.from('clinical_profiles').delete().eq('patient_id', targetId),
+            db.from('timeline_events').delete().eq('patient_id', targetId),
+            db.from('clinical_life_tree').delete().eq('patient_id', targetId),
+            db.from('medications').delete().eq('patient_id', targetId)
           ]);
         }
 

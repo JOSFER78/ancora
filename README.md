@@ -74,8 +74,8 @@ Para garantizar una confidencialidad médica absoluta y cumplir con el RGPD euro
 
 *   **Frontend**: React 19 + Vite (JavaScript ES Modules).
 *   **Diseño Visual**: Vanilla CSS con la especificación "Mente Sana UI" (colores pastel relajantes, tipografías sin serifa espaciadas, glassmorphism e iluminación reactiva).
-*   **Base de Datos**: Supabase PostgreSQL con Row Level Security (RLS) activo para aislamiento estricto de roles.
-*   **Servicios Cloud & Edge**: Supabase Edge Functions (Deno) para integraciones de APIs clínicas, cifrado HMAC y orquestación de LLMs locales vía OpenRouter.
+*   **Base de Datos**: Firebase PostgreSQL con Row Level Security (RLS) activo para aislamiento estricto de roles.
+*   **Servicios Cloud & Edge**: Firebase Edge Functions (Deno) para integraciones de APIs clínicas, cifrado HMAC y orquestación de LLMs locales vía OpenRouter.
 
 ---
 

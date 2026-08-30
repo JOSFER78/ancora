@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { supabase } from '../supabaseClient';
+import { firebaseClient as db, firebaseClient } from '../firebaseAdapter.js';
 import { invokeChatTerapeuta } from '../lib/chatTerapeuta';
 import { processChatSessionClinically } from '../lib/clinicalEngine';
 import {
@@ -125,7 +125,7 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
     setTranscribingAudio(true);
     setError(null);
     try {
-      const { data: { session: authSession } } = await supabase.auth.getSession();
+      const { data: { session: authSession } } = await db.auth.getSession();
       if (!authSession) {
         throw new Error("Sesión de usuario no disponible.");
       }
@@ -187,7 +187,7 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
   // Load conversations list on mount
   const loadConversations = async () => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await firebaseClient
         .from('conversations')
         .select('*')
         .eq('user_id', user.id)
@@ -214,7 +214,7 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
     setLoading(true);
     setError(null);
     try {
-      const { data: { session: authSession } } = await supabase.auth.getSession();
+      const { data: { session: authSession } } = await db.auth.getSession();
       if (!authSession) return;
 
       const resData = await invokeChatTerapeuta({
@@ -253,7 +253,7 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
     setLoading(true);
     setError(null);
     try {
-      const { data: { session: authSession } } = await supabase.auth.getSession();
+      const { data: { session: authSession } } = await db.auth.getSession();
       if (!authSession) return;
 
       const resData = await invokeChatTerapeuta({
@@ -288,7 +288,7 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
 
     setLoading(true);
     try {
-      const { error } = await supabase
+      const { error } = await firebaseClient
         .from('conversations')
         .update({ status: 'active', closed_at: null })
         .eq('user_id', user.id)
@@ -335,7 +335,7 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
       const conclusionsArray = editSessionConclusions.split('\n').map(c => c.trim()).filter(Boolean);
       const exercisesArray = editSessionExercises.split('\n').map(s => s.trim()).filter(Boolean);
 
-      const { error } = await supabase
+      const { error } = await firebaseClient
         .from('conversations')
         .update({
           captured_fact: editSessionFact.trim(),
@@ -374,7 +374,7 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
   const handleCreateNewConversation = async (isInitial = false) => {
     try {
       const baseTitle = genericMode ? 'Nueva Sesión' : 'Nueva Sesión con Asistente de apoyo';
-      const { data, error } = await supabase
+      const { data, error } = await firebaseClient
         .from('conversations')
         .insert([{ user_id: user.id, title: baseTitle }])
         .select();
@@ -386,7 +386,7 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
       const greeting = genericMode
         ? 'Hola. Soy tu asistente de apoyo. Este espacio se irá adaptando a lo que compartas en el chat y a los documentos que subas. ¿Qué te gustaría trabajar hoy?'
         : 'Hola. Soy el asistente de apoyo de Áncora. Este espacio sirve para acompañarte entre sesiones y ordenar lo que compartas para que tu psicólogo pueda revisarlo contigo. No hago diagnósticos ni sustituyo una sesión clínica. ¿Qué te gustaría trabajar hoy?';
-      await supabase.from('messages').insert([{
+      await db.from('messages').insert([{
         conversation_id: newConv.id,
         role: 'assistant',
         content: greeting
@@ -404,7 +404,7 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
   const loadMessages = async (convId) => {
     if (!convId) return;
     try {
-      const { data, error } = await supabase
+      const { data, error } = await firebaseClient
         .from('messages')
         .select('*')
         .eq('conversation_id', convId)
@@ -466,7 +466,7 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
     if (!convId) return;
     if (confirm("¿Estás seguro de que deseas eliminar permanentemente esta sesión de tu historial en Áncora?")) {
       try {
-        const { error } = await supabase
+        const { error } = await firebaseClient
           .from('conversations')
           .delete()
           .eq('user_id', user.id)
@@ -486,7 +486,7 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
             evoluciones: [],
             temas: []
           };
-          const { error: profileError } = await supabase
+          const { error: profileError } = await firebaseClient
             .from('profiles')
             .update({ contexto_terapeutico: emptyCtx })
             .eq('id', user.id);
@@ -595,7 +595,7 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
 
     // 1. Guardar mensaje en Áncora
     try {
-      await supabase.from('messages').insert([{
+      await db.from('messages').insert([{
         conversation_id: activeConversationId,
         role: 'user',
         content: userMessage.content,
@@ -709,7 +709,7 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
     setInput('');
 
     try {
-      await supabase.from('messages').insert([{
+      await db.from('messages').insert([{
         conversation_id: activeConversationId,
         role: 'user',
         content: userMessage.content
@@ -853,7 +853,7 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
                             (async () => {
                               const trimmed = editingTitle.trim();
                               if (trimmed) {
-                                await supabase.from('conversations').update({ title: trimmed }).eq('user_id', user.id).eq('id', conv.id);
+                                await db.from('conversations').update({ title: trimmed }).eq('user_id', user.id).eq('id', conv.id);
                                 setConversations(prev => prev.map(c => c.id === conv.id ? { ...c, title: trimmed } : c));
                               }
                               setEditingConvId(null);
@@ -880,7 +880,7 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
                           e.stopPropagation();
                           const trimmed = editingTitle.trim();
                           if (trimmed) {
-                            await supabase.from('conversations').update({ title: trimmed }).eq('user_id', user.id).eq('id', conv.id);
+                            await db.from('conversations').update({ title: trimmed }).eq('user_id', user.id).eq('id', conv.id);
                             setConversations(prev => prev.map(c => c.id === conv.id ? { ...c, title: trimmed } : c));
                           }
                           setEditingConvId(null);
@@ -1003,7 +1003,7 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
                       if (e.key === 'Enter') {
                         const trimmed = editingTitle.trim();
                         if (trimmed) {
-                          await supabase.from('conversations').update({ title: trimmed }).eq('user_id', user.id).eq('id', activeConversationId);
+                          await db.from('conversations').update({ title: trimmed }).eq('user_id', user.id).eq('id', activeConversationId);
                           setConversations(prev => prev.map(c => c.id === activeConversationId ? { ...c, title: trimmed } : c));
                         }
                         setEditingConvId(null);
@@ -1027,7 +1027,7 @@ export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdat
                       e.stopPropagation();
                       const trimmed = editingTitle.trim();
                       if (trimmed) {
-                        await supabase.from('conversations').update({ title: trimmed }).eq('user_id', user.id).eq('id', activeConversationId);
+                        await db.from('conversations').update({ title: trimmed }).eq('user_id', user.id).eq('id', activeConversationId);
                         setConversations(prev => prev.map(c => c.id === activeConversationId ? { ...c, title: trimmed } : c));
                       }
                       setEditingConvId(null);

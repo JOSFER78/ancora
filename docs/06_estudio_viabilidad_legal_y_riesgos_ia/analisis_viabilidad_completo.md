@@ -55,7 +55,7 @@ sequenceDiagram
     autonumber
     actor Paciente
     participant Cliente as App (Navegador/Móvil)
-    participant Auth as Supabase Auth
+    participant Auth as Firebase Auth
     participant DB as Postgres (Datos Cifrados)
 
     Paciente->>Cliente: Introduce Email y Contraseña
@@ -67,12 +67,12 @@ sequenceDiagram
     Note over Paciente: Registro Completado con Éxito
 ```
 
-1.  **Autenticación Estándar:** El usuario se registra a través de Supabase Auth (correo/contraseña).
+1.  **Autenticación Estándar:** El usuario se registra a través de Firebase Auth (correo/contraseña).
 2.  **Generación de Claves Criptográficas Locales:**
     *   Al registrarse, el cliente (JavaScript en el navegador mediante la **WebCrypto API**) ejecuta una función de derivación de claves **Argon2id** o **PBKDF2 (600,000 iteraciones + sal única)** utilizando la contraseña del usuario. Esto genera una **Clave Maestra de Cifrado (KEK)** que nunca sale de su dispositivo.
     *   El cliente genera un par de claves asimétricas RSA-OAEP de 3072 bits (Clave Pública y Clave Privada).
     *   La **Clave Privada** se cifra localmente mediante AES-GCM-256 utilizando la **Clave Maestra (KEK)**.
-    *   La **Clave Pública** y la **Clave Privada Cifrada** se envían y almacenan en la base de datos de Supabase.
+    *   La **Clave Pública** y la **Clave Privada Cifrada** se envían y almacenan en la base de datos de Firebase.
 3.  **Flujo de Cifrado del Diario / Chats:**
     *   Cada entrada de diario o mensaje del chat se cifra en el cliente con una clave simétrica AES-GCM-256 generada al vuelo (*Clave de Sesión*).
     *   Esta *Clave de Sesión* se cifra por duplicado: una vez con la Clave Pública del Paciente, y otra vez con la Clave Pública del Psicólogo asignado.

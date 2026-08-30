@@ -38,7 +38,10 @@ export class ContextBuilder {
     lifeTreeNodes = [],
     recentMessages = [],
     currentQuery = '',
-    emotionalState = null
+    emotionalState = null,
+    conversationTitle = null,
+    topicFolder = null,
+    recentCycleSummaries = []
   }) {
     const budget = this.budgetManager.getBudgetDistribution();
 
@@ -58,8 +61,27 @@ export class ContextBuilder {
       `- ENFOCADO EN CONTENCIÓN Y ANCLAJE: Utiliza las directivas y pautas somáticas establecidas por el terapeuta.\n` +
       `- FORMATO: Sé directo, cálido, estructurado y conciso. Párrafos breves, negritas y viñetas limpias. Cierra con preguntas abiertas o pautas somáticas concretas.`;
 
+    // Inyectar Foco del Chat Actual y Continuidad entre Sesiones (Estilo Claude Code / ChatGPT)
+    let sessionFocusText = '';
+    if (conversationTitle || topicFolder || (recentCycleSummaries && recentCycleSummaries.length > 0)) {
+      sessionFocusText += `\n\n--- FOCO DE LA CONVERSACIÓN ACTUAL Y CONTINUIDAD ENTRE SESIONES ---`;
+      if (conversationTitle) {
+        sessionFocusText += `\n• Título/Foco del chat activo: "${conversationTitle}"`;
+      }
+      if (topicFolder && topicFolder !== 'General') {
+        sessionFocusText += `\n• Carpeta temática asignada: "${topicFolder}"`;
+      }
+      if (recentCycleSummaries && recentCycleSummaries.length > 0) {
+        sessionFocusText += `\n• Otras sesiones recientes de este ciclo terapéutico:`;
+        recentCycleSummaries.forEach(s => {
+          sessionFocusText += `\n  * "${s.title}": ${s.summary}`;
+        });
+      }
+      sessionFocusText += `\nTen presente este hilo temático para orientar tus intervenciones y mantener la continuidad clínica.`;
+    }
+
     // Inyectar datos del triaje de registro y ficha del paciente
-    let triageText = `\n\n--- EXPEDIENTE CLÍNICO Y TRIAJE INICIAL CONOCIDO ---` +
+    let triageText = sessionFocusText + `\n\n--- EXPEDIENTE CLÍNICO Y TRIAJE INICIAL CONOCIDO ---` +
       `\n• Nombre del paciente: ${effectiveName}` +
       `\n• Motivo inicial de consulta declarado: "${motivoConsulta}"`;
 
@@ -77,10 +99,29 @@ export class ContextBuilder {
       triageText += `\n• Año de nacimiento: ${anoNacimiento}`;
     }
 
-    triageText += `\n\n--- DIRECTIVAS CRÍTICAS DE TRANSPARENCIA Y SONSACADO CLÍNICO PERSUASIVO ---` +
-      `\n1. TRANSPARENCIA SOBRE DATOS DEL TRIAJE: Si ${effectiveName} te pregunta "¿qué sabes de mí?", "¿qué información tienes sobre mí?" o similar, NUNCA digas que no tienes información o que no tienes historial. Responde con calidez y cercanía resumiendo lo que sabes de su triaje de admisión: su nombre (${effectiveName}), el motivo por el que acudió ("${motivoConsulta}"), sus niveles basales de ansiedad y ánimo en el triaje (GAD-7: ${triageData?.gad7 ?? 'N/A'}/21, PHQ-9: ${triageData?.phq9 ?? 'N/A'}/27) y sus focos de interés (${focosInteres.join(', ') || 'gestión emocional'}).` +
-      `\n2. SONSACADO PERSUASIVO Y CONSTRUCCIÓN INVISIBLE DEL EXPEDIENTE VIVO: Tu misión terapéutica esencial es ir descubriendo y organizando en segundo plano su historia clínica completa (árbol vital de familia e infancia, relaciones de pareja o amistades, hitos biográficos, hábitos de sueño, salud física, medicación actual o previa y detonantes) de manera cálida, empática e invisible para el paciente. El paciente NO debe sentir que rellena un cuestionario, sino que está en un diálogo fluido y de confianza.` +
-      `\n3. TÉCNICA SOCRÁTICA Y NOTAS DE VOZ: En cada intervención, valida primero la emoción del paciente, ofrece contención o perspectiva cognitiva, y remata con una pregunta suave y curiosa que le invite a profundizar (ej. "¿esto te recuerda a cómo se gestionaban las cosas en tu familia de origen?", "¿cómo sueles descansar por las noches cuando esto pasa?", "¿hay antecedentes en tu familia con situaciones parecidas?"). Si el tema es denso, invítale a notas de voz: "Si te resulta más cómodo desahogarte hablando, puedes pulsar el micrófono y grabarme un audio breve contándomelo a tu ritmo".`;
+    // Inyectar Historial Clínico Profundo y Formulación (Trading, Impulsividad, Susana, Heridas de Infancia)
+    const hist = ctx.historial_clinico || {};
+    if (hist.resumen_vital || hist.patrones_comunes || hist.antecedentes_psicologicos) {
+      triageText += `\n\n--- HISTORIAL CLÍNICO Y FORMULACIÓN TERAPÉUTICA ---`;
+      if (hist.resumen_vital) triageText += `\n• Resumen Clínico Vital: ${hist.resumen_vital}`;
+      if (hist.patrones_comunes) triageText += `\n• Patrones y Disparadores: ${hist.patrones_comunes}`;
+      if (hist.antecedentes_psicologicos) triageText += `\n• Antecedentes e Introspección: ${hist.antecedentes_psicologicos}`;
+      if (hist.antecedentes_medicos) triageText += `\n• Marcadores Médicos y Somáticos: ${hist.antecedentes_medicos}`;
+    }
+
+    // Inyectar Dudas Clínicas y Sonsacado Socrático
+    const dudas = ctx.dudas_clinicas_sonsacado || [];
+    if (dudas.length > 0) {
+      triageText += `\n\n--- DUDAS CLÍNICAS PENDIENTES DE EXPLORAR (SONSACADO SOCRÁTICO) ---`;
+      dudas.slice(0, 5).forEach((d, idx) => {
+        triageText += `\n${idx + 1}. ${d}`;
+      });
+    }
+
+    triageText += `\n\n--- DIRECTIVAS DE ROL: PSICÓLOGO CLÍNICO JUNIOR PROACTIVO Y EMPÁTICO ---` +
+      `\n1. PROACTIVIDAD TERAPÉUTICA: NUNCA respondas con frases frías, genéricas o pasivas tipo "¿Cómo te encuentras hoy? ¿En qué puedo ayudarte?". Conoces a fondo el expediente de ${effectiveName}. Cuando salude o hable, conecta de inmediato con su realidad vivencial (su gestión del estrés/impulsividad, sus hábitos de descanso, sus figuras de apoyo como Susana o sus metas de vida) de forma cálida y humana.` +
+      `\n2. SONSACADO PERSUASIVO SIN DIAGNOSTICAR: Tu rol es escuchar, contener, regular y persuadir con sutileza para que el paciente profundice en su historia (familia, infancia, detonantes, relaciones), utilizando preguntas socráticas suaves extraídas de las dudas clínicas pendientes.` +
+      `\n3. NOTAS DE VOZ: Si notas que el tema requiere explayarse, anímale con calidez a enviar una nota de voz ("Si te resulta más cómodo, puedes pulsar el micrófono y grabarme un audio breve contándomelo").`;
 
     systemPrompt += triageText;
 

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { supabase } from '../supabaseClient';
+import { firebaseClient as db, firebaseClient } from '../firebaseAdapter.js';
 import { isOwnerUser } from '../appConfig';
 import { Settings, User, LogOut, Mail, Phone, Lock, CreditCard, Calculator, FileText, Check, AlertCircle, Sparkles } from 'lucide-react';
 
@@ -42,7 +42,7 @@ export default function AjustesView({ user, profile, onLogout, onProfileUpdated 
 
   const handleLogoutClick = async () => {
     try {
-      const { error } = await supabase.auth.signOut();
+      const { error } = await db.auth.signOut();
       if (error) throw error;
       onLogout();
     } catch (e) {
@@ -73,7 +73,7 @@ export default function AjustesView({ user, profile, onLogout, onProfileUpdated 
         authUpdates.password = newPassword;
       }
       if (Object.keys(authUpdates).length > 0) {
-        const { error: authError } = await supabase.auth.updateUser(authUpdates);
+        const { error: authError } = await db.auth.updateUser(authUpdates);
         if (authError) throw authError;
       }
 
@@ -85,7 +85,7 @@ export default function AjustesView({ user, profile, onLogout, onProfileUpdated 
         mobile_phone: mobilePhone.trim()
       };
 
-      const { error: profileError } = await supabase
+      const { error: profileError } = await firebaseClient
         .from('profiles')
         .upsert({
           id: user.id,

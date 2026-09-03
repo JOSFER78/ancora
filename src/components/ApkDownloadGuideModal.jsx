@@ -1,6 +1,5 @@
-import React from 'react';
-import { Download, X, ShieldAlert, CheckCircle2 } from 'lucide-react';
 
+import { Download, X, ShieldAlert, CheckCircle2 } from 'lucide-react';
 export const ApkDownloadGuideModal = ({ isOpen, onClose }) => {
   if (!isOpen) return null;
 

@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import { firebaseClient as db, firebaseClient } from '../firebaseAdapter.js';
 import { isOwnerUser } from '../appConfig';
-import { Settings, User, LogOut, Mail, Phone, Lock, CreditCard, Calculator, FileText, Check, AlertCircle, Sparkles } from 'lucide-react';
-
+import { Settings, User, LogOut, CreditCard, Calculator, FileText, Sparkles } from 'lucide-react';
 export default function AjustesView({ user, profile, onLogout, onProfileUpdated }) {
   const owner = isOwnerUser(user);
   

@@ -1,25 +1,19 @@
-import React, { useState } from 'react';
-import { 
-  ShieldCheck, 
-  FileText, 
-  Lock, 
-  HelpCircle, 
-  BookOpen, 
-  HeartHandshake, 
-  Mail, 
-  PhoneCall, 
-  X, 
-  CheckCircle2, 
-  ChevronDown, 
-  ChevronUp, 
-  ExternalLink,
-  Building2,
-  AlertTriangle
+import { useState } from 'react';
+import {
+  ShieldCheck,
+  FileText,
+  HelpCircle,
+  BookOpen,
+  Mail,
+  X,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  Building2
 } from 'lucide-react';
-
 export const LegalModals = ({ modalType, onClose }) => {
-  if (!modalType) return null;
-
+  // Los hooks van SIEMPRE antes de cualquier return condicional: si el orden
+  // cambia entre renders, React corrompe el estado (regla de los hooks).
   // Estado para acordeones de FAQ
   const [openFaqIndex, setOpenFaqIndex] = useState(0);
 

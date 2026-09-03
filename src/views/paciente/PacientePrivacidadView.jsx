@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { 
-  Shield, ShieldCheck, Eye, Download, 
-  Trash2, Lock, CheckCircle2, AlertTriangle
+import {
+  Eye,
+  Download,
+  Trash2,
+  Lock
 } from 'lucide-react';
-import { firebaseClient as db, firebaseClient } from '../../firebaseAdapter.js';
-
+import { firebaseClient } from '../../firebaseAdapter.js';
 export default function PacientePrivacidadView({ user, onProfileUpdated, profile }) {
   const [shareTherapist, setShareTherapist] = useState(true);
   const [useAI, setUseAI] = useState(true);

@@ -1,65 +1,42 @@
 import { useState, useEffect } from 'react';
 import { firebaseClient } from '../firebaseAdapter.js';
 import { db as firestoreDb } from '../firebaseClient';
-import { collection, getDocs, doc, setDoc, updateDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, updateDoc } from 'firebase/firestore';
 import { MemoryRepositoryFactory } from '../infrastructure/storage/MemoryRepositoryFactory';
 import { CognitiveMemoryEngine } from '../services/memory/CognitiveMemoryEngine';
-import { 
-  getAiApiKey, 
-  setAiApiKey, 
-  getAiModelPreference, 
-  setAiModelPreference, 
-  askClinicalAI 
+import {
+  getAiApiKey,
+  setAiApiKey,
+  getAiModelPreference,
+  setAiModelPreference
 } from '../services/aiService';
-import { 
-  validateCOPFormat, 
-  validateRCInsurance, 
-  evaluatePsychologistCompliance, 
-  approvePsychologistPersistent, 
-  batchApprovePsychologists, 
-  rejectOrAmendPsychologist 
+import { askClinicalAI, checkAIEndpoint, CLINICAL_MODELS } from '../services/claudeService.js';
+import {
+  evaluatePsychologistCompliance,
+  approvePsychologistPersistent,
+  batchApprovePsychologists,
+  rejectOrAmendPsychologist
 } from '../lib/clinicalEngine';
-import { 
-  Users, 
-  Activity, 
-  AlertTriangle, 
-  CheckCircle, 
-  ShieldCheck, 
-  CreditCard, 
-  Sparkles, 
-  Cpu, 
-  Brain, 
-  TrendingUp, 
-  Lock, 
-  Search, 
-  RefreshCw, 
-  Database, 
-  Info,
-  Settings,
-  Power,
+import {
+  Users,
+  CheckCircle,
+  ShieldCheck,
+  CreditCard,
+  Sparkles,
+  Brain,
+  Search,
+  RefreshCw,
+  Database,
   Sliders,
   ShieldAlert,
   Server,
   Zap,
-  Terminal,
-  Download,
-  Trash2,
-  Plus,
-  Edit,
   Check,
-  X,
-  Eye,
-  FileText,
-  Globe,
-  HardDrive,
-  Filter,
-  ArrowRight,
   Clock,
   Video,
   Calendar,
   DollarSign
 } from 'lucide-react';
-
 export default function AdminDashboardView({ user, profile }) {
   const [activeTab, setActiveTab] = useState('validation'); // 'validation' | 'system_control' | 'crm' | 'sessions' | 'billing' | 'cognitive_memory' | 'audit'
   
@@ -238,19 +215,15 @@ export default function AdminDashboardView({ user, profile }) {
     setLoadingCrm(true);
     try {
       const patientsMap = new Map();
-      const EXCLUDED_EMAILS = [
-        'josferestudio@gmail.com',
-        'usajosefernan@gmail.com',
-        'davidsevilla101@gmail.com'
-      ];
-      const EXCLUDED_IDS = [
-        'C9aHCBohV7dC5q5oB0u7y49LIEx1',
-        'C9aHCBohv7dC5q5cb8u7y49LIEe1',
-        '2TOfkVIRccgIgz5WamAIVmUPtD63',
-        '4TG5w9rwZVa6jikp5PKVOduFKNg2',
-        'PbygqVfkfGhdRDDXoDNos1KCXvO2',
-        'davidsevilla101_uid'
-      ];
+      // Quién es paciente se decide por el rol del perfil, no por una lista
+      // de correos y UID escritos a mano. La lista anterior metía en el bundle
+      // los datos personales de las tres cuentas reales, y encima habría dejado
+      // de funcionar en cuanto se diera de alta un profesional más.
+      const esPaciente = (perfil) => {
+        const rol = String(perfil?.role || '').toLowerCase();
+        if (['psicologo', 'psychologist', 'supervisor', 'admin'].includes(rol)) return false;
+        return rol === 'paciente' || rol === 'patient' || rol === '';
+      };
 
       // 1. Firebase
       try {
@@ -259,18 +232,12 @@ export default function AdminDashboardView({ user, profile }) {
           .select('*');
 
         (supaPatients || []).forEach(p => {
-          const role = (p.role || '').toLowerCase();
-          const email = (p.email || '').toLowerCase();
-          if (
-            !EXCLUDED_EMAILS.includes(email) &&
-            !EXCLUDED_IDS.includes(p.id) &&
-            (role === 'paciente' || role === 'patient' || role === 'emilio' || email === 'tisute@gmail.com')
-          ) {
+          if (esPaciente(p)) {
             patientsMap.set(p.id, {
               id: p.id,
               role: 'paciente',
-              name: p.contexto_terapeutico?.displayName || p.contexto_terapeutico?.name || p.display_name || 'Emilio Naranjo',
-              email: p.email || 'tisute@gmail.com',
+              name: p.contexto_terapeutico?.displayName || p.contexto_terapeutico?.name || p.display_name || `Paciente ${String(p.id).slice(0, 6)}`,
+              email: p.email || '',
               triage: p.contexto_terapeutico?.triaje || null,
               assignedPsychologistId: p.contexto_terapeutico?.assigned_psychologist_id || null,
               paymentStatus: p.contexto_terapeutico?.paymentStatus || 'free_trial',
@@ -287,20 +254,14 @@ export default function AdminDashboardView({ user, profile }) {
         const querySnapshot = await getDocs(collection(firestoreDb, 'profiles'));
         querySnapshot.forEach(docSnap => {
           const p = docSnap.data();
-          const role = (p.role || '').toLowerCase();
-          const email = (p.email || '').toLowerCase();
-          if (
-            !EXCLUDED_EMAILS.includes(email) &&
-            !EXCLUDED_IDS.includes(docSnap.id) &&
-            (role === 'paciente' || role === 'patient' || role === 'emilio' || email === 'tisute@gmail.com')
-          ) {
+          if (esPaciente(p)) {
             const current = patientsMap.get(docSnap.id) || {};
             patientsMap.set(docSnap.id, {
               ...current,
               id: docSnap.id,
               role: 'paciente',
-              name: p.contexto_terapeutico?.displayName || p.contexto_terapeutico?.name || p.fullName || p.display_name || current.name || 'Emilio Naranjo',
-              email: p.email || current.email || 'tisute@gmail.com',
+              name: p.contexto_terapeutico?.displayName || p.contexto_terapeutico?.name || p.fullName || p.display_name || current.name || `Paciente ${docSnap.id.slice(0, 6)}`,
+              email: p.email || current.email || '',
               triage: p.contexto_terapeutico?.triaje || p.triaje || current.triage || null,
               assignedPsychologistId: p.contexto_terapeutico?.assigned_psychologist_id || p.assigned_psychologist_id || current.assignedPsychologistId || null,
               paymentStatus: p.contexto_terapeutico?.paymentStatus || p.paymentStatus || current.paymentStatus || 'free_trial',
@@ -607,16 +568,20 @@ export default function AdminDashboardView({ user, profile }) {
     setTestingAiConnection(true);
     setAiTestResult(null);
     try {
+      // Comprueba el router real (OmniRoute), no el gateway antiguo: si el
+      // panel dijera "todo bien" pinchando otro sitio, no serviría de nada.
       const startTime = Date.now();
-      const reply = await askClinicalAI({
-        messages: [
-          { role: 'system', content: 'Responde únicamente con "OK_CLINICAL_GATEWAY_ONLINE".' },
-          { role: 'user', content: 'Ping de verificación.' }
-        ],
-        model: activeAiModel
+      const salud = await checkAIEndpoint();
+      if (!salud.ok) throw new Error(salud.error || 'El endpoint no responde.');
+
+      const { content: reply, model } = await askClinicalAI({
+        system: 'Responde únicamente con "OK_CLINICAL_GATEWAY_ONLINE".',
+        messages: [{ role: 'user', content: 'Ping de verificación.' }],
+        model: CLINICAL_MODELS.CHAT,
+        maxTokens: 20
       });
       const pingMs = Date.now() - startTime;
-      setAiTestResult({ success: true, pingMs, reply });
+      setAiTestResult({ success: true, pingMs, reply, model });
       setServiceStatus(prev => ({
         ...prev,
         llmGateway: { ...prev.llmGateway, pingMs, status: 'healthy' }

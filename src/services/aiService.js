@@ -1,16 +1,39 @@
 /**
- * Servicio Oficial de Inteligencia Artificial Clínica Áncora ⚓
- * Arquitectura Tripartita de 3 Modelos Especializados:
- * 1. Chat & Acompañamiento Empático: Fast/Auto (DeepSeek V4 Flash)
- * 2. Extracción Estructurada & Sonsacado de Entidades: Fusion (GLM-5.2 / Nemotron)
- * 3. Supervisión Clínica, Resumen SOAP & Detección de Gaps: Fusion (GLM-5.2)
+ * @file aiService.js
+ * @deprecated MOTOR ANTIGUO — no usar para nada nuevo.
+ *
+ * Apuntaba al gateway FreeLLMAPI con modelos (`gemini-3.5-flash-lite`,
+ * `compound-mini`, `auto`…) que **no existen en el router actual**: llamarlo
+ * hoy devuelve 404. Todas las llamadas de IA de la plataforma se migraron a
+ * `claudeService.js`, que va por OmniRoute con streaming.
+ *
+ * De este archivo solo siguen en uso los ayudantes de configuración que lee el
+ * panel de superadministración (`getAiApiKey`, `setAiApiKey`,
+ * `getAiModelPreference`, `setAiModelPreference`). El resto se conserva a la
+ * espera de G9, cuando la configuración de modelos pase a Firestore; entonces
+ * este archivo se borra entero.
+ *
+ * No añadas llamadas aquí. Si necesitas IA: `claudeService.js`.
  */
+
+function readEnv(key, fallback = '') {
+  if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env[key]) {
+    return import.meta.env[key];
+  }
+  if (typeof process !== 'undefined' && process.env && process.env[key]) {
+    return process.env[key];
+  }
+  return fallback;
+}
 
 const AI_PROXY_URL = (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'))
   ? '/v1'
-  : 'https://143-47-35-167.sslip.io/pro/freellmapi/v1';
+  : readEnv('VITE_AI_PROXY_URL', 'https://143-47-35-167.sslip.io/pro/freellmapi/v1');
 
-export const DEFAULT_AI_KEY = 'freellmapi-bc5d56dc6a1548c6c11a0d409008b1ed0273e4105cd64784';
+// La clave ya no viaja incrustada en el codigo: se toma del entorno.
+// La anterior quedo expuesta en el bundle publico y en el historial de git,
+// asi que debe considerarse comprometida y rotarse.
+export const DEFAULT_AI_KEY = readEnv('VITE_AI_API_KEY', '');
 
 export const AI_MODELS = {
   CHAT: 'gemini-3.5-flash-lite',       // 0.6s respuesta ultra-rápida y empática

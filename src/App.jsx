@@ -8,6 +8,8 @@ import './index.css';
 
 // Views
 import LandingView from './views/LandingView';
+import ConsentimientoIA from './components/ConsentimientoIA';
+import { tieneConsentimientoIA } from './lib/consentimiento.js';
 import DashboardView from './views/DashboardView';
 import PsicologoDashboardView from './views/PsicologoDashboardView';
 import PsicologoPerfilView from './views/PsicologoPerfilView';
@@ -30,9 +32,7 @@ import PacientePrivacidadView from './views/paciente/PacientePrivacidadView';
 import PacientePerfilView from './views/paciente/PacientePerfilView';
 import PacientePlanView from './views/paciente/PacientePlanView';
 
-import { getUserAppMode, GENERIC_NAV_ITEMS, PERSONAL_NAV_ITEMS, PSICOLOGO_NAV_ITEMS, SUPERVISOR_NAV_ITEMS } from './appConfig';
-
-
+import { GENERIC_NAV_ITEMS, PERSONAL_NAV_ITEMS, PSICOLOGO_NAV_ITEMS, SUPERVISOR_NAV_ITEMS, isPsicologoEmail, isSupervisorEmail } from './appConfig';
 // Icons
 import {
   Heart,
@@ -55,88 +55,92 @@ import {
   ShieldCheck,
   Video,
   Sparkles,
-  CreditCard,
-  Menu
+  CreditCard
 } from 'lucide-react';
-
-
-
-const MOCK_PROFILES = {
-  // 1. Paciente Real (tisute@gmail.com)
-  'tisute@gmail.com': {
-    id: 'qXj1JXqkcVbJvvRWParVfmUWwN13',
+/**
+ * Perfiles del modo demostración de la landing.
+ *
+ * SON INVENTADOS A PROPÓSITO. Antes aquí vivían los correos, los UID de
+ * Firebase, los nombres, las fotos de perfil de Google y los números de
+ * colegiado de las tres personas reales de la plataforma — y todo eso viajaba
+ * al bundle público, legible por cualquiera que abriese el inspector.
+ *
+ * El modo demo no toca Firestore (`isVirtualDemo` corta todas las lecturas),
+ * así que nunca necesitó identificadores reales para funcionar: solo alguien
+ * a quien enseñar la interfaz.
+ */
+const DEMO_PROFILES = {
+  paciente: {
+    id: 'demo-paciente-0001',
     role: 'paciente',
-    display_name: 'Emilio Naranjo',
-    avatar: 'https://lh3.googleusercontent.com/a/ACg8ocKwdrtZUzAQ-8ZRmjfpqBk_ItBtYhQQJ1n1V6BvNklS_butsq7LFw=s96-c',
+    display_name: 'Ana Demo',
+    avatar: null,
     contexto_terapeutico: {
-      displayName: 'Emilio',
-      name: 'Emilio Naranjo',
-      avatar: 'https://lh3.googleusercontent.com/a/ACg8ocKwdrtZUzAQ-8ZRmjfpqBk_ItBtYhQQJ1n1V6BvNklS_butsq7LFw=s96-c',
+      displayName: 'Ana',
+      name: 'Ana Demo',
+      avatar: null,
       triaje: null,
       assigned_psychologist_id: null,
       paymentStatus: 'free_trial'
     },
     app_config: { verified: true }
   },
-  // 2. Psicólogos Clínicos Colegiados
-  'usajosefernan@gmail.com': {
-    id: '2TOfkVIRccgIgz5WamAIVmUPtD63',
+  psicologo: {
+    id: 'demo-psicologo-0001',
     role: 'psicologo',
-    display_name: 'José Fernández',
-    avatar: 'https://lh3.googleusercontent.com/a/ACg8ocKTiCRCGtON7UckYXir1hkqxQPP9jHgd0A8aQx3mqswe2yNcA=s96-c',
+    display_name: 'Marta Ejemplo',
+    avatar: null,
     contexto_terapeutico: {
-      fullName: 'José Fernández',
-      name: 'José Fernández',
-      avatar: 'https://lh3.googleusercontent.com/a/ACg8ocKTiCRCGtON7UckYXir1hkqxQPP9jHgd0A8aQx3mqswe2yNcA=s96-c',
-      licenseNumber: 'M-49ccc',
+      fullName: 'Marta Ejemplo',
+      name: 'Marta Ejemplo',
+      avatar: null,
+      licenseNumber: 'DEMO-0000',
       sessionPrice: 55
     },
     app_config: {
       verified: true,
-      license_number: 'M-49ccc',
-      qualification: 'Especialista Clínico Sanitario',
-      rc_insurance: 'Seguro RC Activo (Mapfre)'
+      license_number: 'DEMO-0000',
+      qualification: 'Especialista Clínico Sanitario (demostración)',
+      rc_insurance: 'Seguro RC (demostración)'
     }
   },
-  'davidsevilla101@gmail.com': {
-    id: 'PbygqVfkfGhdRDDXoDNos1KCXvO2',
-    role: 'psicologo',
-    display_name: 'David Sevilla',
-    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=150&h=150',
-    contexto_terapeutico: {
-      fullName: 'David Sevilla',
-      name: 'David Sevilla',
-      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=150&h=150',
-      licenseNumber: 'M-41029',
-      sessionPrice: 55
-    },
-    app_config: {
-      verified: true,
-      license_number: 'M-41029',
-      qualification: 'Psicología Infanto-Juvenil y Mediación Familiar',
-      rc_insurance: 'Seguro RC Activo (Mapfre)'
-    }
-  },
-  // 3. Super Admin / Supervisor (José Fernández)
-  'josferestudio@gmail.com': {
-    id: '4TG5w9rwZVa6jikp5PKVOduFKNg2',
+  supervisor: {
+    id: 'demo-supervisor-0001',
     role: 'supervisor',
-    display_name: 'José Fernández',
-    avatar: 'https://lh3.googleusercontent.com/a/ACg8ocJaqYt0GdVkc44Ee-ZqsB6IzBica6mdZprmCIFlXU7V3QNenXo=s96-c',
+    display_name: 'Supervisión Áncora',
+    avatar: null,
     contexto_terapeutico: {
-      displayName: 'José',
-      name: 'José Fernández',
-      avatar: 'https://lh3.googleusercontent.com/a/ACg8ocJaqYt0GdVkc44Ee-ZqsB6IzBica6mdZprmCIFlXU7V3QNenXo=s96-c'
+      displayName: 'Supervisión',
+      name: 'Supervisión Áncora',
+      avatar: null
     },
     app_config: { verified: true }
   }
 };
+
+/**
+ * Traduce lo que pida quien abre la demo a uno de los perfiles inventados.
+ * Acepta las claves nuevas ('paciente') y cualquier cosa antigua, que cae en
+ * el perfil de paciente sin filtrar nada real.
+ */
+function resolveDemoProfile(clave = '') {
+  const k = String(clave).toLowerCase();
+  if (k.includes('psicolog')) return DEMO_PROFILES.psicologo;
+  if (k.includes('supervisor') || k.includes('admin')) return DEMO_PROFILES.supervisor;
+  return DEMO_PROFILES.paciente;
+}
 
 export default function App() {
   const [session, setSession] = useState(null);
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [isVirtualDemo, setIsVirtualDemo] = useState(false);
+
+  // Consentimiento de tratamiento de datos de salud con IA. `null` mientras se
+  // comprueba: no se enseña la pantalla hasta saberlo, para no dar un susto a
+  // quien ya lo tiene aceptado.
+  const [consentimientoIA, setConsentimientoIA] = useState(null);
+  const [consentimientoAplazado, setConsentimientoAplazado] = useState(false);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
@@ -150,10 +154,11 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [adminViewRole, setAdminViewRole] = useState(null); // null | 'paciente' | 'psicologo' | 'admin' | 'supervisor'
 
-
   const userEmail = user?.email?.toLowerCase() || '';
-  const isSuperAdmin = userEmail === 'josferestudio@gmail.com';
-  const isPsicologoUser = userEmail === 'usajosefernan@gmail.com' || userEmail === 'davidsevilla101@gmail.com' || profile?.role === 'psicologo';
+  // El rol viene del perfil de Firestore, que es lo que aplican las reglas de
+  // seguridad; las listas de correo son un atajo opcional para la interfaz.
+  const isSuperAdmin = profile?.role === 'supervisor' || profile?.role === 'admin' || isSupervisorEmail(userEmail);
+  const isPsicologoUser = profile?.role === 'psicologo' || isPsicologoEmail(userEmail);
   
   let activeRole = profile?.role;
   if (isPsicologoUser) {
@@ -188,7 +193,6 @@ export default function App() {
     : (appMode.isPsicologo 
         ? PSICOLOGO_NAV_ITEMS 
         : (appMode.showPersonalModules ? PERSONAL_NAV_ITEMS : GENERIC_NAV_ITEMS));
-
 
   const navIcons = {
     dashboard: LayoutDashboard,
@@ -239,7 +243,6 @@ export default function App() {
     briefing: 'Preparación de Sesión Activa',
     agenda: 'Agenda y Gestión de Citas'
   };
-
 
   useEffect(() => {
     if (!navItems.some(item => item.id === activeTab)) {
@@ -422,9 +425,11 @@ export default function App() {
   const handleEnterDemoMode = async (email, targetTab, extraAction) => {
     setLoading(true);
     try {
-      const lowercaseEmail = email.toLowerCase();
-      const mockProfile = MOCK_PROFILES[lowercaseEmail] || MOCK_PROFILES['tisute@gmail.com'];
-      const clonedProfile = JSON.parse(JSON.stringify(mockProfile));
+      const demoProfile = resolveDemoProfile(email);
+      const clonedProfile = JSON.parse(JSON.stringify(demoProfile));
+      // El correo de la sesión de demostración también es inventado: no se
+      // enseña la interfaz con la cuenta de nadie.
+      const lowercaseEmail = `${clonedProfile.id}@ancora.demo`;
 
       if (extraAction === 'clear_psychologist' && clonedProfile.contexto_terapeutico) {
         clonedProfile.contexto_terapeutico.assigned_psychologist_id = null;
@@ -461,6 +466,21 @@ export default function App() {
       console.error("Logout error:", e.message);
     }
   };
+
+  // Se comprueba al entrar, no al pulsar el chat: es mejor pedirlo antes de que
+  // empiece a contar cosas que cortarle a mitad de frase.
+  useEffect(() => {
+    let vivo = true;
+    const idPaciente = profile?.id || user?.id;
+    if (isVirtualDemo || !idPaciente || appMode.isPsicologo || appMode.isSupervisor) {
+      setConsentimientoIA(true);
+      return undefined;
+    }
+    tieneConsentimientoIA(idPaciente)
+      .then(ok => { if (vivo) setConsentimientoIA(ok); })
+      .catch(() => { if (vivo) setConsentimientoIA(false); });
+    return () => { vivo = false; };
+  }, [profile?.id, user?.id, isVirtualDemo, appMode.isPsicologo, appMode.isSupervisor]);
 
   if (loading) {
     return (
@@ -582,6 +602,22 @@ export default function App() {
           fetchUserProfile(updatedUser || user);
         }} 
       />
+    );
+  }
+
+  // 1-bis. Consentimiento del artículo 9 del RGPD. Los datos de salud no se
+  // tratan sin permiso explícito e informado, así que esto va antes del chat y
+  // de cualquier subida de documentos. Se puede aplazar: un consentimiento sin
+  // alternativa no es libre, y si no es libre no vale.
+  if (consentimientoIA === false && !consentimientoAplazado) {
+    return (
+      <div className="grabadora-modal" role="dialog" aria-modal="true" aria-label="Consentimiento informado">
+        <ConsentimientoIA
+          userId={profile?.id || user?.id}
+          onAceptado={() => setConsentimientoIA(true)}
+          onCancelar={() => setConsentimientoAplazado(true)}
+        />
+      </div>
     );
   }
 

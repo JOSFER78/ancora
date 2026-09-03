@@ -20,7 +20,10 @@ export const getCleanPsychologistName = (psychoId, rawName, psychologistsList = 
   if (rawName && rawName !== 'USAJOS' && !rawName.includes('@') && rawName.trim().length > 2) {
     return rawName.trim();
   }
-  const match = (psychologistsList || []).find(p => p.id === psychoId || p.email === 'usajosefernan@gmail.com');
+  // Antes, si no encontraba al psicólogo por id, caía en un correo concreto
+  // escrito a mano: a cualquier paciente sin asignación le habría salido el
+  // nombre de ese profesional como si fuera el suyo.
+  const match = (psychologistsList || []).find(p => p.id === psychoId);
   if (match?.name && match.name !== 'USAJOS' && !match.name.includes('@')) {
     return match.name;
   }

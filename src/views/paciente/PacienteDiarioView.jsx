@@ -1,9 +1,13 @@
 import { useState } from 'react';
-import { 
-  Heart, Smile, Activity, TrendingUp, Check, 
-  Moon, Zap, ShieldAlert, Sparkles, HelpCircle
+import {
+  Heart,
+  TrendingUp,
+  Check,
+  Moon,
+  Zap,
+  Sparkles,
+  HelpCircle
 } from 'lucide-react';
-
 export default function PacienteDiarioView({ onMoodSaved, dailyMoodToday }) {
   const [mood, setMood] = useState(dailyMoodToday?.notes ? 4 : 3); // 1-5 Scale
   const [anxiety, setAnxiety] = useState(dailyMoodToday?.anxiety_level || 4); // 1-10 Scale

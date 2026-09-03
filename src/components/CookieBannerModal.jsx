@@ -1,6 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { ShieldCheck, Cookie, Settings, Check, X, Lock, Eye, BarChart2 } from 'lucide-react';
-
+import { useState, useEffect } from 'react';
+import { Cookie, Settings, Check, X, Lock, Eye, BarChart2 } from 'lucide-react';
 export const CookieBannerModal = ({ forceOpenModal = false, onCloseModal = () => {} }) => {
   const [showBanner, setShowBanner] = useState(false);
   const [showConfigModal, setShowConfigModal] = useState(false);

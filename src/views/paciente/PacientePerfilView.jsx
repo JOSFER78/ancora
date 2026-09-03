@@ -2,12 +2,20 @@ import { useState, useEffect } from 'react';
 import { firebaseClient } from '../../firebaseAdapter.js';
 import { doc, deleteDoc, setDoc } from 'firebase/firestore';
 import { db as firestoreDb } from '../../firebaseClient';
-import { 
-  User, Mail, CreditCard, Clock, FileText, 
-  Download, ShieldCheck, Heart, Sparkles, CheckCircle2, ArrowRight, LogOut,
-  Calendar, Trash2, AlertTriangle, RefreshCcw, Lock
+import {
+  User,
+  Mail,
+  CreditCard,
+  Clock,
+  FileText,
+  ShieldCheck,
+  CheckCircle2,
+  LogOut,
+  Calendar,
+  Trash2,
+  AlertTriangle,
+  RefreshCcw
 } from 'lucide-react';
-
 export default function PacientePerfilView({ profile, onProfileUpdated, user, isVirtualDemo, onLogout }) {
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState('');
@@ -180,17 +188,17 @@ export default function PacientePerfilView({ profile, onProfileUpdated, user, is
               historial_clinico: {},
               assigned_psychologist_id: null
             };
-            const profileRef = doc(db, 'profiles', targetId);
+            const profileRef = doc(firestoreDb, 'profiles', targetId);
             await setDoc(profileRef, { contexto_terapeutico: resetCtx, triaje_completed: false }, { merge: true });
           } catch (fsErr) {
             console.warn('[ResetTriage] Firestore reset notice:', fsErr);
           }
 
           await Promise.allSettled([
-            db.from('clinical_profiles').delete().eq('patient_id', targetId),
-            db.from('timeline_events').delete().eq('patient_id', targetId),
-            db.from('clinical_life_tree').delete().eq('patient_id', targetId),
-            db.from('medications').delete().eq('patient_id', targetId)
+            firebaseClient.from('clinical_profiles').delete().eq('patient_id', targetId),
+            firebaseClient.from('timeline_events').delete().eq('patient_id', targetId),
+            firebaseClient.from('clinical_life_tree').delete().eq('patient_id', targetId),
+            firebaseClient.from('medications').delete().eq('patient_id', targetId)
           ]);
         }
 

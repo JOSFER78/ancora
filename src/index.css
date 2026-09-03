@@ -2080,3 +2080,366 @@ button, input, select, textarea {
   100% { box-shadow: 0 0 12px rgba(245, 158, 11, 0.6); }
 }
 
+
+/* ============================================================
+   Grabadora continua de voz
+   El medidor a cero en pausa es funcional, no decorativo: es
+   como la persona ve que en ese momento no se la está grabando.
+   ============================================================ */
+
+.grabadora {
+  background: #ffffff;
+  border: 1px solid rgba(5, 33, 58, 0.08);
+  border-radius: 14px;
+  padding: 20px;
+  box-shadow: 0 8px 30px rgba(5, 33, 58, 0.08);
+  max-width: 620px;
+  width: 100%;
+}
+
+.grabadora-cabecera {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.grabadora-cabecera h3 {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #05213A;
+  margin: 0;
+}
+
+.grabadora-cerrar {
+  background: transparent;
+  border: none;
+  color: #64748b;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+}
+
+.grabadora-cerrar:disabled { opacity: 0.35; cursor: not-allowed; }
+.grabadora-cerrar:not(:disabled):hover { background: rgba(5, 33, 58, 0.05); }
+
+.grabadora-medidor {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(5, 33, 58, 0.07);
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+.grabadora-nivel {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 90ms linear, background 200ms ease;
+}
+
+.grabadora-estado {
+  font-size: 0.82rem;
+  color: #475569;
+  margin: 0 0 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.grabadora-botones {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.grabadora-botones .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.grabadora-error {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.8rem;
+  color: #b91c1c;
+  background: rgba(185, 28, 28, 0.06);
+  border-radius: 8px;
+  padding: 9px 11px;
+  margin: 0 0 12px;
+}
+
+.grabadora-procesando {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 0.85rem;
+  color: #447D82;
+  padding: 18px 0;
+  margin: 0;
+}
+
+.girando { animation: grabadora-giro 1s linear infinite; }
+
+@keyframes grabadora-giro {
+  to { transform: rotate(360deg); }
+}
+
+.grabadora-resultado h4 {
+  font-size: 1.05rem;
+  color: #05213A;
+  margin: 0 0 6px;
+}
+
+.grabadora-resumen {
+  font-size: 0.85rem;
+  color: #475569;
+  margin: 0 0 14px;
+}
+
+.grabadora-texto {
+  background: rgba(68, 125, 130, 0.04);
+  border-left: 3px solid #447D82;
+  border-radius: 0 8px 8px 0;
+  padding: 12px 14px;
+  max-height: 260px;
+  overflow-y: auto;
+  margin-bottom: 14px;
+}
+
+.grabadora-texto p {
+  font-size: 0.87rem;
+  line-height: 1.6;
+  color: #1e293b;
+  margin: 0 0 10px;
+}
+
+.grabadora-texto p:last-child { margin-bottom: 0; }
+
+.grabadora-citas h5,
+.grabadora-cabos h5 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #64748b;
+  margin: 0 0 8px;
+}
+
+.grabadora-citas blockquote {
+  font-size: 0.85rem;
+  font-style: italic;
+  color: #334155;
+  margin: 0 0 8px;
+  padding-left: 12px;
+  border-left: 2px solid rgba(68, 125, 130, 0.35);
+}
+
+.grabadora-cabos { margin: 14px 0; }
+
+.grabadora-cabos ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.grabadora-cabos li {
+  font-size: 0.83rem;
+  color: #475569;
+  margin-bottom: 5px;
+}
+
+.grabadora-aviso {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.78rem;
+  color: #92400e;
+  background: rgba(245, 158, 11, 0.08);
+  border-radius: 8px;
+  padding: 8px 11px;
+  margin: 12px 0;
+}
+
+.grabadora-nota-pie {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  margin: 12px 0 16px;
+}
+
+/* Botón de acceso directo, siempre a mano */
+.grabadora-acceso {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #447D82;
+  color: #ffffff;
+  border: none;
+  border-radius: 999px;
+  padding: 11px 18px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(68, 125, 130, 0.28);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.grabadora-acceso:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 22px rgba(68, 125, 130, 0.35);
+}
+
+.grabadora-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(5, 33, 58, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 1200;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .grabadora-nivel, .grabadora-acceso { transition: none; }
+  .girando { animation: none; }
+}
+
+/* ============================================================
+   Consentimiento de tratamiento de datos de salud con IA
+   ============================================================ */
+
+.consentimiento {
+  background: #ffffff;
+  border-radius: 14px;
+  padding: 24px;
+  max-width: 680px;
+  width: 100%;
+  max-height: 88vh;
+  overflow-y: auto;
+  box-shadow: 0 10px 40px rgba(5, 33, 58, 0.14);
+}
+
+.consentimiento-cabecera {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  color: #447D82;
+  margin-bottom: 14px;
+}
+
+.consentimiento-cabecera h2 {
+  font-size: 1.15rem;
+  color: #05213A;
+  margin: 0;
+}
+
+.consentimiento-version {
+  font-size: 0.68rem;
+  color: #94a3b8;
+  margin: 2px 0 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.consentimiento-intro {
+  font-size: 0.88rem;
+  color: #334155;
+  line-height: 1.6;
+  margin: 0 0 18px;
+}
+
+.consentimiento-cuerpo section { margin-bottom: 16px; }
+
+.consentimiento-cuerpo h3 {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #447D82;
+  margin: 0 0 5px;
+}
+
+.consentimiento-cuerpo p {
+  font-size: 0.86rem;
+  line-height: 1.6;
+  color: #334155;
+  margin: 0;
+}
+
+.consentimiento-encargados {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.consentimiento-encargados li {
+  font-size: 0.83rem;
+  color: #334155;
+  margin-bottom: 6px;
+  line-height: 1.5;
+}
+
+.consentimiento-encargados em {
+  color: #64748b;
+  font-size: 0.78rem;
+}
+
+.consentimiento-casilla {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: rgba(68, 125, 130, 0.06);
+  border-radius: 10px;
+  padding: 14px;
+  margin: 18px 0;
+  cursor: pointer;
+}
+
+.consentimiento-casilla input {
+  margin-top: 3px;
+  width: 17px;
+  height: 17px;
+  accent-color: #447D82;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.consentimiento-casilla span {
+  font-size: 0.85rem;
+  line-height: 1.55;
+  color: #1e293b;
+}
+
+.consentimiento-botones {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.consentimiento-botones .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.consentimiento-botones .btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.consentimiento-error {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.82rem;
+  color: #b91c1c;
+  background: rgba(185, 28, 28, 0.06);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 0 0 12px;
+}
+
+.consentimiento-pie {
+  font-size: 0.76rem;
+  color: #94a3b8;
+  margin: 14px 0 0;
+  line-height: 1.5;
+}

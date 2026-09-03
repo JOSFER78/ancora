@@ -1,8 +1,280 @@
 rules_version = '2';
+
+// =====================================================================
+// ÁNCORA ⚓ — Reglas de seguridad Firestore
+// Datos de salud (RGPD art. 9). Principio: denegar por defecto.
+// Toda colección no declarada aquí queda inaccesible salvo supervisor.
+// =====================================================================
+
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // -----------------------------------------------------------------
+    // Identidad y roles
+    // -----------------------------------------------------------------
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function uid() {
+      return request.auth.uid;
+    }
+
+    function profileData(userId) {
+      return get(/databases/$(database)/documents/profiles/$(userId)).data;
+    }
+
+    function profileExists(userId) {
+      return exists(/databases/$(database)/documents/profiles/$(userId));
+    }
+
+    function myRole() {
+      return signedIn() && profileExists(uid())
+        ? profileData(uid()).get('role', 'paciente')
+        : 'anon';
+    }
+
+    function isPsicologo() {
+      return myRole() == 'psicologo';
+    }
+
+    function isSupervisor() {
+      return myRole() in ['supervisor', 'admin'];
+    }
+
+    // Psicólogo asignado al paciente, según profiles/{patientId}
+    function isAssignedPsy(patientId) {
+      return isPsicologo()
+        && profileExists(patientId)
+        && profileData(patientId)
+             .get('contexto_terapeutico', {})
+             .get('assigned_psychologist_id', '') == uid();
+    }
+
+    // -----------------------------------------------------------------
+    // Acceso al expediente de un paciente
+    // -----------------------------------------------------------------
+    function canReadPatient(patientId) {
+      return signedIn() && patientId != null && patientId != ''
+        && (uid() == patientId || isAssignedPsy(patientId) || isSupervisor());
+    }
+
+    function canWritePatient(patientId) {
+      return canReadPatient(patientId);
+    }
+
+    // Identificador de propietario dentro de un documento.
+    // Acepta patient_id o user_id indistintamente.
+    function ownerOf(res) {
+      return res.data.get('patient_id', res.data.get('user_id', ''));
+    }
+
+    // -----------------------------------------------------------------
+    // profiles — expediente de identidad y rol
+    // -----------------------------------------------------------------
+    match /profiles/{userId} {
+      // Un psicólogo solo lee perfiles de pacientes que tiene asignados.
+      allow get: if signedIn()
+                 && (userId == uid() || isAssignedPsy(userId) || isSupervisor());
+
+      // Listados: el psicólogo debe filtrar por su propio id de asignación.
+      allow list: if isSupervisor()
+                  || (isPsicologo()
+                      && resource.data
+                           .get('contexto_terapeutico', {})
+                           .get('assigned_psychologist_id', '') == uid());
+
+      // Alta: solo el propio usuario y nunca con rol privilegiado.
+      allow create: if signedIn()
+                    && userId == uid()
+                    && request.resource.data.get('role', 'paciente') in ['paciente', 'psicologo'];
+
+      // El usuario no puede auto-promocionarse de rol.
+      allow update: if signedIn()
+                    && userId == uid()
+                    && request.resource.data.get('role', 'paciente')
+                       == resource.data.get('role', 'paciente');
+
+      allow update, delete: if isSupervisor();
+    }
+
+    // -----------------------------------------------------------------
+    // psychologist_profiles — ficha pública del profesional colegiado
+    // -----------------------------------------------------------------
+    // Directorio publico de profesionales colegiados: la landing lo muestra
+    // sin sesion iniciada. No debe contener datos clinicos de pacientes.
+    match /psychologist_profiles/{psyId} {
+      allow read: if true;
+      allow create, update: if signedIn() && psyId == uid() && isPsicologo();
+      allow write: if isSupervisor();
+    }
+
+    // -----------------------------------------------------------------
+    // Expediente clínico — propiedad por patient_id
+    // -----------------------------------------------------------------
+    match /clinical_profiles/{docId}          { allow read, write: if patientDoc(); }
+    match /clinical_documents/{docId}         { allow read, write: if patientDoc(); }
+    match /clinical_life_tree/{docId}         { allow read, write: if patientDoc(); }
+    match /clinical_episodes/{docId}          { allow read, write: if patientDoc(); }
+    match /clinical_timeline_index/{docId}    { allow read, write: if patientDoc(); }
+    match /clinical_facts/{docId}             { allow read, write: if patientDoc(); }
+    match /timeline_events/{docId}            { allow read, write: if patientDoc(); }
+    match /medications/{docId}                { allow read, write: if patientDoc(); }
+    match /episodes/{docId}                   { allow read, write: if patientDoc(); }
+    match /patient_context_snapshots/{docId}  { allow read, write: if patientDoc(); }
+    match /chat_messages/{docId}              { allow read, write: if patientDoc(); }
+    match /clinical_reports/{docId}           { allow read, write: if patientDoc(); }
+
+    function patientDoc() {
+      return (request.method == 'create')
+        ? canWritePatient(ownerOf(request.resource))
+        : canReadPatient(ownerOf(resource));
+    }
+
+    // clinical_directives: solo el psicólogo colegiado dicta directivas N1.
+    match /clinical_directives/{docId} {
+      allow read: if canReadPatient(ownerOf(resource));
+      allow create: if (isAssignedPsy(ownerOf(request.resource)) || isSupervisor());
+      allow update, delete: if (isAssignedPsy(ownerOf(resource)) || isSupervisor());
+    }
+
+    // clinical_proposals: la IA/paciente propone, el psicólogo valida.
+    match /clinical_proposals/{docId} {
+      allow read: if canReadPatient(ownerOf(resource));
+      allow create: if canWritePatient(ownerOf(request.resource));
+      allow update, delete: if (isAssignedPsy(ownerOf(resource)) || isSupervisor());
+    }
+
+    // patient_credits: saldo económico, el paciente solo lee.
+    match /patient_credits/{docId} {
+      allow read: if canReadPatient(ownerOf(resource));
+      allow write: if isSupervisor();
+    }
+
+    // audit_logs: trazabilidad RGPD, inmutable y sin borrado.
+    match /audit_logs/{docId} {
+      allow read: if canReadPatient(ownerOf(resource));
+      allow create: if canWritePatient(ownerOf(request.resource));
+      allow update, delete: if false;
+    }
+
+    // consents: consentimiento informado, inmutable una vez firmado.
+    match /consents/{docId} {
+      allow read: if canReadPatient(ownerOf(resource));
+      allow create: if signedIn() && ownerOf(request.resource) == uid();
+      allow update, delete: if false;
+    }
+
+    // -----------------------------------------------------------------
+    // Datos personales del propio usuario — propiedad por user_id
+    // -----------------------------------------------------------------
+    match /daily_moods/{docId}      { allow read, write: if patientDoc(); }
+    match /daily_checkins/{docId}   { allow read, write: if patientDoc(); }
+    match /diario_entries/{docId}   { allow read, write: if patientDoc(); }
+    match /risk_events/{docId}      { allow read, write: if patientDoc(); }
+
+    // Módulos personales del owner: sin acceso del psicólogo.
+    match /debts/{docId}         { allow read, write: if ownsDoc(); }
+    match /expenses/{docId}      { allow read, write: if ownsDoc(); }
+    match /legal_roadmap/{docId} { allow read, write: if ownsDoc(); }
+    match /mente_sources/{docId} { allow read, write: if ownsDoc(); }
+    match /agent_tasks/{docId}   { allow read, write: if ownsDoc(); }
+    match /agent_debates/{docId} { allow read, write: if ownsDoc(); }
+
+    function ownsDoc() {
+      return signedIn() && ((request.method == 'create')
+        ? ownerOf(request.resource) == uid()
+        : ownerOf(resource) == uid());
+    }
+
+    match /agent_debate_messages/{docId} {
+      allow read, write: if signedIn() && ownsDebate(
+        (request.method == 'create')
+          ? request.resource.data.get('debate_id', '')
+          : resource.data.get('debate_id', '')
+      );
+    }
+
+    function ownsDebate(debateId) {
+      return debateId != ''
+        && exists(/databases/$(database)/documents/agent_debates/$(debateId))
+        && get(/databases/$(database)/documents/agent_debates/$(debateId))
+             .data.get('user_id', '') == uid();
+    }
+
+    // -----------------------------------------------------------------
+    // Conversaciones terapéuticas
+    // -----------------------------------------------------------------
+    match /conversations/{convId} {
+      allow read, write: if patientDoc();
+    }
+
+    // messages solo lleva conversation_id: la propiedad se resuelve en la
+    // conversación padre (Firestore cachea el get() repetido dentro de la
+    // misma consulta, así que un listado cuesta un único acceso extra).
+    match /messages/{msgId} {
+      allow read, write: if canAccessConversation(
+        (request.method == 'create')
+          ? request.resource.data.get('conversation_id', '')
+          : resource.data.get('conversation_id', '')
+      );
+    }
+
+    function canAccessConversation(convId) {
+      return convId != ''
+        && exists(/databases/$(database)/documents/conversations/$(convId))
+        && canReadPatient(
+             get(/databases/$(database)/documents/conversations/$(convId))
+               .data.get('user_id',
+                 get(/databases/$(database)/documents/conversations/$(convId))
+                   .data.get('patient_id', '')));
+    }
+
+    // -----------------------------------------------------------------
+    // Agenda y facturación
+    // -----------------------------------------------------------------
+    match /appointments/{aptId} {
+      allow read: if signedIn() && (
+        canReadPatient(resource.data.get('patient_id', ''))
+        || resource.data.get('psychologist_id', '') == uid()
+        || isSupervisor()
+      );
+      allow create: if signedIn() && (
+        request.resource.data.get('patient_id', '') == uid()
+        || request.resource.data.get('psychologist_id', '') == uid()
+        || isSupervisor()
+      );
+      allow update, delete: if signedIn() && (
+        resource.data.get('patient_id', '') == uid()
+        || resource.data.get('psychologist_id', '') == uid()
+        || isSupervisor()
+      );
+    }
+
+    match /settlements/{docId} {
+      allow read: if signedIn()
+                  && (resource.data.get('psychologist_id', '') == uid() || isSupervisor());
+      allow write: if isSupervisor();
+    }
+
+    // -----------------------------------------------------------------
+    // Catálogos de solo lectura
+    // -----------------------------------------------------------------
+    match /agents/{docId} {
+      allow read: if signedIn();
+      allow write: if isSupervisor();
+    }
+
+    match /pending_proposals/{docId} {
+      allow read, write: if isSupervisor();
+    }
+
+    // -----------------------------------------------------------------
+    // Consola de administración: acceso global explícito.
+    // Todo lo no declarado arriba queda denegado por defecto.
+    // -----------------------------------------------------------------
     match /{document=**} {
-      allow read, write: if true;
+      allow read, write: if isSupervisor();
     }
   }
 }

@@ -1,11 +1,25 @@
 import { useState, useEffect, useRef } from 'react';
-import { firebaseClient as db, firebaseClient } from '../firebaseAdapter.js';
-import { 
-  ArrowRight, Brain, FileText, MessageSquare, ShieldCheck, Sparkles, Check, 
-  Heart, User, ClipboardList, Lock, Award, Search, Calendar, Star, 
-  DollarSign, HelpCircle, ChevronRight, Activity, TrendingUp, Info, 
-  Shield, CheckCircle2, UserPlus, Laptop, Smartphone, Mail, AlertTriangle,
-  Download, ChevronUp, X
+import { firebaseClient } from '../firebaseAdapter.js';
+import {
+  ArrowRight,
+  Brain,
+  FileText,
+  MessageSquare,
+  ShieldCheck,
+  User,
+  ClipboardList,
+  Lock,
+  Award,
+  Search,
+  Calendar,
+  Star,
+  Activity,
+  TrendingUp,
+  Info,
+  CheckCircle2,
+  UserPlus,
+  AlertTriangle,
+  X
 } from 'lucide-react';
 import LoginView from './LoginView';
 import ApkDownloadGuideModal from '../components/ApkDownloadGuideModal';
@@ -1099,7 +1113,7 @@ export default function LandingView({ onAuthSuccess, onEnterDemo }) {
                 </button>
               </div>
 
-              <div style={{ padding: '28px', background: '#ffffff', border: '1px solid rgba(5, 33, 58, 0.05)', borderRadius: '12px', display: 'flex', flexDirection: 'column', gap: '16px', borderTop: '4px solid #447D82', boxShadow: '0 4px 20px rgba(5, 33, 58, 0.02)', background: 'rgba(68, 125, 130, 0.02)', position: 'relative' }}>
+              <div style={{ padding: '28px', border: '1px solid rgba(5, 33, 58, 0.05)', borderRadius: '12px', display: 'flex', flexDirection: 'column', gap: '16px', borderTop: '4px solid #447D82', boxShadow: '0 4px 20px rgba(5, 33, 58, 0.02)', background: 'rgba(68, 125, 130, 0.02)', position: 'relative' }}>
                 <span style={{ position: 'absolute', top: '12px', right: '12px', fontSize: '0.55rem', background: '#447D82', color: '#ffffff', padding: '2px 8px', borderRadius: '4px', fontWeight: 'bold' }}>RECOMENDADO</span>
                 <div>
                   <span className="badge" style={{ background: 'rgba(68, 125, 130, 0.1)', color: '#447D82', fontSize: '0.58rem', textTransform: 'none' }}>Medio</span>
@@ -1191,7 +1205,7 @@ export default function LandingView({ onAuthSuccess, onEnterDemo }) {
                 </button>
               </div>
 
-              <div style={{ padding: '28px', background: '#ffffff', border: '1px solid rgba(5, 33, 58, 0.05)', borderRadius: '12px', display: 'flex', flexDirection: 'column', gap: '16px', borderTop: '4px solid #7F9F88', boxShadow: '0 4px 20px rgba(5, 33, 58, 0.02)', background: 'rgba(127, 159, 136, 0.02)', position: 'relative' }}>
+              <div style={{ padding: '28px', border: '1px solid rgba(5, 33, 58, 0.05)', borderRadius: '12px', display: 'flex', flexDirection: 'column', gap: '16px', borderTop: '4px solid #7F9F88', boxShadow: '0 4px 20px rgba(5, 33, 58, 0.02)', background: 'rgba(127, 159, 136, 0.02)', position: 'relative' }}>
                 <span style={{ position: 'absolute', top: '12px', right: '12px', fontSize: '0.55rem', background: '#7F9F88', color: '#ffffff', padding: '2px 8px', borderRadius: '4px', fontWeight: 'bold' }}>RECOMENDADO</span>
                 <div>
                   <span className="badge" style={{ background: 'rgba(127, 159, 136, 0.15)', color: '#7F9F88', fontSize: '0.58rem', textTransform: 'none' }}>SaaS Profesional</span>
@@ -1752,42 +1766,42 @@ export default function LandingView({ onAuthSuccess, onEnterDemo }) {
                 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   <button 
-                    onClick={() => { setShowDemoConsole(false); onEnterDemo('tisute@gmail.com', 'dashboard', 'clear_psychologist'); }}
+                    onClick={() => { setShowDemoConsole(false); onEnterDemo('paciente', 'dashboard', 'clear_psychologist'); }}
                     className="btn btn-outline"
                     style={{ fontSize: '0.74rem', width: '100%', justifyContent: 'flex-start', padding: '10px 12px', height: 'auto', background: 'rgba(16, 185, 129, 0.03)', borderColor: 'rgba(16, 185, 129, 0.1)', color: '#ffffff', textAlign: 'left', cursor: 'pointer' }}
                   >
                     📋 Onboarding, Triaje y Catálogo
                   </button>
                   <button 
-                    onClick={() => { setShowDemoConsole(false); onEnterDemo('tisute@gmail.com', 'dashboard'); }}
+                    onClick={() => { setShowDemoConsole(false); onEnterDemo('paciente', 'dashboard'); }}
                     className="btn btn-outline"
                     style={{ fontSize: '0.74rem', width: '100%', justifyContent: 'flex-start', padding: '10px 12px', height: 'auto', borderColor: 'rgba(255,255,255,0.06)', color: '#ffffff', textAlign: 'left', cursor: 'pointer' }}
                   >
                     🏠 Hoy (Dashboard de Recuperación)
                   </button>
                   <button 
-                    onClick={() => { setShowDemoConsole(false); onEnterDemo('tisute@gmail.com', 'chat'); }}
+                    onClick={() => { setShowDemoConsole(false); onEnterDemo('paciente', 'chat'); }}
                     className="btn btn-outline"
                     style={{ fontSize: '0.74rem', width: '100%', justifyContent: 'flex-start', padding: '10px 12px', height: 'auto', borderColor: 'rgba(255,255,255,0.06)', color: '#ffffff', textAlign: 'left', cursor: 'pointer' }}
                   >
                     💬 Chat Diario con Ánquer (IA)
                   </button>
                   <button 
-                    onClick={() => { setShowDemoConsole(false); onEnterDemo('tisute@gmail.com', 'sesiones'); }}
+                    onClick={() => { setShowDemoConsole(false); onEnterDemo('paciente', 'sesiones'); }}
                     className="btn btn-outline"
                     style={{ fontSize: '0.74rem', width: '100%', justifyContent: 'flex-start', padding: '10px 12px', height: 'auto', borderColor: 'rgba(255,255,255,0.06)', color: '#ffffff', textAlign: 'left', cursor: 'pointer' }}
                   >
                     📅 Agenda de Sesiones y Stripe
                   </button>
                   <button 
-                    onClick={() => { setShowDemoConsole(false); onEnterDemo('tisute@gmail.com', 'historial'); }}
+                    onClick={() => { setShowDemoConsole(false); onEnterDemo('paciente', 'historial'); }}
                     className="btn btn-outline"
                     style={{ fontSize: '0.74rem', width: '100%', justifyContent: 'flex-start', padding: '10px 12px', height: 'auto', borderColor: 'rgba(255,255,255,0.06)', color: '#ffffff', textAlign: 'left', cursor: 'pointer' }}
                   >
                     📂 Expediente Clínico (10 Pestañas)
                   </button>
                   <button 
-                    onClick={() => { setShowDemoConsole(false); onEnterDemo('tisute@gmail.com', 'privacidad'); }}
+                    onClick={() => { setShowDemoConsole(false); onEnterDemo('paciente', 'privacidad'); }}
                     className="btn btn-outline"
                     style={{ fontSize: '0.74rem', width: '100%', justifyContent: 'flex-start', padding: '10px 12px', height: 'auto', borderColor: 'rgba(255,255,255,0.06)', color: '#ffffff', textAlign: 'left', cursor: 'pointer' }}
                   >
@@ -1808,35 +1822,35 @@ export default function LandingView({ onAuthSuccess, onEnterDemo }) {
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   <button 
-                    onClick={() => { setShowDemoConsole(false); onEnterDemo('usajosefernan@gmail.com', 'dashboard'); }}
+                    onClick={() => { setShowDemoConsole(false); onEnterDemo('psicologo', 'dashboard'); }}
                     className="btn btn-outline"
                     style={{ fontSize: '0.74rem', width: '100%', justifyContent: 'flex-start', padding: '10px 12px', height: 'auto', borderColor: 'rgba(255,255,255,0.06)', color: '#ffffff', textAlign: 'left', cursor: 'pointer' }}
                   >
                     🩺 Portal Clínico (Métricas)
                   </button>
                   <button 
-                    onClick={() => { setShowDemoConsole(false); onEnterDemo('usajosefernan@gmail.com', 'perfil'); }}
+                    onClick={() => { setShowDemoConsole(false); onEnterDemo('psicologo', 'perfil'); }}
                     className="btn btn-outline"
                     style={{ fontSize: '0.74rem', width: '100%', justifyContent: 'flex-start', padding: '10px 12px', height: 'auto', borderColor: 'rgba(255,255,255,0.06)', color: '#ffffff', textAlign: 'left', cursor: 'pointer' }}
                   >
                     📂 Ficha e Historial de Pacientes
                   </button>
                   <button 
-                    onClick={() => { setShowDemoConsole(false); onEnterDemo('usajosefernan@gmail.com', 'soap'); }}
+                    onClick={() => { setShowDemoConsole(false); onEnterDemo('psicologo', 'soap'); }}
                     className="btn btn-outline"
                     style={{ fontSize: '0.74rem', width: '100%', justifyContent: 'flex-start', padding: '10px 12px', height: 'auto', borderColor: 'rgba(255,255,255,0.06)', color: '#ffffff', textAlign: 'left', cursor: 'pointer' }}
                   >
                     ✍️ Notas SOAP y Copiloto IA
                   </button>
                   <button 
-                    onClick={() => { setShowDemoConsole(false); onEnterDemo('usajosefernan@gmail.com', 'agenda'); }}
+                    onClick={() => { setShowDemoConsole(false); onEnterDemo('psicologo', 'agenda'); }}
                     className="btn btn-outline"
                     style={{ fontSize: '0.74rem', width: '100%', justifyContent: 'flex-start', padding: '10px 12px', height: 'auto', borderColor: 'rgba(255,255,255,0.06)', color: '#ffffff', textAlign: 'left', cursor: 'pointer' }}
                   >
                     📅 Agenda de Citas
                   </button>
                   <button 
-                    onClick={() => { setShowDemoConsole(false); onEnterDemo('usajosefernan@gmail.com', 'ajustes'); }}
+                    onClick={() => { setShowDemoConsole(false); onEnterDemo('psicologo', 'ajustes'); }}
                     className="btn btn-outline"
                     style={{ fontSize: '0.74rem', width: '100%', justifyContent: 'flex-start', padding: '10px 12px', height: 'auto', borderColor: 'rgba(255,255,255,0.06)', color: '#ffffff', textAlign: 'left', cursor: 'pointer' }}
                   >
@@ -1857,21 +1871,21 @@ export default function LandingView({ onAuthSuccess, onEnterDemo }) {
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   <button 
-                    onClick={() => { setShowDemoConsole(false); onEnterDemo('josferestudio@gmail.com', 'dashboard'); }}
+                    onClick={() => { setShowDemoConsole(false); onEnterDemo('supervisor', 'dashboard'); }}
                     className="btn btn-outline"
                     style={{ fontSize: '0.74rem', width: '100%', justifyContent: 'flex-start', padding: '10px 12px', height: 'auto', borderColor: 'rgba(255,255,255,0.06)', color: '#ffffff', textAlign: 'left', cursor: 'pointer' }}
                   >
                     👥 CRM Pacientes y Terapeutas
                   </button>
                   <button 
-                    onClick={() => { setShowDemoConsole(false); onEnterDemo('josferestudio@gmail.com', 'chat'); }}
+                    onClick={() => { setShowDemoConsole(false); onEnterDemo('supervisor', 'chat'); }}
                     className="btn btn-outline"
                     style={{ fontSize: '0.74rem', width: '100%', justifyContent: 'flex-start', padding: '10px 12px', height: 'auto', borderColor: 'rgba(255,255,255,0.06)', color: '#ffffff', textAlign: 'left', cursor: 'pointer' }}
                   >
                     ⚠️ Panel de Incidencias
                   </button>
                   <button 
-                    onClick={() => { setShowDemoConsole(false); onEnterDemo('josferestudio@gmail.com', 'ajustes'); }}
+                    onClick={() => { setShowDemoConsole(false); onEnterDemo('supervisor', 'ajustes'); }}
                     className="btn btn-outline"
                     style={{ fontSize: '0.74rem', width: '100%', justifyContent: 'flex-start', padding: '10px 12px', height: 'auto', borderColor: 'rgba(255,255,255,0.06)', color: '#ffffff', textAlign: 'left', cursor: 'pointer' }}
                   >

@@ -1,20 +1,29 @@
 import { useState, useEffect } from 'react';
-import { 
-  Calendar, Clock, Heart, Brain, ArrowRight, MessageSquare, 
-  CheckSquare, Plus, ChevronRight, TrendingUp, Sparkles, Shield,
-  Video, Star, CreditCard, ShieldCheck, CheckCircle, ArrowLeft,
-  RefreshCw
+import { DEFAULT_PSICOLOGO_ID } from '../../appConfig';
+import {
+  Calendar,
+  Clock,
+  Heart,
+  ArrowRight,
+  MessageSquare,
+  CheckSquare,
+  ChevronRight,
+  Sparkles,
+  Shield,
+  Video,
+  Star,
+  CreditCard,
+  ShieldCheck,
+  CheckCircle,
+  ArrowLeft,
+  RefreshCw,
+  Mic
 } from 'lucide-react';
-import { firebaseClient as db, firebaseClient } from '../../firebaseAdapter.js';
+import { firebaseClient } from '../../firebaseAdapter.js';
 import PlanConsumptionWidget from '../../components/PlanConsumptionWidget';
-import { 
-  getCleanPsychologistName, 
-  getDailyMoodSync, 
-  saveDailyMoodSync, 
-  getClinicalTasksSync, 
-  calculateAdherence 
-} from '../../services/clinicalSyncService.js';
-
+import GrabadoraContinua from '../../components/GrabadoraContinua';
+import { guardarNotaDeVoz } from '../../lib/expediente.js';
+import { getCleanPsychologistName, getDailyMoodSync, saveDailyMoodSync } from '../../services/clinicalSyncService.js';
 export default function PacienteHoyView({ 
   user,
   profile, 
@@ -32,6 +41,11 @@ export default function PacienteHoyView({
       : (initialMoodSync?.score || null)
   );
   const [moodSavedLocal, setMoodSavedLocal] = useState(!!dailyMoodToday || !!initialMoodSync);
+
+  // Grabadora de voz: acceso directo. Se abre en modal para que grabar sea
+  // una acción de un toque desde donde el paciente ya está.
+  const [grabadoraAbierta, setGrabadoraAbierta] = useState(false);
+  const [avisoNota, setAvisoNota] = useState('');
 
   // Escuchar sincronización de ánimo y tareas
   useEffect(() => {
@@ -80,8 +94,7 @@ export default function PacienteHoyView({
   // Catálogo oficial de psicólogos (Cargado en tiempo real desde Firestore)
   const OFFICIAL_PSYCHOLOGISTS = [
     {
-      id: '2TOfkVIRccgIgz5WamAIVmUPtD63',
-      email: 'usajosefernan@gmail.com',
+      id: DEFAULT_PSICOLOGO_ID,
       name: 'José Fernández',
       license: 'M-49ccc',
       photo_url: 'https://lh3.googleusercontent.com/a/ACg8ocKTiCRCGtON7UckYXir1hkqxQPP9jHgd0A8aQx3mqswe2yNcA=s96-c',
@@ -107,8 +120,7 @@ export default function PacienteHoyView({
           .select('*');
         if (!error && data && data.length > 0) {
           const mapped = data.map(p => ({
-            id: p.id || p.user_id || '2TOfkVIRccgIgz5WamAIVmUPtD63',
-            email: p.email || 'usajosefernan@gmail.com',
+            id: p.id || p.user_id || DEFAULT_PSICOLOGO_ID,
             name: p.name || 'José Fernández',
             license: p.license_number || 'M-49ccc',
             photo_url: p.image_url || p.photo_url || 'https://lh3.googleusercontent.com/a/ACg8ocKTiCRCGtON7UckYXir1hkqxQPP9jHgd0A8aQx3mqswe2yNcA=s96-c',
@@ -131,9 +143,11 @@ export default function PacienteHoyView({
     fetchPsychologists();
   }, []);
 
-  // Helper para leer slots dinámicos del psicólogo desde localStorage
-  const getPsychoSlotsFromConfig = (psychoEmail) => {
-    const local = localStorage.getItem(`availability_slots_${psychoEmail}`);
+  // Horarios del psicólogo guardados en local. La clave es su id, no su
+  // correo: el correo del profesional no tiene por qué estar en el navegador
+  // del paciente, y el id ya identifica igual de bien.
+  const getPsychoSlotsFromConfig = (psychoId) => {
+    const local = localStorage.getItem(`availability_slots_${psychoId}`);
     let rawSlots = [];
     if (local) {
       rawSlots = JSON.parse(local);
@@ -1094,7 +1108,7 @@ export default function PacienteHoyView({
                         </span>
                         
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '8px' }}>
-                          {getPsychoSlotsFromConfig(selectedPsychoForDetail.id === '19057a26-ebcb-4d42-a668-80250299912a' ? 'tisutet@hormail.com' : 'usajosefernan@gmail.com').map(slot => {
+                          {getPsychoSlotsFromConfig(selectedPsychoForDetail.id).map(slot => {
                             const isSlotSelected = selectedSlot && selectedSlot.date === slot.date && selectedSlot.time === slot.time && tempSelectedPsychoId === selectedPsychoForDetail.id;
                             
                             return (
@@ -1299,7 +1313,48 @@ export default function PacienteHoyView({
 
   return (
     <div className="view-content-limit" style={{ display: 'flex', flexDirection: 'column', gap: '24px', paddingBottom: '30px' }}>
-      
+
+      {/* Grabadora de voz: un toque y a hablar, sin menús intermedios */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <button
+          type="button"
+          className="grabadora-acceso"
+          onClick={() => setGrabadoraAbierta(true)}
+        >
+          <Mic size={16} /> Grabar una nota de voz
+        </button>
+      </div>
+
+      {avisoNota && (
+        <div className="glass-panel" style={{ padding: '12px 16px', fontSize: '0.85rem' }}>
+          {avisoNota}
+        </div>
+      )}
+
+      {grabadoraAbierta && (
+        <div
+          className="grabadora-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Grabadora de voz"
+        >
+          <GrabadoraContinua
+            patientContext={profile?.contexto_terapeutico || {}}
+            onClose={() => setGrabadoraAbierta(false)}
+            onSave={async (sesion) => {
+              const { guardados } = await guardarNotaDeVoz(profile?.id || user?.id, sesion);
+              const nuevos = guardados?.arbol_vital || 0;
+              setAvisoNota(
+                nuevos > 0
+                  ? `Nota guardada en tu historia, con ${nuevos} ${nuevos === 1 ? 'dato nuevo' : 'datos nuevos'} y tu grabación original.`
+                  : 'Nota guardada en tu historia, junto con tu grabación original.'
+              );
+              setTimeout(() => setAvisoNota(''), 8000);
+            }}
+          />
+        </div>
+      )}
+
       {/* Cabecera / Saludo */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
         <div>

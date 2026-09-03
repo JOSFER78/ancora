@@ -7,7 +7,10 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "test": "node src/tests/run_all.js",
+    "guion": "node scripts/generarBancoPreguntas.mjs",
+    "preview": "vite preview",
+    "verificar": "node scripts/verificarUmbrales.mjs"
   },
   "dependencies": {
     "@capacitor-firebase/authentication": "^8.4.0",

@@ -1,53 +1,45 @@
 import { useState, useEffect } from 'react';
+import PanelInforme from '../components/PanelInforme';
 import { firebaseClient } from '../firebaseAdapter.js';
 import { db as firestoreDb } from '../firebaseClient';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, query, where } from 'firebase/firestore';
 import ChatView from './ChatView';
 import AjustesView from './AjustesView';
-import { 
-  getPendingProposals, acceptProposal, rejectProposal, 
-  getMedications, addMedication, 
-  getTimelineEvents, addTimelineEvent, 
-  AuthorityLevels, AuthorityLabels 
+import {
+  getPendingProposals,
+  acceptProposal,
+  rejectProposal,
+  getMedications,
+  getTimelineEvents,
+  AuthorityLabels
 } from '../lib/clinicalEngine';
 import { MemoryRepositoryFactory } from '../infrastructure/storage/MemoryRepositoryFactory';
 import { CognitiveMemoryEngine } from '../services/memory/CognitiveMemoryEngine';
-import { DirectiveCategory, LifeTreeCategory, LifeTreeCategoryLabels, AuthorityLevel } from '../domain/memory/MemoryTypes';
-import { 
-  Users, 
-  Activity, 
-  AlertTriangle, 
-  AlertCircle,
-  CheckCircle, 
-  Calendar, 
-  CreditCard, 
-  FileText, 
-  Sparkles, 
-  Clock, 
-  Search, 
-  Heart, 
-  User, 
+import { AuthorityLevel } from '../domain/memory/MemoryTypes';
+import {
+  Users,
+  Activity,
+  AlertTriangle,
+  CheckCircle,
+  Calendar,
+  CreditCard,
+  FileText,
+  Sparkles,
+  Clock,
+  User,
   ArrowRight,
-  TrendingUp, 
-  Check, 
+  Check,
   RefreshCw,
-  ExternalLink,
   ShieldCheck,
   Video,
-  ListFilter,
   Plus,
-  ArrowLeft,
-  Settings,
-  BookOpen,
   Volume2,
-  MessageSquare,
   ChevronLeft,
   ChevronRight,
   Trash2,
   XCircle,
   Edit
 } from 'lucide-react';
-
 const EmptyStatePatients = () => (
   <div className="glass-panel animate-fade-in" style={{ padding: '40px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', border: '1px dashed rgba(255,255,255,0.1)' }}>
     <Users size={40} style={{ color: 'var(--color-cyan)', opacity: 0.5 }} />
@@ -93,10 +85,14 @@ export default function PsicologoDashboardView({
       if (error) throw error;
 
       // Fetch profiles to map patient names
-      const { data: patientsData } = await firebaseClient
-        .from('profiles')
-        .select('id, contexto_terapeutico')
-        .in('role', ['paciente', 'emilio']);
+      // Solo pacientes asignados a este psicologo: las reglas de Firestore
+      // deniegan el listado global de perfiles.
+      const { data: patientsData } = user?.id
+        ? await firebaseClient
+            .from('profiles')
+            .select('id, contexto_terapeutico')
+            .eq('contexto_terapeutico.assigned_psychologist_id', user.id)
+        : { data: [] };
 
       const patMap = {};
       (patientsData || []).forEach(p => {
@@ -356,7 +352,10 @@ export default function PsicologoDashboardView({
   // Selected patient
   const [selectedPatientId, setSelectedPatientId] = useState(isVirtualDemo ? 'p-1' : null);
   
-  // Real or mock data
+  // Pacientes de demostración (solo en `isVirtualDemo`) o datos reales.
+  // Los de demostración son personas inventadas, y quien firma sus notas
+  // también: atribuir diagnósticos ficticios a un profesional colegiado real
+  // con su nombre y su número de colegiado no es aceptable ni en una demo.
   const [patients, setPatients] = useState(() => {
     if (isVirtualDemo) {
       return [
@@ -455,7 +454,7 @@ export default function PsicologoDashboardView({
             { id: 'a-4', date: '2026-06-07', time: '10:00', type: 'Sesión de Exposición', status: 'Programada' }
           ],
           pastSOAPs: [
-            { id: 's-2', date: '28/05/2026', author: 'Dr. José Fernández', subjective: 'Sufre crisis de pánico anticipatorio ante salidas.', objective: 'Hipervigilancia al hablar de situaciones exteriores.', assessment: 'Trastorno de pánico con agorafobia.', plan: 'Iniciar desensibilización sistemática.' }
+            { id: 's-2', date: '28/05/2026', author: 'Dra. Demo', subjective: 'Sufre crisis de pánico anticipatorio ante salidas.', objective: 'Hipervigilancia al hablar de situaciones exteriores.', assessment: 'Trastorno de pánico con agorafobia.', plan: 'Iniciar desensibilización sistemática.' }
           ],
           soapDraft: {
             subjective: "Sufre crisis de pánico anticipatorio ante salidas de su domicilio habitual.",
@@ -555,7 +554,7 @@ export default function PsicologoDashboardView({
             { id: 'a-8', date: '2026-06-11', time: '17:00', type: 'Seguimiento Financiero/Estrés', status: 'Programada' }
           ],
           pastSOAPs: [
-            { id: 's-4', date: '05/06/2026', author: 'Dr. José Fernández', subjective: 'Rumiación constante en torno a su situación de endeudamiento.', objective: 'Paciente activo en la autogestión de su ruta.', assessment: 'Estrés agudo derivado de deudas.', plan: 'Técnicas de resolución de problemas.' }
+            { id: 's-4', date: '05/06/2026', author: 'Dra. Demo', subjective: 'Rumiación constante en torno a su situación de endeudamiento.', objective: 'Paciente activo en la autogestión de su ruta.', assessment: 'Estrés agudo derivado de deudas.', plan: 'Técnicas de resolución de problemas.' }
           ],
           soapDraft: {
             subjective: "Rumiación constante en torno a su situación de endeudamiento financiero.",
@@ -841,10 +840,12 @@ export default function PsicologoDashboardView({
 
         // 1. Firebase
         try {
-          const { data: supaProfiles } = await firebaseClient
-            .from('profiles')
-            .select('*')
-            .in('role', ['paciente', 'emilio']);
+          const { data: supaProfiles } = user?.id
+            ? await firebaseClient
+                .from('profiles')
+                .select('*')
+                .eq('contexto_terapeutico.assigned_psychologist_id', user.id)
+            : { data: [] };
 
           (supaProfiles || []).forEach(p => {
             patMap.set(p.id, p);
@@ -855,20 +856,17 @@ export default function PsicologoDashboardView({
 
         // 2. Firestore
         try {
-          const fireSnap = await getDocs(collection(firestoreDb, 'profiles'));
-          const EXCLUDED_EMAILS = [
-            'josferestudio@gmail.com',
-            'usajosefernan@gmail.com',
-            'davidsevilla101@gmail.com'
-          ];
+          const fireSnap = await getDocs(query(
+            collection(firestoreDb, 'profiles'),
+            where('contexto_terapeutico.assigned_psychologist_id', '==', user.id)
+          ));
+          // Paciente es quien tiene rol de paciente. La consulta ya viene
+          // filtrada por asignación, así que aquí solo se descarta a los
+          // profesionales, sin listas de correos escritas a mano.
           fireSnap.forEach(docSnap => {
             const data = docSnap.data();
             const role = (data.role || '').toLowerCase();
-            const email = (data.email || '').toLowerCase();
-            if (
-              !EXCLUDED_EMAILS.includes(email) &&
-              (role === 'paciente' || role === 'patient' || role === 'emilio' || email === 'tisute@gmail.com')
-            ) {
+            if (!['psicologo', 'psychologist', 'supervisor', 'admin'].includes(role)) {
               const current = patMap.get(docSnap.id) || {};
               patMap.set(docSnap.id, {
                 ...current,
@@ -884,26 +882,29 @@ export default function PsicologoDashboardView({
 
         let profilesData = Array.from(patMap.values()).filter(p => {
           const r = (p.role || '').toLowerCase();
-          const em = (p.email || '').toLowerCase();
-          return (r === 'paciente' || r === 'patient' || r === 'emilio' || em === 'tisute@gmail.com') && em !== 'davidsevilla101@gmail.com' && em !== 'usajosefernan@gmail.com' && em !== 'josferestudio@gmail.com';
+          return !['psicologo', 'psychologist', 'supervisor', 'admin'].includes(r);
         });
 
         // Filtrar pacientes asignados al psicólogo o sin asignar
         if (profilesData && profilesData.length > 0) {
-          const assigned = profilesData.filter(p => 
-            p.contexto_terapeutico?.assigned_psychologist_id === profile.id || 
-            !p.contexto_terapeutico?.assigned_psychologist_id ||
-            p.email === 'tisute@gmail.com'
+          const assigned = profilesData.filter(p =>
+            p.contexto_terapeutico?.assigned_psychologist_id === profile.id ||
+            !p.contexto_terapeutico?.assigned_psychologist_id
           );
           if (assigned.length > 0) {
             profilesData = assigned;
           }
         }
 
-        // Load consents
-        const { data: consentsData } = await firebaseClient
-          .from('consents')
-          .select('user_id, version, accepted_at');
+        // Load consents (solo de los pacientes asignados: las reglas de
+        // Firestore deniegan el listado global de consentimientos)
+        const assignedIds = (profilesData || []).map(p => p.id).filter(Boolean).slice(0, 30);
+        const { data: consentsData } = assignedIds.length > 0
+          ? await firebaseClient
+              .from('consents')
+              .select('user_id, version, accepted_at')
+              .in('user_id', assignedIds)
+          : { data: [] };
 
         const consentsMap = {};
         (consentsData || []).forEach(c => {
@@ -914,8 +915,7 @@ export default function PsicologoDashboardView({
         const updatedPatients = [];
 
         (profilesData || []).forEach(p => {
-          const isTisute = (p.email || '').toLowerCase() === 'tisute@gmail.com';
-          const emailStr = p.email || (isTisute ? 'tisute@gmail.com' : `paciente_${p.id.substring(0, 5)}@ancora.clinic`);
+          const emailStr = p.email || `paciente_${p.id.substring(0, 5)}@ancora.clinic`;
           
           const hasConsent = !!consentsMap[p.id];
           const consentObj = {
@@ -940,7 +940,10 @@ export default function PsicologoDashboardView({
           // Add a new patient record
           updatedPatients.push({
             id: p.id,
-            name: isTisute ? 'Emilio Naranjo' : (p.contexto_terapeutico?.displayName || p.contexto_terapeutico?.name || p.display_name || `Paciente #${p.id.substring(0, 6)}`),
+            // El nombre sale del perfil. Antes, para un paciente concreto,
+            // estaba escrito a mano en el código, con lo que su nombre real
+            // viajaba al bundle público de la aplicación.
+            name: p.contexto_terapeutico?.displayName || p.contexto_terapeutico?.name || p.display_name || `Paciente #${p.id.substring(0, 6)}`,
             age: 34,
             gender: 'Masculino',
             avatar: p.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=150&h=150',
@@ -2367,6 +2370,12 @@ export default function PsicologoDashboardView({
                     </button>
                   </div>
 
+                  {/* Informe periódico generado desde el expediente */}
+                  <PanelInforme
+                    patientId={selectedPatient.id}
+                    psychologistId={profile?.id || user?.id}
+                  />
+
                   {/* Historial de Notas SOAP */}
                   <div className="glass-panel" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
                     <h4 style={{ fontSize: '0.85rem', fontWeight: 800, color: '#ffffff', borderBottom: '1px solid var(--border)', paddingBottom: '8px', margin: 0 }}>
@@ -3104,7 +3113,6 @@ export default function PsicologoDashboardView({
                 </div>
               )}
 
-
             </div>
           )}
           {/* ==================== VISTA 3: NOTAS SOAP ASISTIDAS POR IA ==================== */}
@@ -3279,7 +3287,6 @@ export default function PsicologoDashboardView({
 
             </div>
           )}
-
 
           {/* ==================== VISTA 4: VIDEO-BRIEFING / PREPARACIÓN DE SESIÓN ==================== */}
           {activeSection === 'briefing' && (

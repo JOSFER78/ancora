@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
-import { firebaseClient as db, firebaseClient } from '../firebaseAdapter.js';
+import { firebaseClient } from '../firebaseAdapter.js';
 import { CheckSquare, Square, Download, AlertTriangle, Info, ListTodo, RefreshCw } from 'lucide-react';
-
 export default function EscudoLegalView({ user, profile }) {
   const [phases, setPhases] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -157,12 +156,22 @@ export default function EscudoLegalView({ user, profile }) {
     let content = "";
     let filename = "";
 
+    // Las plantillas llevaban escrito el nombre de una persona real. Un
+    // escrito dirigido al INSS o a la Inspección no puede salir con el nombre
+    // de otro: se rellena con quien lo descarga, y si no consta, se deja el
+    // hueco para que lo complete a mano.
+    const nombreFirmante =
+      profile?.contexto_terapeutico?.name ||
+      profile?.display_name ||
+      user?.display_name ||
+      '________________';
+
     if (docType === "agorafobia") {
       filename = "Justificante_Agorafobia_INSS.txt";
       content = `ASUNTO: JUSTIFICACIÓN DE INCOMPARECENCIA A CITACIÓN MÉDICA / SOLICITUD DE ADAPTACIÓN NO PRESENCIAL
 A LA ATENCIÓN DEL INSPECTOR MÉDICO - INSTITUTO NACIONAL DE LA SEGURIDAD SOCIAL (INSS)
 
-D./Dña. Emilio Naranjo, con DNI ________________, en relación al expediente de incapacidad temporal que se encuentra en curso, mediante el presente escrito EXPONE:
+D./Dña. ${nombreFirmante}, con DNI ________________, en relación al expediente de incapacidad temporal que se encuentra en curso, mediante el presente escrito EXPONE:
 
 1. Que ha recibido citación para examen médico presencial a realizar el día __/__/____.
 2. Que actualmente se encuentra diagnosticado de un cuadro severo de TRAUMA COMPLEJO, DEPRESIÓN MAYOR y AGORAFOBIA grave con crisis de pánico refractarias, que le incapacita de forma absoluta para salir de su domicilio o realizar desplazamientos de forma autónoma.
@@ -175,13 +184,13 @@ Por todo lo anterior, SOLICITA:
 
 En Madrid, a __ de __________ de 2026.
 
-Fdo: Emilio Naranjo`;
+Fdo: ${nombreFirmante}`;
     } else if (docType === "uci") {
       filename = "Justificante_Episodio_SPRL_EFE.txt";
       content = `INFORME SOBRE APTITUD LABORAL / EVALUACIÓN DE INEPTITUD SOBREVENIDA
 AL SERVICIO DE PREVENCIÓN DE RIESGOS LABORALES (SPRL) - AGENCIA EFE
 
-D./Dña. Emilio Naranjo, con DNI ________________, trabajador con categoría profesional de ________________ en esta empresa, ante el SPRL comparece y EXPONE:
+D./Dña. ${nombreFirmante}, con DNI ________________, trabajador con categoría profesional de ________________ en esta empresa, ante el SPRL comparece y EXPONE:
 
 1. Que tras el periodo de incapacidad temporal prolongado, se aporta historial clínico reciente que documenta un ingreso de urgencia en la Unidad de Cuidados Intensivos (UCI) con un coma inducido y estancia hospitalaria de 5 días derivado de una crisis de salud mental autolítica.
 2. Que concurren en el trabajador secuelas cognitivas graves, impulsividad refractaria ligada a un Trastorno por Déficit de Atención con Hiperactividad (TDAH) en adultos y un diagnóstico consolidado de Trauma Complejo de origen infantil.
@@ -193,13 +202,13 @@ Por todo lo anterior, se SOLICITA:
 
 En Madrid, a __ de __________ de 2026.
 
-Fdo: Emilio Naranjo`;
+Fdo: ${nombreFirmante}`;
     } else if (docType === "incapacidad") {
       filename = "Peticion_Incapacidad_Permanente.txt";
       content = `SOLICITUD DE INICIACIÓN DE EXPEDIENTE DE INCAPACIDAD PERMANENTE
 AL INSTITUTO NACIONAL DE LA SEGURIDAD SOCIAL (INSS) - DIRECCIÓN PROVINCIAL DE MADRID
 
-D./Dña. Emilio Naranjo, mayor de edad, con DNI ________________ y domicilio en ________________, ante este Organismo comparece y como mejor proceda en Derecho, EXPONE:
+D./Dña. ${nombreFirmante}, mayor de edad, con DNI ________________ y domicilio en ________________, ante este Organismo comparece y como mejor proceda en Derecho, EXPONE:
 
 1. Que se encuentra en situación de incapacidad temporal con una duración acumulada de ____ días, derivada de contingencia común (Trastorno Depresivo Mayor recurrente, Agorafobia refractaria y secuelas asociadas a Trauma Psicológico Complejo y TDAH).
 2. Que a pesar de haber seguido los tratamientos psicofarmacológicos y psicoterapéuticos prescritos por los servicios de salud mental de referencia, el cuadro clínico presenta un carácter crónico, irreversible y plenamente inhabilitante para cualquier tipo de actividad laboral organizada.
@@ -210,7 +219,7 @@ Por lo expuesto, SOLICITA:
 
 En Madrid, a __ de __________ de 2026.
 
-Fdo: Emilio Naranjo`;
+Fdo: ${nombreFirmante}`;
     }
 
     const blob = new Blob([content], { type: "text/plain;charset=utf-8" });

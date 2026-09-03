@@ -13,12 +13,10 @@ import {
   Plus,
   RefreshCw,
   MessageSquare,
-  ChevronRight,
   Terminal,
   Activity,
   CheckCircle2,
   AlertOctagon,
-  HelpCircle,
   Edit2,
   Trash2,
   X,
@@ -27,7 +25,6 @@ import {
   MicOff,
   Send
 } from 'lucide-react';
-
 const ICON_MAP = {
   Brain: Brain,
   TrendingUp: TrendingUp,
@@ -879,6 +876,19 @@ export default function AgentesView({ user, profile, sidebarCollapsed = false, s
   // Calendario de Resultados
   const [calendarDate, setCalendarDate] = useState(new Date());
   const [selectedCalendarDay, setSelectedCalendarDay] = useState(null);
+
+  // Tareas completadas de un dia concreto. Estaba definida solo dentro de dos
+  // closures, pero se usaba tambien fuera de ellas: ahi lanzaba ReferenceError.
+  const getTasksForDay = (dateObj) => {
+    if (!dateObj) return [];
+    return tasks.filter(t => {
+      if (t.status !== 'completed' || t.debate_id) return false;
+      const taskDate = new Date(t.created_at || t.updated_at);
+      return taskDate.getDate() === dateObj.getDate() &&
+             taskDate.getMonth() === dateObj.getMonth() &&
+             taskDate.getFullYear() === dateObj.getFullYear();
+    });
+  };
   
   // Loaders
   const [loadingTasks, setLoadingTasks] = useState(false);
@@ -3580,8 +3590,6 @@ export default function AgentesView({ user, profile, sidebarCollapsed = false, s
                                 <button
                                   onClick={() => handleSelectSolution(`[Propuesta de ${msg.agent_name}]: ${msg.message}`)}
                                   style={{
-                                    background: 'transparent',
-                                    border: 'none',
                                     color: 'var(--color-emerald)',
                                     cursor: 'pointer',
                                     fontSize: '0.64rem',

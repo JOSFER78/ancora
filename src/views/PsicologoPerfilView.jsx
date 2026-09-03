@@ -1,11 +1,16 @@
 import { useState, useEffect } from 'react';
-import { firebaseClient as db, firebaseClient } from '../firebaseAdapter.js';
-import { 
-  User, Mail, CreditCard, Clock, FileText, 
-  ShieldCheck, Sparkles, CheckCircle2, Award, ShieldAlert, LogOut,
+import { firebaseClient } from '../firebaseAdapter.js';
+import {
+  Mail,
+  CreditCard,
+  Clock,
+  FileText,
+  ShieldCheck,
+  CheckCircle2,
+  Award,
+  LogOut,
   Calendar
 } from 'lucide-react';
-
 export default function PsicologoPerfilView({ profile, onProfileUpdated, user, isVirtualDemo, onLogout }) {
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState('');
@@ -390,7 +395,7 @@ export default function PsicologoPerfilView({ profile, onProfileUpdated, user, i
                   <input 
                     type="text" 
                     className="form-input" 
-                    value={user?.email || 'usajosefernan@gmail.com'}
+                    value={user?.email || ''}
                     style={{ height: '36px', fontSize: '0.78rem', paddingLeft: '32px', background: 'rgba(0,0,0,0.15)', color: 'var(--text-tertiary)' }}
                     disabled 
                   />

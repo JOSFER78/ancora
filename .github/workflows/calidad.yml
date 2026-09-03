@@ -1,0 +1,38 @@
+# Guardia de calidad de Áncora ⚓
+#
+# No exige perfección: exige que no se empeore. El lint arrastra ruido heredado
+# y pedir cero hoy solo llevaría a silenciar reglas, que es peor que tener el
+# aviso. El umbral solo puede bajar.
+name: Calidad
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      # El guion clínico es la fuente de verdad del banco de preguntas: si
+      # alguien edita el archivo generado a mano, esto lo caza.
+      - name: El banco de preguntas está al día con el guion
+        run: node scripts/generarBancoPreguntas.mjs --check
+
+      - name: Pruebas
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      # Incluye la comprobación de que no vuelven datos personales al bundle.
+      - name: Umbrales de lint, tamaño y privacidad
+        run: npm run verificar

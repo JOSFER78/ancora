@@ -11,9 +11,6 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
-  Trophy,
-  ClipboardList,
-  Bookmark,
   Eye,
   Plus,
   Edit3,
@@ -23,7 +20,6 @@ import {
   MicOff,
   Search
 } from 'lucide-react';
-
 export default function ChatView({ user, profile, dailyMoodToday, onProfileUpdated, genericMode = false }) {
   const [conversations, setConversations] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');

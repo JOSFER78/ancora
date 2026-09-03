@@ -6,6 +6,8 @@
 
 import { TokenBudgetManager } from './TokenBudgetManager.js';
 import { RelevanceScorer } from './RelevanceScorer.js';
+import { BM25Index } from './BM25.js';
+import { expandirLocal } from './expansionConsulta.js';
 
 export class ContextBuilder {
   /**
@@ -158,9 +160,28 @@ export class ContextBuilder {
       ...lifeTreeNodes.map(n => ({ ...n, type: 'ÁRBOL_VITAL', content: n.description }))
     ];
 
-    const scoredMemories = allMemories.map(mem => ({
+    // Se construye un índice BM25 sobre TODOS los recuerdos del paciente antes
+    // de puntuar. Es lo que permite que el IDF sea real: sin el corpus, no hay
+    // forma de saber que «hermana» distingue y «semana» no, porque eso depende
+    // de lo que este paciente cuenta habitualmente, no de un diccionario.
+    const indiceBM25 = new BM25Index(
+      allMemories,
+      m => `${m.title || ''} ${m.content || ''} ${m.description || ''} ${m.verbatimQuote || m.verbatim_quote || ''}`
+    );
+
+    // La consulta se amplía con las formas en que la misma idea puede estar
+    // escrita en el expediente: «dormir» no encuentra «duermo» por sí solo.
+    // Aquí solo la expansión local, que es instantánea: este es el camino
+    // rápido del chat y no puede esperar a otra llamada de red.
+    const consultaAmpliada = [currentQuery, ...expandirLocal(currentQuery)].join(' ');
+
+    const scoredMemories = allMemories.map((mem, i) => ({
       memory: mem,
-      score: RelevanceScorer.scoreMemory(mem, currentQuery, emotionalState)
+      score: RelevanceScorer.scoreMemory(
+        { ...mem, _bm25Index: indiceBM25, _bm25Doc: i },
+        consultaAmpliada,
+        emotionalState
+      )
     })).sort((a, b) => b.score - a.score);
 
     // Tomar solo las memorias más relevantes hasta agotar budget.episodicMemory

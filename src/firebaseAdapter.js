@@ -1,26 +1,25 @@
-import { 
-  collection, 
-  doc, 
-  getDoc, 
-  getDocs, 
-  setDoc, 
-  addDoc, 
-  updateDoc, 
-  deleteDoc, 
-  query, 
-  where, 
-  orderBy, 
-  limit as firestoreLimit 
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  setDoc,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  query,
+  where,
+  orderBy,
+  limit as firestoreLimit
 } from 'firebase/firestore';
-import { db, auth, storage, firebaseConfig, app } from './firebaseClient.js';
-import { 
-  onAuthStateChanged, 
+import { db, auth } from './firebaseClient.js';
+import {
+  onAuthStateChanged,
   signOut as fbSignOut,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signInWithPopup,
   signInWithRedirect,
-  getRedirectResult,
   signInWithCredential,
   GoogleAuthProvider,
   sendPasswordResetEmail,
@@ -29,7 +28,6 @@ import {
 } from 'firebase/auth';
 import { Capacitor } from '@capacitor/core';
 import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
-
 /**
  * Universal Thenable Firestore Query Builder
  * Proporciona una interfaz fluida e intuitiva sobre Google Cloud Firestore.
@@ -466,14 +464,22 @@ export const dbClient = {
         const existingSnap = await getDoc(profileDocRef);
         let userRole = 'paciente';
         
-        const emailLower = (user.email || '').toLowerCase();
-        if (emailLower === 'josferestudio@gmail.com') {
-          userRole = 'supervisor';
-        } else if (emailLower === 'usajosefernan@gmail.com' || emailLower === 'davidsevilla101@gmail.com') {
-          userRole = 'psicologo';
-        } else if (existingSnap.exists() && existingSnap.data()?.role) {
+        // EL ROL NO SE DECIDE EN EL CLIENTE.
+        //
+        // Aquí había una lista de correos que asignaba 'supervisor' o
+        // 'psicologo' al entrar. Dos problemas: metía los correos personales de
+        // tres personas reales en el bundle público, y contradecía las reglas de
+        // Firestore, que prohíben crear un perfil con rol privilegiado y
+        // cambiarse el rol a uno mismo. Un alta nueva por esa vía habría sido
+        // rechazada por el servidor.
+        //
+        // Lo que vale es el rol que ya consta en el perfil. Uno nuevo nace como
+        // paciente —o como psicólogo, si viene del registro profesional, que es
+        // lo único que las reglas permiten—, y la promoción a supervisor se hace
+        // fuera de la aplicación, con credenciales de administración.
+        if (existingSnap.exists() && existingSnap.data()?.role) {
           userRole = existingSnap.data().role;
-        } else if (pendingRole) {
+        } else if (pendingRole === 'psicologo' || pendingRole === 'paciente') {
           userRole = pendingRole;
         }
 

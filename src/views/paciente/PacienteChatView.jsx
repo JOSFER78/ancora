@@ -1,21 +1,36 @@
 import { useState, useEffect, useRef } from 'react';
-import { firebaseClient as db, firebaseClient } from '../../firebaseAdapter.js';
+import { firebaseClient } from '../../firebaseAdapter.js';
 import { invokeChatTerapeuta } from '../../lib/chatTerapeuta';
-import { askClinicalAI } from '../../services/aiService.js';
+import { askClinicalAI, CLINICAL_MODELS } from '../../services/claudeService.js';
 import { buildPatientSnapshot, processConversationTurn, uploadClinicalDocument } from '../../lib/clinicalEngine';
 import PlanConsumptionWidget from '../../components/PlanConsumptionWidget';
-import { 
-  Send, Mic, MicOff, AlertTriangle, Bot, User, 
-  Sparkles, Clock, RefreshCw, Volume2, ShieldAlert, Upload, MessageCircle,
-  Plus, Trash2, Edit3, Folder, Download, Menu, ArrowLeft, Square, X,
-  Maximize2, Minimize2, Calendar, CheckCircle, MoreVertical
+import {
+  Send,
+  Mic,
+  MicOff,
+  AlertTriangle,
+  Bot,
+  Sparkles,
+  RefreshCw,
+  ShieldAlert,
+  Upload,
+  MessageCircle,
+  Plus,
+  Trash2,
+  Edit3,
+  Folder,
+  Download,
+  Menu,
+  ArrowLeft,
+  Square,
+  X,
+  Maximize2,
+  Minimize2,
+  Calendar,
+  CheckCircle,
+  MoreVertical
 } from 'lucide-react';
-import { 
-  getAgendaTopicsSync, 
-  saveAgendaTopicsSync, 
-  getCleanPsychologistName 
-} from '../../services/clinicalSyncService.js';
-
+import { getAgendaTopicsSync, saveAgendaTopicsSync, getCleanPsychologistName } from '../../services/clinicalSyncService.js';
 export default function PacienteChatView({ 
   profile, 
   user, 
@@ -291,6 +306,20 @@ export default function PacienteChatView({
     localStorage.setItem(`chat_conv_folders_${user?.id}`, JSON.stringify(updatedMap));
   };
   
+  // Estos tres estados se usaban en varios sitios pero su declaracion no
+  // existia: cada uso lanzaba ReferenceError en tiempo de ejecucion.
+  const [topicFolders, setTopicFolders] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem(`chat_folders_${user?.id}`)) || [];
+    } catch { return []; }
+  });
+  const [convFolderMap, setConvFolderMap] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem(`chat_conv_folders_${user?.id}`)) || {};
+    } catch { return {}; }
+  });
+  const [showSecurityInfo, setShowSecurityInfo] = useState(false);
+
   const abortControllerRef = useRef(null);
   const messagesEndRef = useRef(null);
   const isSendingRef = useRef(false);
@@ -861,19 +890,12 @@ export default function PacienteChatView({
 
         if (isGenericTitle && textToSend.length > 4) {
           askClinicalAI({
-            messages: [
-              {
-                role: 'system',
-                content: 'Genera un título clínico ultra-conciso (3 a 5 palabras, en español, sin comillas ni puntos finales) que resuma el tema central de este mensaje del paciente para el expediente.'
-              },
-              {
-                role: 'user',
-                content: textToSend
-              }
-            ],
-            model: 'gemini-3.5-flash-lite',
+            system: 'Genera un título clínico ultra-conciso (3 a 5 palabras, en español, sin comillas ni puntos finales) que resuma el tema central de este mensaje del paciente para el expediente.',
+            messages: [{ role: 'user', content: textToSend }],
+            model: CLINICAL_MODELS.CHAT,
+            maxTokens: 40,
             temperature: 0.3
-          }).then(aiTitle => {
+          }).then(({ content: aiTitle }) => {
             const cleanTitle = String(aiTitle || '').trim().replace(/^["']|["']$/g, '');
             if (cleanTitle && cleanTitle.length > 3 && cleanTitle.length < 60) {
               handleRenameConversation(activeConversationId, cleanTitle);
@@ -1056,12 +1078,10 @@ Genera un informe clínico breve (3-4 líneas) estructurado en:
 - Datos de contexto o avances relevantes
 Sé empático, riguroso y conciso.`;
 
-      const aiSynthesis = await askClinicalAI({
-        messages: [
-          { role: 'system', content: 'Eres un asistente clínico experto en síntesis y formulación terapéutica.' },
-          { role: 'user', content: prompt }
-        ],
-        model: 'auto',
+      const { content: aiSynthesis } = await askClinicalAI({
+        system: 'Eres un asistente clínico experto en síntesis y formulación terapéutica. No añades nada que no esté en el material recibido.',
+        messages: [{ role: 'user', content: prompt }],
+        model: CLINICAL_MODELS.REPORT,
         temperature: 0.3
       });
 

@@ -1,7 +1,12 @@
 import { firebaseClient } from '../firebaseAdapter.js';
 import { db as firestoreDb } from '../firebaseClient.js';
-import { doc, updateDoc, setDoc, getDoc } from 'firebase/firestore';
-
+import { doc, setDoc } from 'firebase/firestore';
+import { ingestClinicalSource, SOURCE_TYPES } from '../services/clinicalIngestionService.js';
+import { isTranscribableAudio, isReadableImage } from '../services/transcriptionService.js';
+import { persistIngestionResult, AUTORIDAD_DOCUMENTO, AUTORIDAD_PACIENTE } from './expediente.js';
+import { computeAnamnesisState } from './anamnesisState.js';
+import { tieneConsentimientoIA, ConsentRequiredError } from './consentimiento.js';
+import { askClinicalAI, CLINICAL_MODELS } from '../services/claudeService.js';
 /**
  * Jerarquía de Niveles de Autoridad Clínica
  */
@@ -84,12 +89,12 @@ export async function getClinicalProfile(patientId) {
 
 export async function buildPatientSnapshot(patientId) {
   try {
-    const { askClinicalAI } = await import('../services/aiService.js');
-    const { data: profile } = await db.from('profiles').select('*').eq('id', patientId).maybeSingle();
+    const { data: profile } = await firebaseClient.from('profiles').select('*').eq('id', patientId).maybeSingle();
     const prompt = `Genera un resumen clínico estructurado del paciente: ${JSON.stringify(profile || {})}`;
-    const synthesis = await askClinicalAI({
+    const { content: synthesis } = await askClinicalAI({
+      system: 'Resumes expedientes clínicos para el psicólogo responsable. No añades nada que no conste en el material recibido.',
       messages: [{ role: 'user', content: prompt }],
-      model: 'auto'
+      model: CLINICAL_MODELS.REPORT
     });
     
     const snapshot = {
@@ -98,7 +103,7 @@ export async function buildPatientSnapshot(patientId) {
       summary: synthesis,
       created_at: new Date().toISOString()
     };
-    await db.from('patient_context_snapshots').insert(snapshot);
+    await firebaseClient.from('patient_context_snapshots').insert(snapshot);
     return snapshot;
   } catch (err) {
     console.warn('Error sintetizando memoria clínica:', err);
@@ -154,12 +159,12 @@ export async function getClinicalTimelineIndex(patientId) {
 
 export async function processConversationTurn(conversationId, messageId = null) {
   try {
-    const { askClinicalAI } = await import('../services/aiService.js');
-    const { data: msgs } = await db.from('messages').select('*').eq('conversation_id', conversationId).order('created_at', { ascending: false }).limit(5);
+    const { data: msgs } = await firebaseClient.from('messages').select('*').eq('conversation_id', conversationId).order('created_at', { ascending: false }).limit(5);
     const prompt = `Analiza los últimos mensajes de esta sesión clínica y extrae temas clave o insights: ${JSON.stringify(msgs || [])}`;
-    const synthesis = await askClinicalAI({
+    const { content: synthesis } = await askClinicalAI({
+      system: 'Extraes temas y observaciones de una sesión de chat. Describes lo que hay, sin interpretar ni etiquetar.',
       messages: [{ role: 'user', content: prompt }],
-      model: 'auto'
+      model: CLINICAL_MODELS.CHAT
     });
     return { success: true, insights: synthesis };
   } catch (err) {
@@ -171,7 +176,7 @@ export async function processConversationTurn(conversationId, messageId = null) 
 export async function uploadClinicalDocument(file, patientId, onFileStep = () => {}) {
   let userId = patientId;
   try {
-    const { data: authData } = await db.auth.getUser();
+    const { data: authData } = await firebaseClient.auth.getUser();
     if (authData?.user?.id) userId = authData.user.id;
   } catch (_) {}
 
@@ -193,198 +198,152 @@ export async function uploadClinicalDocument(file, patientId, onFileStep = () =>
 
   onFileStep({ step: 'reading', label: 'Leyendo archivo...' });
 
+  // Subir un informe médico es tratamiento de datos de salud: mismo requisito
+  // que el chat. Se comprueba antes de leer el archivo siquiera.
+  if (!(await tieneConsentimientoIA(patientId))) {
+    throw new ConsentRequiredError('No se puede analizar el documento sin el consentimiento de tratamiento de datos de salud.');
+  }
+
   try {
-    await db.from('clinical_documents').insert([doc]);
+    await firebaseClient.from('clinical_documents').insert([doc]);
   } catch (e) {
     console.warn('[clinicalEngine] Error insertando registro documental preliminar:', e.message);
   }
 
   try {
-    const { deepAnalyzeClinicalDocument } = await import('../services/aiService.js');
-    let extracted = null;
+    onFileStep({ step: 'extracting', label: 'Leyendo el documento...' });
 
-    if (mimeType.startsWith('image/')) {
-      onFileStep({ step: 'vision', label: 'Analizando imagen médica con Visión IA...' });
-      const base64 = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-
-      extracted = await deepAnalyzeClinicalDocument({
-        imageBase64: base64,
-        fileName: file.name || cleanName,
-        mimeType
-      });
+    // El texto de la fuente se obtiene según lo que sea: un .txt se lee, un
+    // audio se transcribe con Whisper y una foto de un informe se lee con
+    // visión. Sea cual sea la vía, lo que sale es el texto literal contra el
+    // que se verificarán todas las citas.
+    let sourceType = SOURCE_TYPES.DOCUMENTO;
+    let plainText = '';
+    if (isTranscribableAudio(file)) {
+      sourceType = SOURCE_TYPES.AUDIO;
+    } else if (isReadableImage(file)) {
+      sourceType = SOURCE_TYPES.IMAGEN;
+      onFileStep({ step: 'vision', label: 'Leyendo el documento fotografiado...' });
     } else {
-      onFileStep({ step: 'extracting', label: 'Extrayendo entidades clínicas, medicación y árbol vital con IA...' });
-      let text = '';
-      if (typeof file.text === 'function') {
-        text = await file.text();
-      } else {
-        text = String(file);
-      }
-
-      extracted = await deepAnalyzeClinicalDocument({
-        fileContent: text,
-        fileName: file.name || cleanName,
-        mimeType
-      });
+      plainText = typeof file.text === 'function' ? await file.text() : String(file);
     }
 
-    onFileStep({ step: 'persisting', label: 'Guardando datos estructurados en tu expediente...' });
+    onFileStep({ step: 'extracting', label: 'Extrayendo cronología, patrones y recursos...' });
 
-    // 3. Consolidar automáticamente propuestas, medicamentos y árbol vital
-    if (extracted) {
-      // Medicaciones detectadas
-      if (Array.isArray(extracted.medications) && extracted.medications.length > 0) {
-        for (const med of extracted.medications) {
-          if (med.name) {
-            await db.from('medications').insert([{
-              id: 'med-' + crypto.randomUUID().substring(0, 8),
-              patient_id: patientId,
-              name: med.name,
-              dose: med.dose || 'Pautada',
-              frequency: med.frequency || 'Según prescripción',
-              prescriber: med.prescriber || 'Informe médico',
-              authority_level: 2,
-              created_at: new Date().toISOString()
-            }]);
-          }
-        }
-      }
+    const resultado = await ingestClinicalSource({
+      patientId,
+      source: { type: sourceType, text: plainText, file, fileName: file.name || cleanName },
+      onProgress: (paso) => onFileStep({ step: 'extracting', label: paso.label || 'Analizando...' })
+    });
 
-      // Hitos de cronología detectados
-      if (Array.isArray(extracted.timeline_events) && extracted.timeline_events.length > 0) {
-        for (const ev of extracted.timeline_events) {
-          if (ev.event) {
-            await db.from('timeline_events').insert([{
-              id: 'ev-' + crypto.randomUUID().substring(0, 8),
-              patient_id: patientId,
-              date: ev.date || ev.year || new Date().getFullYear().toString(),
-              event: ev.event,
-              event_type: ev.category || 'medical',
-              authority_level: 2,
-              created_at: new Date().toISOString()
-            }]);
-          }
-        }
-      }
+    onFileStep({ step: 'persisting', label: 'Guardando en tu expediente...' });
 
-      // Episodios clínicos detectados en el informe
-      if (Array.isArray(extracted.clinical_episodes) && extracted.clinical_episodes.length > 0) {
-        for (const ep of extracted.clinical_episodes) {
-          await db.from('clinical_episodes').insert([{
-            id: 'ep-' + crypto.randomUUID().substring(0, 8),
-            patient_id: patientId,
-            title: ep.title || `Hallazgo: ${file.name || 'Informe Clínico'}`,
-            description: ep.description || extracted.resumen_ejecutivo,
-            category: ep.category || 'medical',
-            severity: ep.severity || 'moderate',
-            authority_level: 2,
-            validation_status: 'pending',
-            created_at: new Date().toISOString()
-          }]);
-        }
-      } else if (extracted.resumen_ejecutivo) {
-        await db.from('clinical_episodes').insert([{
-          id: 'ep-' + crypto.randomUUID().substring(0, 8),
-          patient_id: patientId,
-          title: `Hallazgo Documental: ${file.name || 'Informe Clínico'}`,
-          description: extracted.resumen_ejecutivo,
-          category: 'medical',
-          authority_level: 2,
-          validation_status: 'pending',
-          created_at: new Date().toISOString()
-        }]);
-      }
+    // Un documento clínico entra como N2 (documentado); una nota de voz del
+    // propio paciente, como N3 (declarado por él).
+    const autoridad = sourceType === SOURCE_TYPES.AUDIO ? AUTORIDAD_PACIENTE : AUTORIDAD_DOCUMENTO;
+    const persistido = await persistIngestionResult(patientId, resultado, {
+      autoridad,
+      origen: `documento:${documentId}`
+    });
 
-      // Consolidar Árbol Vital en sus 6 ramas
-      const { data: treeDoc } = await db.from('clinical_life_tree').select('*').eq('patient_id', patientId).maybeSingle();
-      const treeData = treeDoc?.tree_data || {};
-      
-      const docLifeTree = extracted.life_tree || {};
-      ['family_origin', 'childhood', 'relationships', 'work_studies', 'health', 'habits'].forEach(branchKey => {
-        const existing = Array.isArray(treeData[branchKey]) ? treeData[branchKey] : [];
-        const incoming = Array.isArray(docLifeTree[branchKey]) ? docLifeTree[branchKey] : [];
-        incoming.forEach(item => {
-          if (item && !existing.includes(item)) existing.push(item);
-        });
-        if (branchKey === 'health' && extracted.antecedentes_medicos && !existing.includes(extracted.antecedentes_medicos)) {
-          existing.push(extracted.antecedentes_medicos);
-        }
-        if (branchKey === 'childhood' && extracted.antecedentes_psicologicos && !existing.includes(extracted.antecedentes_psicologicos)) {
-          existing.push(extracted.antecedentes_psicologicos);
-        }
-        treeData[branchKey] = existing;
-      });
+    // Medicación: solo la que venga con cita textual del documento.
+    const extraido = resultado.extraction || {};
 
-      await db.from('clinical_life_tree').upsert({
+    for (const med of (extraido.medicaciones || [])) {
+      if (!med?.nombre || !med?.evidencia) continue;
+      await firebaseClient.from('medications').insert([{
+        id: 'med-' + crypto.randomUUID().substring(0, 8),
         patient_id: patientId,
-        tree_data: treeData,
-        updated_at: new Date().toISOString()
-      }, { onConflict: 'patient_id' });
+        name: med.nombre,
+        dose: med.dosis || 'No especificada',
+        frequency: med.pauta || 'Según prescripción',
+        prescriber: med.prescriptor || 'Documento clínico',
+        evidencia: med.evidencia,
+        authority_level: autoridad,
+        created_at: new Date().toISOString()
+      }]).catch(() => {});
+    }
 
-      // Actualizar Historial Clínico y Dudas de Sonsacado en perfil de paciente
-      const { data: profileDoc } = await db.from('profiles').select('contexto_terapeutico').eq('id', patientId).maybeSingle();
+    // Señales de riesgo detectadas en el documento: van a risk_events para
+    // que el psicólogo las vea, nunca se quedan solo dentro del informe.
+    for (const senal of (extraido.senales_riesgo || [])) {
+      if (!senal?.evidencia) continue;
+      await firebaseClient.from('risk_events').insert([{
+        patient_id: patientId,
+        document_id: documentId,
+        risk_type: senal.tipo || 'otro',
+        severity: senal.urgencia === 'alta' ? 'high' : senal.urgencia === 'baja' ? 'low' : 'moderate',
+        evidence_quote: senal.evidencia,
+        recommended_action: 'Revisión del psicólogo asignado',
+        status: 'pending',
+        authority_level: autoridad,
+        detected_by: 'ingesta_documental',
+        created_at: new Date().toISOString()
+      }]).catch(() => {});
+    }
+
+    // Las dudas que deja abiertas el documento alimentan el sonsacado del chat.
+    if (Array.isArray(extraido.dudas_para_sonsacar) && extraido.dudas_para_sonsacar.length > 0) {
+      const { data: profileDoc } = await firebaseClient
+        .from('profiles').select('contexto_terapeutico').eq('id', patientId).maybeSingle();
       const curCtx = profileDoc?.contexto_terapeutico || {};
-      const curHist = curCtx.historial_clinico || {};
-      if (extracted.antecedentes_psicologicos) curHist.antecedentes_psicologicos = extracted.antecedentes_psicologicos;
-      if (extracted.antecedentes_medicos) curHist.antecedentes_medicos = extracted.antecedentes_medicos;
-      if (extracted.patrones_comunes) curHist.patrones_comunes = extracted.patrones_comunes;
-      if (extracted.resumen_ejecutivo) curHist.resumen_vital = extracted.resumen_ejecutivo;
-      curCtx.historial_clinico = curHist;
-
-      // Inyectar dudas de sonsacado clínico para el chat
-      const existingDudas = Array.isArray(curCtx.dudas_clinicas_sonsacado) ? curCtx.dudas_clinicas_sonsacado : [];
-      if (Array.isArray(extracted.dudas_sonsacado) && extracted.dudas_sonsacado.length > 0) {
-        extracted.dudas_sonsacado.forEach(d => {
-          if (d && !existingDudas.includes(d)) existingDudas.push(d);
-        });
-        curCtx.dudas_clinicas_sonsacado = existingDudas;
+      const dudas = Array.isArray(curCtx.dudas_clinicas_sonsacado) ? [...curCtx.dudas_clinicas_sonsacado] : [];
+      for (const d of extraido.dudas_para_sonsacar) {
+        const texto = typeof d === 'string' ? d : d?.pregunta;
+        if (texto && !dudas.includes(texto)) dudas.push(texto);
       }
-
-      await db.from('profiles').update({
+      curCtx.dudas_clinicas_sonsacado = dudas.slice(-20);
+      await firebaseClient.from('profiles').update({
         contexto_terapeutico: curCtx,
         updated_at: new Date().toISOString()
-      }).eq('id', patientId);
-
-      // Propuesta clínica para revisión del psicólogo colegiado
-      const proposalData = {
-        document_id: documentId,
-        file_name: file.name || cleanName,
-        extraction_data: extracted,
-        created_at: new Date().toISOString()
-      };
-
-      await db.from('clinical_proposals').insert([{
-        id: 'prop-' + crypto.randomUUID().substring(0, 8),
-        patient_id: patientId,
-        proposal_type: 'document_extraction',
-        proposal_data: proposalData,
-        source_quote: extracted.resumen_ejecutivo || 'Extracción documental procesada con rigor clínico.',
-        confidence: 0.95,
-        status: 'pending',
-        created_at: new Date().toISOString()
-      }]);
+      }).eq('id', patientId).catch(() => {});
     }
 
-    await db.from('clinical_documents').update({
+    // Propuesta para revisión del psicólogo, con la trazabilidad completa:
+    // qué se guardó, qué se descartó por no tener cita y con qué modelo.
+    await firebaseClient.from('clinical_proposals').insert([{
+      id: 'prop-' + crypto.randomUUID().substring(0, 8),
+      patient_id: patientId,
+      proposal_type: 'document_extraction',
+      proposal_data: {
+        document_id: documentId,
+        file_name: file.name || cleanName,
+        resumen: extraido.resumen_fuente || '',
+        guardados: persistido.guardados,
+        descartados_sin_evidencia: persistido.descartados,
+        trazabilidad: resultado.trazabilidad || null
+      },
+      source_quote: extraido.resumen_fuente || 'Extracción documental verificada contra el texto original.',
+      confidence: 0.95,
+      status: 'pending',
+      created_at: new Date().toISOString()
+    }]).catch(() => {});
+
+    await firebaseClient.from('clinical_documents').update({
       extraction_status: 'completed',
-      summary: extracted?.resumen_ejecutivo || 'Documento analizado.',
+      summary: extraido.resumen_fuente || 'Documento analizado.',
+      source_text: (resultado.source_text || plainText || '').slice(0, 100000),
       updated_at: new Date().toISOString()
     }).eq('id', documentId);
 
     onFileStep({ step: 'done', label: 'Completado' });
-    return { document: { ...doc, extraction_status: 'completed' }, extracted, ingest: { success: true } };
+    return {
+      document: { ...doc, extraction_status: 'completed' },
+      extracted: resultado,
+      persistido,
+      ingest: { success: true }
+    };
   } catch (err) {
     console.error('Error procesando extracción documental de IA:', err);
-    await db.from('clinical_documents').update({
-      extraction_status: 'completed',
-      extraction_error: err.message
-    }).eq('id', documentId);
-    return { document: doc, ingest: { success: true } };
+    await firebaseClient.from('clinical_documents').update({
+      extraction_status: 'error',
+      extraction_error: err.message,
+      updated_at: new Date().toISOString()
+    }).eq('id', documentId).catch(() => {});
+    onFileStep({ step: 'error', label: `Error: ${err.message}` });
+    // Se propaga: el lote necesita saber que este archivo NO entró, en vez de
+    // dar por bueno un documento que no se ha procesado.
+    throw err;
   }
 }
 
@@ -465,12 +424,12 @@ export async function processBatchClinicalUpload(files = [], patientId, onProgre
 
 export async function processChatSessionClinically(conversationId) {
   try {
-    const { askClinicalAI } = await import('../services/aiService.js');
-    const { data: msgs } = await db.from('messages').select('*').eq('conversation_id', conversationId).order('created_at', { ascending: true });
+    const { data: msgs } = await firebaseClient.from('messages').select('*').eq('conversation_id', conversationId).order('created_at', { ascending: true });
     const prompt = `Sintetiza esta sesión de chat de psicología: ${JSON.stringify(msgs || [])}`;
-    const summary = await askClinicalAI({
+    const { content: summary } = await askClinicalAI({
+      system: 'Sintetizas sesiones de acompañamiento para el expediente. Te ciñes a lo que se dijo.',
       messages: [{ role: 'user', content: prompt }],
-      model: 'auto'
+      model: CLINICAL_MODELS.REPORT
     });
     return { success: true, summary };
   } catch (err) {
@@ -516,7 +475,7 @@ export async function acceptProposal(proposal, updatedData = null, customAuthori
 
   if (proposal.source_table === 'clinical_proposals' || proposal.document_id || proposal.extraction_id) {
     try {
-      const { data: authData } = await db.auth.getUser();
+      const { data: authData } = await firebaseClient.auth.getUser();
       const reviewerId = authData?.user?.id || null;
 
       const { error: proposalErr } = await firebaseClient
@@ -530,7 +489,7 @@ export async function acceptProposal(proposal, updatedData = null, customAuthori
       if (proposalErr) throw proposalErr;
 
       const factClaim = finalData.claim || finalData.event || finalData.name || finalData.question || 'Dato clínico aceptado';
-      await db.from('clinical_facts').insert({
+      await firebaseClient.from('clinical_facts').insert({
         patient_id: patientId,
         document_id: proposal.document_id || proposal.source_metadata?.document_id || null,
         extraction_id: proposal.extraction_id || proposal.source_metadata?.extraction_id || null,
@@ -694,7 +653,7 @@ export async function acceptProposal(proposal, updatedData = null, customAuthori
  */
 export async function rejectProposal(proposalId, patientId) {
   try {
-    const { data: authData } = await db.auth.getUser();
+    const { data: authData } = await firebaseClient.auth.getUser();
     const reviewerId = authData?.user?.id || null;
 
     const { error } = await firebaseClient
@@ -1253,101 +1212,10 @@ function analyzeFileNameClinicallyLegacy(fileName, fileSizeStr) {
   ];
 }
 
-async function legacyDocumentIngestionDisabled(patientId, fileName, fileSizeStr = '1.2 MB', fileContent = null) {
-  throw new Error('La ingesta simulada esta desactivada. Usa uploadClinicalDocument y clinical-ingest.');
-
-  const key = `proposals_${patientId}`;
-  const local = localStorage.getItem(key);
-  const currentProposals = local ? JSON.parse(local) : [];
-
-  let newProposals = [];
-
-  if (fileContent && fileContent.trim().length > 0) {
-    newProposals = analyzeTextClinicallyLegacy(fileContent, fileName);
-  } else {
-    newProposals = analyzeFileNameClinicallyLegacy(fileName, fileSizeStr);
-  }
-
-  // Asignar patientId a todas las propuestas y marcar como accepted
-  newProposals = newProposals.map(p => ({ ...p, patient_id: patientId, status: 'accepted' }));
-
-  // Guardar en Firebase o local
-  try {
-    const { error: propErr } = await firebaseClient
-      .from('pending_proposals')
-      .insert(newProposals.map(p => ({
-        patient_id: p.patient_id,
-        proposal_type: p.proposal_type,
-        source_type: p.source_type,
-        source_metadata: p.source_metadata,
-        proposal_data: p.proposal_data,
-        confidence: p.confidence,
-        status: 'accepted'
-      })));
-
-    if (propErr && !isTableMissingError(propErr)) throw propErr;
-
-    if (propErr && isTableMissingError(propErr)) {
-      const updated = [...currentProposals, ...newProposals];
-      localStorage.setItem(key, JSON.stringify(updated));
-      
-      for (const p of newProposals) {
-        acceptLocalProposal(p, p.proposal_data, AuthorityLevels.DOCUMENTED);
-      }
-      return;
-    }
-
-    // Guardar los datos oficiales
-    for (const p of newProposals) {
-      if (p.proposal_type === 'medication') {
-        const { error: medErr } = await firebaseClient
-          .from('medications')
-          .insert({
-            patient_id: patientId,
-            name: p.proposal_data.name,
-            dose: p.proposal_data.dose,
-            frequency: p.proposal_data.frequency,
-            prescriber: p.proposal_data.prescriber || 'IA Áncora (Extraído)',
-            status: 'active',
-            authority_level: AuthorityLevels.DOCUMENTED,
-            source_info: {
-              source_type: p.source_type,
-              source_metadata: p.source_metadata,
-              proposal_id: p.id
-            }
-          });
-        if (medErr) throw medErr;
-
-      } else if (p.proposal_type === 'timeline_event') {
-        const { error: eventErr } = await firebaseClient
-          .from('timeline_events')
-          .insert({
-            patient_id: patientId,
-            event_date: p.proposal_data.date,
-            event_type: p.proposal_data.event_type || 'other',
-            description: p.proposal_data.event,
-            associated_emotion: p.proposal_data.associated_emotion || null,
-            intensity: p.proposal_data.intensity || null,
-            authority_level: AuthorityLevels.DOCUMENTED,
-            source_info: {
-              source_type: p.source_type,
-              source_metadata: p.source_metadata,
-              proposal_id: p.id
-            }
-          });
-        if (eventErr) throw eventErr;
-      }
-    }
-  } catch (err) {
-    console.error("Error al auto-consolidar propuestas en Firebase, guardando local:", err);
-    const updated = [...currentProposals, ...newProposals];
-    localStorage.setItem(key, JSON.stringify(updated));
-    
-    for (const p of newProposals) {
-      acceptLocalProposal(p, p.proposal_data, AuthorityLevels.DOCUMENTED);
-    }
-  }
-}
+// La ingesta simulada que vivía aquí (95 líneas de propuestas inventadas para
+// enseñar la interfaz sin IA) se ha eliminado: era código inalcanzable tras un
+// throw, y su único efecto posible habría sido meter datos falsos en un
+// expediente clínico. La ingesta real es uploadClinicalDocument.
 
 /* =======================================================
    FALLBACKS DE LOCAL STORAGE
@@ -1814,7 +1682,7 @@ export async function addPatientMemory(patientId, areaKey, memoryText, audioFile
     }
     treeData[areaKey] = currentList;
 
-    await db.from('clinical_life_tree').upsert({
+    await firebaseClient.from('clinical_life_tree').upsert({
       patient_id: patientId,
       tree_data: treeData,
       updated_at: new Date().toISOString()
@@ -1823,7 +1691,7 @@ export async function addPatientMemory(patientId, areaKey, memoryText, audioFile
     // 2. Extraer si hay mención de año para timeline
     const yearMatch = memoryText.match(/\b(19\d\d|20\d\d)\b/);
     if (yearMatch) {
-      await db.from('timeline_events').insert([{
+      await firebaseClient.from('timeline_events').insert([{
         id: 'ev-' + crypto.randomUUID().substring(0, 8),
         patient_id: patientId,
         date: yearMatch[1],
@@ -1835,7 +1703,7 @@ export async function addPatientMemory(patientId, areaKey, memoryText, audioFile
     }
 
     // 3. Crear episodio clínico asociado
-    await db.from('clinical_episodes').insert([{
+    await firebaseClient.from('clinical_episodes').insert([{
       id: 'ep-' + crypto.randomUUID().substring(0, 8),
       patient_id: patientId,
       title: `Recuerdo de ${areaKey}: ${memoryText.substring(0, 40)}...`,
@@ -1864,7 +1732,7 @@ export async function addPatientMemory(patientId, areaKey, memoryText, audioFile
     curHist.recuerdos_aportados = recuerdos;
     curCtx.historial_clinico = curHist;
 
-    await db.from('profiles').update({
+    await firebaseClient.from('profiles').update({
       contexto_terapeutico: curCtx,
       updated_at: new Date().toISOString()
     }).eq('id', patientId);
@@ -1894,7 +1762,7 @@ export async function toggleAreaCompletion(patientId, areaKey, isCompleted = tru
     areasComp[areaKey] = isCompleted;
     curCtx.areas_completadas = areasComp;
 
-    await db.from('profiles').update({
+    await firebaseClient.from('profiles').update({
       contexto_terapeutico: curCtx,
       updated_at: new Date().toISOString()
     }).eq('id', patientId);
@@ -1926,12 +1794,6 @@ export function calculateClinicalExplorationMaturity(profile = {}, lifeTree = {}
       prompt: 'dinámicas familiares y figuras de crianza',
       fallbackItems: () => {
         const items = [];
-        if (ctx.familyUnit?.tutorRole || ctx.familyUnit?.minorName) {
-          items.push(`Estructura familiar: ${ctx.familyUnit.tutorRole || 'Tutor'} con menor (${ctx.familyUnit.minorAge || '14'} años).`);
-        }
-        if (ctx.consultationType === 'familiar') {
-          items.push('Modalidad de atención: Acompañamiento y mediación familiar.');
-        }
         timelineEvents.filter(e => e.event_type === 'family' || /familia|padre|madre|herman/i.test(e.event)).forEach(e => items.push(e.event));
         return items;
       }
@@ -2058,7 +1920,24 @@ export function calculateClinicalExplorationMaturity(profile = {}, lifeTree = {}
   const thematicScore = (coveredCount / categories.length) * 70;  // hasta 70%
   const baselineScore = ctx.motivo || ctx.foto_persona || hist.resumen_vital ? 10 : 0;
 
-  const totalPercentage = Math.min(Math.round(thematicScore + timelineScore + baselineScore), 100);
+  // La madurez que se enseña sale del motor de anamnesis cuando hay datos
+  // estructurados con evidencia (`arbol_vital`): cuenta hallazgos con cita,
+  // ángulos cubiertos y balance entre recursos y dificultades, según la
+  // sección 7 del guion clínico. El cálculo antiguo —que sumaba textos sin
+  // respaldo y aplicaba un suelo del 20%— se conserva solo como reserva para
+  // expedientes que todavía no han pasado por la ingesta nueva.
+  const arbolConEvidencia = Array.isArray(lifeTree?.arbol_vital) ? lifeTree.arbol_vital : [];
+  const estadoAnamnesis = arbolConEvidencia.length > 0
+    ? computeAnamnesisState({
+        arbol_vital: arbolConEvidencia,
+        desencadenantes: lifeTree?.desencadenantes || [],
+        anclajes_protectores: lifeTree?.anclajes_protectores || [],
+        eventos_timeline: timelineEvents
+      })
+    : null;
+
+  const legacyPercentage = Math.min(Math.round(thematicScore + timelineScore + baselineScore), 100);
+  const totalPercentage = estadoAnamnesis ? estadoAnamnesis.madurezGlobal : legacyPercentage;
 
   // Etapas Cronológicas
   const stages = [
@@ -2090,7 +1969,11 @@ export function calculateClinicalExplorationMaturity(profile = {}, lifeTree = {}
     .map(a => `Profundizar con Áncora en ${a.prompt}`);
 
   return {
-    maturityPercentage: Math.max(totalPercentage, 20),
+    // Sin suelo artificial: un expediente vacío está al 0%. Enseñarle un 20%
+    // a quien no ha contado nada todavía es mentirle sobre su propio proceso,
+    // y encima le quita la razón para seguir contando.
+    maturityPercentage: totalPercentage,
+    anamnesis: estadoAnamnesis,
     exploredAreas,
     stages,
     openInquiries,
@@ -2098,5 +1981,4 @@ export function calculateClinicalExplorationMaturity(profile = {}, lifeTree = {}
     timelineCount: timelineEvents.length
   };
 }
-
 

@@ -1,0 +1,10 @@
+{
+  "_comentario": "Umbrales de calidad. Solo pueden BAJAR: cada limpieza los ajusta con `npm run verificar -- --actualizar`. Subirlos exige explicarlo aquí y en el commit.",
+  "lint": 409,
+  "bundleKB": 2065,
+  "actualizado": "2026-08-31",
+  "_historial": [
+    "2026-08-31 · bundle 2035 → 2060 KB: entra el panel de informes del psicólogo (F4). Bajará solo cuando llegue el troceado por vistas (E7).",
+    "2026-08-31 · bundle 2060 → 2065 KB: BM25 en la recuperación de memoria (G3). Un kilobyte por dejar de usar Jaccard es un cambio barato."
+  ]
+}

@@ -1,15 +1,40 @@
 import { useState, useEffect, useRef } from 'react';
-import { firebaseClient as db, firebaseClient } from '../../firebaseAdapter.js';
-import { 
-  FileText, Activity, Heart, Moon, Upload, Plus, 
-  ShieldCheck, Download, Trash2, Edit, Save, Users, 
-  AlertTriangle, BookOpen, Layers, Target, Clock, RefreshCw, CheckCircle, Check, XCircle, Video, Calendar, Sparkles, Lock, ArrowRight, Compass, CheckCircle2, ChevronRight, Mic, MicOff, Paperclip, FileCheck, HelpCircle, CheckSquare, MessageSquarePlus, X, AlertCircle, Eye, Loader2
+import { DEFAULT_PSICOLOGO_ID } from '../../appConfig';
+import { firebaseClient as db } from '../../firebaseAdapter.js';
+import {
+  Activity,
+  Heart,
+  Moon,
+  Upload,
+  Download,
+  Users,
+  BookOpen,
+  Layers,
+  Clock,
+  RefreshCw,
+  CheckCircle,
+  Video,
+  Calendar,
+  Sparkles,
+  Compass,
+  CheckCircle2,
+  ChevronRight,
+  Mic,
+  MicOff,
+  Paperclip,
+  FileCheck,
+  CheckSquare,
+  MessageSquarePlus,
+  X,
+  AlertCircle,
+  Eye,
+  Loader2
 } from 'lucide-react';
-import { 
-  getMedications, 
-  getTimelineEvents, 
-  getClinicalDocuments, 
-  getClinicalProfile, 
+import {
+  getMedications,
+  getTimelineEvents,
+  getClinicalDocuments,
+  getClinicalProfile,
   getClinicalLifeTree,
   uploadClinicalDocument,
   processBatchClinicalUpload,
@@ -17,8 +42,8 @@ import {
   toggleAreaCompletion,
   calculateClinicalExplorationMaturity
 } from '../../lib/clinicalEngine';
-import { synthesizeCompletePatientHistory } from '../../services/aiService';
-
+import { ingestConversation } from '../../services/clinicalIngestionService.js';
+import { persistIngestionResult, AUTORIDAD_PACIENTE } from '../../lib/expediente.js';
 export default function PacienteHistoriaView({ profile, onProfileUpdated, user, isVirtualDemo }) {
   const [loadingClinicalData, setLoadingClinicalData] = useState(false);
   const [uploadingDoc, setUploadingDoc] = useState(false);
@@ -205,96 +230,74 @@ export default function PacienteHistoriaView({ profile, onProfileUpdated, user, 
     }
   };
 
-  // Síntesis Clínica Inteligente 360° con IA para Poblar Todo el Historial
+  /**
+   * Repasa lo que el paciente ya ha contado en sus conversaciones y lo vuelca
+   * al expediente estructurado.
+   *
+   * Antes esto llamaba a una "síntesis 360°" que le pedía al modelo que
+   * rellenara las seis dimensiones a partir de un resumen del perfil. El
+   * problema es que lo que no estaba, se inventaba: nada de lo que salía
+   * llevaba cita. Ahora pasa por el mismo motor de ingesta que los documentos,
+   * con verificación de evidencia, y lo que no tiene respaldo textual se
+   * descarta y se dice cuántos se han descartado.
+   */
   const handleSynthesizeCompleteHistory = async () => {
     if (!profile?.id) return;
     setIsSynthesizingWithAI(true);
-    setSynthesisStatus('Sintetizando expediente vital 360° con IA...');
+    setSynthesisStatus('Reuniendo tus conversaciones...');
 
     try {
-      const synthResult = await synthesizeCompletePatientHistory({
-        patientProfile: profile,
-        documents: uploadedFiles,
-        timelineEvents: events,
-        medications: meds,
-        lifeTree: lifeTree,
-        chatMessages: []
-      });
+      const { data: convs } = await db.from('conversations').select('*').eq('user_id', profile.id);
+      const activas = (convs || []).filter(c => c.status !== 'archived').slice(0, 12);
 
-      if (synthResult?.success) {
-        // 1. Guardar el árbol vital en Firestore
-        await db.from('clinical_life_tree').upsert({
-          patient_id: profile.id,
-          tree_data: synthResult.life_tree,
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'patient_id' });
-
-        // 2. Guardar medicamentos nuevos detectados
-        if (Array.isArray(synthResult.medications) && synthResult.medications.length > 0) {
-          for (const m of synthResult.medications) {
-            if (m.name && !meds.some(existing => existing.name?.toLowerCase() === m.name?.toLowerCase())) {
-              await db.from('medications').insert([{
-                id: 'med-' + Math.random().toString(36).substring(2, 10),
-                patient_id: profile.id,
-                name: m.name,
-                dose: m.dose || 'Pautada',
-                frequency: m.frequency || 'Según prescripción',
-                prescriber: m.prescriber || 'Informe médico',
-                authority_level: 2,
-                created_at: new Date().toISOString()
-              }]);
-            }
-          }
-        }
-
-        // 3. Guardar hitos cronológicos nuevos
-        if (Array.isArray(synthResult.timeline_events) && synthResult.timeline_events.length > 0) {
-          for (const ev of synthResult.timeline_events) {
-            if (ev.event && !events.some(existing => existing.event === ev.event)) {
-              await db.from('timeline_events').insert([{
-                id: 'ev-' + Math.random().toString(36).substring(2, 10),
-                patient_id: profile.id,
-                date: ev.date || ev.year || new Date().getFullYear().toString(),
-                event: ev.event,
-                event_type: ev.event_type || 'personal',
-                authority_level: 2,
-                created_at: new Date().toISOString()
-              }]);
-            }
-          }
-        }
-
-        // 4. Actualizar el perfil del paciente con la síntesis clínica y dudas de sonsacado
-        const curCtx = profile.contexto_terapeutico || {};
-        const curHist = curCtx.historial_clinico || {};
-        curHist.resumen_vital = synthResult.resumen_vital || curHist.resumen_vital;
-        curHist.antecedentes_psicologicos = synthResult.antecedentes_psicologicos || curHist.antecedentes_psicologicos;
-        curHist.antecedentes_medicos = synthResult.antecedentes_medicos || curHist.antecedentes_medicos;
-        curHist.patrones_comunes = synthResult.patrones_comunes || curHist.patrones_comunes;
-
-        const updatedCtx = {
-          ...curCtx,
-          historial_clinico: curHist,
-          dudas_clinicas_sonsacado: synthResult.dudas_sonsacado || curCtx.dudas_clinicas_sonsacado || [],
-          pautas_accion: synthResult.pautas_accion || curCtx.pautas_accion || [],
-          sintesis_ia: synthResult.resumen_vital || curCtx.sintesis_ia
-        };
-
-        await db.from('profiles').update({
-          contexto_terapeutico: updatedCtx,
-          updated_at: new Date().toISOString()
-        }).eq('id', profile.id);
-
-        if (onProfileUpdated) {
-          onProfileUpdated({ ...profile, contexto_terapeutico: updatedCtx });
-        }
-
-        await loadClinicalData();
-        setUploadSuccess('✨ ¡Historial clínico estructurado y completado con IA! Se han rellenado las 6 dimensiones.');
+      if (activas.length === 0) {
+        setSynthesisStatus('');
+        setUploadSuccess('Todavía no hay conversaciones que repasar. Cuéntame cosas en el chat y luego vuelve por aquí.');
         setTimeout(() => setUploadSuccess(''), 6000);
+        return;
       }
+
+      let totalGuardado = 0;
+      let totalDescartado = 0;
+
+      for (let i = 0; i < activas.length; i++) {
+        const conv = activas[i];
+        setSynthesisStatus(`Repasando conversación ${i + 1} de ${activas.length}: "${conv.title || 'sin título'}"...`);
+
+        const { data: msgs } = await db.from('messages').select('*').eq('conversation_id', conv.id);
+        const mensajes = (msgs || []).filter(m => m.content && m.content.trim());
+        // Una conversación de dos líneas no da para extraer nada.
+        if (mensajes.length < 4) continue;
+
+        const resultado = await ingestConversation({
+          patientId: profile.id,
+          messages: mensajes,
+          patientContext: profile.contexto_terapeutico || {}
+        });
+
+        const persistido = await persistIngestionResult(profile.id, resultado, {
+          autoridad: AUTORIDAD_PACIENTE,
+          origen: `conversacion:${conv.id}`
+        });
+
+        totalGuardado += Object.values(persistido.guardados).reduce((a, b) => a + b, 0);
+        totalDescartado += persistido.descartados;
+      }
+
+      await loadClinicalData();
+      if (onProfileUpdated) onProfileUpdated({ ...profile });
+
+      setUploadSuccess(
+        totalGuardado > 0
+          ? `Repaso terminado: ${totalGuardado} datos nuevos en tu historia, cada uno con la frase tuya que lo respalda.` +
+            (totalDescartado > 0 ? ` Se descartaron ${totalDescartado} por no poder verificarlos.` : '')
+          : 'He repasado tus conversaciones y no he encontrado datos nuevos que añadir.'
+      );
+      setTimeout(() => setUploadSuccess(''), 8000);
     } catch (err) {
-      console.error('Error en síntesis clínica:', err);
+      console.error('Error repasando conversaciones:', err);
+      setUploadSuccess(`No se ha podido completar el repaso: ${err.message}`);
+      setTimeout(() => setUploadSuccess(''), 8000);
     } finally {
       setIsSynthesizingWithAI(false);
       setSynthesisStatus('');
@@ -349,7 +352,7 @@ export default function PacienteHistoriaView({ profile, onProfileUpdated, user, 
   const handleConfirmBooking = async () => {
     if (!profile?.id) return;
     try {
-      const psychoId = profile.contexto_terapeutico?.assigned_psychologist_id || '2TOfkVIRccgIgz5WamAIVmUPtD63';
+      const psychoId = profile.contexto_terapeutico?.assigned_psychologist_id || DEFAULT_PSICOLOGO_ID;
       const duration = bookingModal === 'revision15' ? 15 : 50;
       const price = bookingModal === 'revision15' ? 15 : 55;
       

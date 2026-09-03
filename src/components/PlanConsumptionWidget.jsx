@@ -1,7 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
-import { firebaseClient as db, firebaseClient } from '../firebaseAdapter.js';
+import { firebaseClient } from '../firebaseAdapter.js';
 import { Clock, MessageSquare, RefreshCw, AlertCircle, Info, X, HelpCircle, Sparkles, Zap } from 'lucide-react';
-
 export default function PlanConsumptionWidget({ patientId, forceRefreshFlag, minimal = false }) {
   const [credits, setCredits] = useState(null);
   const [loading, setLoading] = useState(true);

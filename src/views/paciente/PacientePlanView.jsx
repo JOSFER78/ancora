@@ -1,17 +1,24 @@
 import { useState, useEffect } from 'react';
-import { 
-  Target, CheckSquare, RefreshCw, Calendar, Sparkles, 
-  TrendingUp, Award, Clock, ArrowRight, ShieldCheck, Plus, Trash2, MessageSquare
+import {
+  Target,
+  CheckSquare,
+  Sparkles,
+  TrendingUp,
+  Award,
+  Clock,
+  ShieldCheck,
+  Plus,
+  Trash2,
+  MessageSquare
 } from 'lucide-react';
-import { firebaseClient as db, firebaseClient } from '../../firebaseAdapter.js';
-import { 
-  getClinicalTasksSync, 
-  saveClinicalTasksSync, 
+
+import {
+  getClinicalTasksSync,
+  saveClinicalTasksSync,
   calculateAdherence,
   getAgendaTopicsSync,
   saveAgendaTopicsSync
 } from '../../services/clinicalSyncService.js';
-
 export default function PacientePlanView({ profile, user, isVirtualDemo, onNavigate }) {
   const [loading, setLoading] = useState(false);
   const userId = user?.id || profile?.id || 'guest';

@@ -1,16 +1,24 @@
 import { useState, useEffect } from 'react';
+import { DEFAULT_PSICOLOGO_ID } from '../appConfig';
 import { firebaseClient } from '../firebaseAdapter.js';
 import { db as firestoreDb, auth } from '../firebaseClient';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { getRedirectResult } from 'firebase/auth';
 import { LegalModals } from '../components/LegalModals';
-import { 
-  Shield, Mail, Lock, LogIn, AlertCircle, RefreshCw, ClipboardCheck, 
-  ArrowRight, ArrowLeft, CheckCircle2, User, Sparkles, ShieldCheck, 
-  Calendar, Check, AlertTriangle, CreditCard, Upload, Brain, Star,
-  ExternalLink, CheckCircle, HelpCircle, FileText, Send, PhoneCall
+import {
+  Mail,
+  Lock,
+  LogIn,
+  AlertCircle,
+  RefreshCw,
+  ArrowRight,
+  ArrowLeft,
+  CheckCircle2,
+  User,
+  ShieldCheck,
+  Upload,
+  Send
 } from 'lucide-react';
-
 export default function LoginView({ 
   onAuthSuccess, 
   initialRole = 'paciente',
@@ -100,21 +108,15 @@ export default function LoginView({
   const [patientConsent, setPatientConsent] = useState(false);
   const [patientProfile, setPatientProfile] = useState({
     displayName: currentUser?.displayName || '',
-    consultationType: 'individual', // 'individual' | 'pareja' | 'familiar'
+    // Solo terapia individual de adultos. Pareja, familiar y conciliacion
+    // quedan pendientes: requieren su propio registro y consentimientos.
+    consultationType: 'individual',
     birthYear: '',
     country: 'España',
     modality: 'online',
     therapistGender: 'indiferente',
     motivo: '',
     selectedTags: [],
-    // Pareja
-    partnerName: '',
-    relationshipDuration: '',
-    // Familia / Menor
-    tutorName: '',
-    tutorPhone: '',
-    childName: '',
-    childAge: '',
     // Screening ágil
     quickWellbeingScores: {
       stress: 1,
@@ -125,7 +127,7 @@ export default function LoginView({
     emergencyContactName: '',
     emergencyContactPhone: '',
     crisisPlanAccepted: false,
-    selectedPsychologistId: '2TOfkVIRccgIgz5WamAIVmUPtD63',
+    selectedPsychologistId: DEFAULT_PSICOLOGO_ID,
     creditCardNumber: '',
     creditCardExpiry: '',
     creditCardCvc: ''
@@ -155,7 +157,7 @@ export default function LoginView({
   // Catálogo Oficial de Psicólogos Sanitarios Especializados
   const mockPsychologists = [
     {
-      id: '2TOfkVIRccgIgz5WamAIVmUPtD63',
+      id: DEFAULT_PSICOLOGO_ID,
       name: 'José Fernández',
       license: 'M-49ccc',
       roleType: 'individual',
@@ -166,40 +168,12 @@ export default function LoginView({
       price: 55,
       approach: 'Terapia Cognitivo-Conductual & Regulación Emocional'
     },
-    {
-      id: 'psy-pareja-01',
-      name: 'Dra. Elena Ruiz',
-      license: 'M-38291',
-      roleType: 'pareja',
-      photo_url: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=200',
-      rating: '4.9',
-      reviews: 24,
-      specialties: ['Terapia de Pareja', 'Comunicación', 'Afectividad y Vínculo'],
-      price: 65,
-      approach: 'Enfoque Sistémico y Terapia Focalizada en las Emociones'
-    },
-    {
-      id: 'psy-infantil-01',
-      name: 'Carlos Mendoza',
-      license: 'M-41029',
-      roleType: 'familiar',
-      photo_url: 'https://images.unsplash.com/photo-1537368910025-700350fe46c7?auto=format&fit=crop&q=80&w=200',
-      rating: '5.0',
-      reviews: 31,
-      specialties: ['Infanto-Juvenil', 'Conducta', 'Ansiedad Escolar', 'Orientación a Padres'],
-      price: 60,
-      approach: 'Psicología Infanto-Juvenil y Mediación Familiar'
-    }
   ];
 
   // Focos y Etiquetas Segmentadas por Modalidad
   const individualTags = ['Ansiedad', 'Depresión y Ánimo', 'Estrés Laboral', 'Autoestima', 'Duelo', 'Trauma', 'Sueño e Insomnio', 'Fobia y Pánico'];
-  const coupleTags = ['Comunicación y Discusiones', 'Convivencia y Rutinas', 'Confianza y Fidelidad', 'Intimidad y Afecto', 'Crianza Compartida', 'Crisis Vital'];
-  const familyTags = ['Conducta en Casa', 'Ansiedad Escolar y Exámenes', 'Gestión de la Frustración', 'Socialización y Amigos', 'Cambios Familiares', 'Sueño y Miedos Infantiles'];
 
-  const specialtyTags = patientProfile.consultationType === 'pareja' 
-    ? coupleTags 
-    : (patientProfile.consultationType === 'familiar' ? familyTags : individualTags);
+  const specialtyTags = individualTags;
 
   const approachTags = ['TCC', 'ACT', 'EMDR', 'Sistémico', 'Gestalt', 'Humanista'];
 
@@ -415,12 +389,7 @@ export default function LoginView({
       }
 
       if (finalUser) {
-        let patientNameFinal = patientProfile.displayName || displayName || finalUser.email?.split('@')[0] || 'Paciente';
-        if (patientProfile.consultationType === 'pareja' && patientProfile.partnerName) {
-          patientNameFinal = `${patientProfile.displayName || displayName} y ${patientProfile.partnerName}`;
-        } else if (patientProfile.consultationType === 'familiar' && patientProfile.childName) {
-          patientNameFinal = `${patientProfile.childName} (Tutor: ${patientProfile.displayName || displayName})`;
-        }
+        const patientNameFinal = patientProfile.displayName || displayName || finalUser.email?.split('@')[0] || 'Paciente';
 
         const formattedDate = new Date().toISOString();
         const dateOnly = formattedDate.split('T')[0];
@@ -431,28 +400,8 @@ export default function LoginView({
         let fotoPersona = '';
         let sintesisIa = '';
 
-        if (patientProfile.consultationType === 'pareja') {
-          initialClinicalHistory = {
-            resumen_vital: `Terapia de Pareja: ${patientProfile.motivo || 'Mejora de la comunicación y vínculo afectivo.'}`,
-            antecedentes_psicologicos: `Consulta de pareja iniciada en Áncora. Miembros: ${patientProfile.displayName} y ${patientProfile.partnerName || 'Pareja'}. Tiempo de relación: ${patientProfile.relationshipDuration || 'No especificado'}. Focos terapéuticos: ${tagsToSave.join(', ')}.`,
-            antecedentes_medicos: `Modalidad: ${patientProfile.modality || 'Online'}. País: ${patientProfile.country || 'España'}.`,
-            relaciones_contexto: `Dinámica de pareja en convivencia/relación de ${patientProfile.relationshipDuration || 'tiempo prolongado'}.`,
-            patrones_comunes: `Focos declarados en el triaje de pareja: ${tagsToSave.join(', ')}.`
-          };
-          fotoPersona = `Consulta de Pareja: ${patientProfile.displayName} y ${patientProfile.partnerName || 'Pareja'} (${patientProfile.relationshipDuration || 'Relación activa'}). Motivo: "${patientProfile.motivo || 'Mejora relacional'}". Focos: ${tagsToSave.join(', ')}.`;
-          sintesisIa = `Pareja en proceso de acompañamiento psicológico con encuadre vincular. Áreas prioritarias de intervención: ${tagsToSave.join(', ')}. Motivo expresado: "${patientProfile.motivo || 'Sin especificar'}".`;
-        } else if (patientProfile.consultationType === 'familiar') {
-          initialClinicalHistory = {
-            resumen_vital: `Atención Infanto-Juvenil para ${patientProfile.childName || 'el menor'} (${patientProfile.childAge ? patientProfile.childAge + ' años' : 'Edad no indicada'}). Motivo: ${patientProfile.motivo || 'Acompañamiento y regulación emocional infantil.'}`,
-            antecedentes_psicologicos: `Formulario de triaje completado por el tutor legal: ${patientProfile.displayName || 'Tutor'} (Tel: ${patientProfile.tutorPhone || 'Sin teléfono'}). Menor: ${patientProfile.childName} (${patientProfile.childAge ? patientProfile.childAge + ' años' : 'N/A'}). Inquietudes declaradas: ${tagsToSave.join(', ')}.`,
-            antecedentes_medicos: `Edad del menor: ${patientProfile.childAge || 'No indicada'}. Modalidad preferida: ${patientProfile.modality || 'Online'}.`,
-            relaciones_contexto: `Núcleo familiar con tutor legal ${patientProfile.displayName || 'Tutor'} y menor ${patientProfile.childName || 'Menor'}.`,
-            patrones_comunes: `Inquietudes manifestadas por el tutor: ${tagsToSave.join(', ')}.`
-          };
-          fotoPersona = `Atención Infanto-Juvenil: ${patientProfile.childName || 'Menor'} (${patientProfile.childAge || 'N/A'} años). Tutor responsable: ${patientProfile.displayName || 'Tutor'}. Inquietudes: ${tagsToSave.join(', ')}.`;
-          sintesisIa = `Atención psicológica infanto-juvenil. Tutor legal ha solicitado apoyo por: ${tagsToSave.join(', ')}. Motivo observado por el tutor: "${patientProfile.motivo || ''}".`;
-        } else {
-          // Individual
+        {
+          // Terapia individual de adultos: unica modalidad habilitada.
           const stressVal = patientProfile.quickWellbeingScores?.stress ?? 1;
           const moodVal = patientProfile.quickWellbeingScores?.mood ?? 1;
           initialClinicalHistory = {
@@ -468,10 +417,7 @@ export default function LoginView({
           sintesisIa = `Paciente registrado para acompañamiento individual. Focos prioritarios: ${tagsToSave.join(', ')}. Motivo de consulta: "${patientProfile.motivo || ''}".`;
         }
 
-        // Asignación de terapeuta según modalidad
-        let assignedPsyId = patientProfile.selectedPsychologistId || '2TOfkVIRccgIgz5WamAIVmUPtD63';
-        if (patientProfile.consultationType === 'pareja') assignedPsyId = 'psy-pareja-01';
-        if (patientProfile.consultationType === 'familiar') assignedPsyId = 'psy-infantil-01';
+        const assignedPsyId = patientProfile.selectedPsychologistId || DEFAULT_PSICOLOGO_ID;
 
         const completePatientData = {
           id: finalUser.uid || finalUser.id,
@@ -488,12 +434,6 @@ export default function LoginView({
             preferredModality: patientProfile.modality,
             motivo: patientProfile.motivo,
             tags: tagsToSave,
-            partnerName: patientProfile.partnerName,
-            relationshipDuration: patientProfile.relationshipDuration,
-            tutorName: patientProfile.displayName,
-            tutorPhone: patientProfile.tutorPhone,
-            childName: patientProfile.childName,
-            childAge: patientProfile.childAge,
             triaje: {
               stressScore: patientProfile.quickWellbeingScores?.stress ?? 1,
               moodScore: patientProfile.quickWellbeingScores?.mood ?? 1,
@@ -583,7 +523,7 @@ export default function LoginView({
 
         // Insertar registro formal de consentimiento clínico (Ley 41/2002 / RGPD Art. 9)
         try {
-          await db.from('consents').insert([{
+          await firebaseClient.from('consents').insert([{
             user_id: finalUser.uid || finalUser.id,
             version: 'v1.0-2026',
             terms_accepted: true,
@@ -625,7 +565,7 @@ export default function LoginView({
       let finalUser = googleAuthUser;
 
       if (!finalUser) {
-        const { data: signUpData, error: signUpError } = await db.auth.signUp({
+        const { data: signUpData, error: signUpError } = await firebaseClient.auth.signUp({
           email: email.trim(),
           password: password,
           options: {
@@ -641,7 +581,7 @@ export default function LoginView({
       }
 
       if (finalUser) {
-        const profileDocRef = doc(db, 'profiles', String(finalUser.uid || finalUser.id));
+        const profileDocRef = doc(firestoreDb, 'profiles', String(finalUser.uid || finalUser.id));
         const completePsyData = {
           id: finalUser.uid || finalUser.id,
           email: finalUser.email || email.trim(),
@@ -1265,21 +1205,29 @@ export default function LoginView({
                       
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '8px' }}>
                         {[
-                          { id: 'individual', title: 'Individual', desc: 'Adultos y jóvenes' },
-                          { id: 'pareja', title: 'Terapia de Pareja', desc: 'Relación y convivencia' },
-                          { id: 'familiar', title: 'Familia e Infancia', desc: 'Para padres y tutores' }
+                          { id: 'individual', title: 'Individual', desc: 'Adultos', disponible: true },
+                          { id: 'pareja', title: 'Terapia de Pareja', desc: 'Próximamente', disponible: false },
+                          { id: 'familiar', title: 'Terapia Familiar', desc: 'Próximamente', disponible: false }
                         ].map(mod => {
-                          const isSel = patientProfile.consultationType === mod.id;
+                          const isSel = mod.disponible && patientProfile.consultationType === mod.id;
                           return (
-                            <div 
+                            <div
                               key={mod.id}
-                              onClick={() => setPatientProfile(prev => ({ ...prev, consultationType: mod.id }))}
+                              role="button"
+                              tabIndex={mod.disponible ? 0 : -1}
+                              aria-disabled={!mod.disponible}
+                              title={mod.disponible ? undefined : 'Esta modalidad aún no está disponible'}
+                              onClick={() => {
+                                if (!mod.disponible) return;
+                                setPatientProfile(prev => ({ ...prev, consultationType: mod.id }));
+                              }}
                               style={{
                                 padding: '10px 12px',
                                 borderRadius: '8px',
                                 border: `2px solid ${isSel ? '#447D82' : 'rgba(5,33,58,0.1)'}`,
                                 background: isSel ? 'rgba(68,125,130,0.06)' : '#ffffff',
-                                cursor: 'pointer',
+                                cursor: mod.disponible ? 'pointer' : 'not-allowed',
+                                opacity: mod.disponible ? 1 : 0.45,
                                 transition: 'all 0.15s'
                               }}
                             >
@@ -1319,63 +1267,13 @@ export default function LoginView({
                       </div>
                     )}
 
-                    {patientProfile.consultationType === 'pareja' && (
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                        <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                          <label style={{ fontSize: '0.68rem', fontWeight: 700, color: '#5F6F74' }}>NOMBRE DE TU PAREJA</label>
-                          <input 
-                            type="text" 
-                            value={patientProfile.partnerName}
-                            onChange={(e) => setPatientProfile({ ...patientProfile, partnerName: e.target.value })}
-                            placeholder="Ej. Carlos / Andrea"
-                            style={{ height: '36px', paddingInline: '10px', border: '1px solid rgba(5,33,58,0.15)', borderRadius: '8px', background: '#F8F6F1', color: '#05213A', fontSize: '0.78rem' }}
-                          />
-                        </div>
-                        <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                          <label style={{ fontSize: '0.68rem', fontWeight: 700, color: '#5F6F74' }}>TIEMPO DE RELACIÓN</label>
-                          <input 
-                            type="text" 
-                            value={patientProfile.relationshipDuration}
-                            onChange={(e) => setPatientProfile({ ...patientProfile, relationshipDuration: e.target.value })}
-                            placeholder="Ej. 4 años"
-                            style={{ height: '36px', paddingInline: '10px', border: '1px solid rgba(5,33,58,0.15)', borderRadius: '8px', background: '#F8F6F1', color: '#05213A', fontSize: '0.78rem' }}
-                          />
-                        </div>
-                      </div>
-                    )}
-
-                    {patientProfile.consultationType === 'familiar' && (
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                        <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                          <label style={{ fontSize: '0.68rem', fontWeight: 700, color: '#5F6F74' }}>NOMBRE DEL MENOR</label>
-                          <input 
-                            type="text" 
-                            value={patientProfile.childName}
-                            onChange={(e) => setPatientProfile({ ...patientProfile, childName: e.target.value })}
-                            placeholder="Ej. Lucas / Sofía"
-                            style={{ height: '36px', paddingInline: '10px', border: '1px solid rgba(5,33,58,0.15)', borderRadius: '8px', background: '#F8F6F1', color: '#05213A', fontSize: '0.78rem' }}
-                          />
-                        </div>
-                        <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                          <label style={{ fontSize: '0.68rem', fontWeight: 700, color: '#5F6F74' }}>EDAD DEL MENOR</label>
-                          <input 
-                            type="number" 
-                            value={patientProfile.childAge}
-                            onChange={(e) => setPatientProfile({ ...patientProfile, childAge: e.target.value })}
-                            placeholder="Ej. 9"
-                            style={{ height: '36px', paddingInline: '10px', border: '1px solid rgba(5,33,58,0.15)', borderRadius: '8px', background: '#F8F6F1', color: '#05213A', fontSize: '0.78rem' }}
-                          />
-                        </div>
-                      </div>
-                    )}
-
                     {/* Foco de consulta */}
                     <div>
                       <label style={{ fontSize: '0.68rem', fontWeight: 700, color: '#5F6F74', display: 'block', marginBottom: '6px' }}>
                         ÁREAS O TEMAS DE INTERÉS
                       </label>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                        {(patientProfile.consultationType === 'pareja' ? coupleTags : (patientProfile.consultationType === 'familiar' ? familyTags : individualTags)).map(tag => {
+                        {individualTags.map(tag => {
                           const isSelected = patientProfile.selectedTags.includes(tag);
                           return (
                             <button

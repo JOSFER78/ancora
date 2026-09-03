@@ -1,3 +1,4 @@
+import { BM25Index } from './BM25.js';
 /**
  * @file RelevanceScorer.js
  * @description Algoritmo de Scoring de Relevancia Clínica No Destructivo.
@@ -69,32 +70,39 @@ export class RelevanceScorer {
   }
 
   /**
-   * Calcula la similitud léxica/semántica aproximada entre la consulta y el texto.
-   * (En producción con embeddings se sustituye por CosineSimilarity de vectores).
-   * 
+   * Similitud léxica entre la consulta y el texto de un recuerdo.
+   *
+   * Antes era Jaccard sobre conjuntos de palabras, y eso trataba «que» igual
+   * que «insomnio»: en un expediente clínico, donde las palabras corrientes
+   * salen en todos los recuerdos y las que importan en dos, era justo lo que
+   * no había que hacer. Ahora es BM25, que pondera por rareza (IDF), satura la
+   * repetición y compensa la longitud del texto.
+   *
+   * La búsqueda densa con vectores está descartada por falta de proveedor
+   * utilizable con datos de salud (D-07); el hueco que deja se cierra con
+   * expansión de consulta, no con embeddings.
+   *
    * @param {string} query Consulta del paciente o contexto actual.
    * @param {string} text Contenido del recuerdo.
+   * @param {Object} [opciones]
+   * @param {BM25Index} [opciones.indice]  Índice del corpus, si se dispone de él.
+   * @param {number} [opciones.indiceDoc]  Posición del recuerdo en ese índice.
    * @returns {number} Valor entre 0.00 y 1.00.
    */
-  static computeSemanticSimilarity(query, text) {
+  static computeSemanticSimilarity(query, text, { indice = null, indiceDoc = null } = {}) {
     if (!query || !text) return 0.2;
 
-    const qClean = query.toLowerCase().replace(/[^\w\sáéíóúüñ]/g, '');
-    const tClean = text.toLowerCase().replace(/[^\w\sáéíóúüñ]/g, '');
-
-    const qTokens = new Set(qClean.split(/\s+/).filter(w => w.length > 2));
-    const tTokens = new Set(tClean.split(/\s+/).filter(w => w.length > 2));
-
-    if (qTokens.size === 0) return 0.2;
-
-    let matchCount = 0;
-    for (const token of qTokens) {
-      if (tTokens.has(token)) matchCount++;
+    // Con el corpus entero disponible, BM25 puede usar el IDF real: sabe qué
+    // palabras distinguen a ESTE paciente de los demás recuerdos suyos.
+    if (indice && indiceDoc !== null && indiceDoc >= 0) {
+      return Math.max(0.15, indice.similitud(query, indiceDoc));
     }
 
-    const jaccard = matchCount / (qTokens.size + tTokens.size - matchCount);
-    // Asignar base mínima de 0.15 si hay coincidencia parcial
-    return Math.min(1.0, Math.max(0.15, jaccard * 2.8));
+    // Sin corpus, se hace un índice de un solo documento. El IDF entonces no
+    // aporta —solo hay un documento—, pero la saturación y la normalización
+    // por longitud siguen siendo mejores que contar coincidencias a pelo.
+    const suelto = new BM25Index([{ t: text }], d => d.t);
+    return Math.max(0.15, suelto.similitud(query, 0));
   }
 
   /**
@@ -111,10 +119,13 @@ export class RelevanceScorer {
 
     const memoryText = `${memory.title || ''} ${memory.content || ''} ${memory.description || ''} ${memory.verbatimQuote || memory.verbatim_quote || ''}`;
     
-    // 1. Similitud semántica (peso 0.30)
-    const sim = memory.embeddingSimilarity !== undefined 
-      ? memory.embeddingSimilarity 
-      : this.computeSemanticSimilarity(query, memoryText);
+    // 1. Similitud léxica (peso 0.30)
+    const sim = memory.embeddingSimilarity !== undefined
+      ? memory.embeddingSimilarity
+      : this.computeSemanticSimilarity(query, memoryText, {
+          indice: memory._bm25Index || null,
+          indiceDoc: memory._bm25Doc ?? null
+        });
 
     // 2. Importancia intrínseca (I) (peso 0.20)
     const importance = memory.importance !== undefined ? Number(memory.importance) : 0.70;

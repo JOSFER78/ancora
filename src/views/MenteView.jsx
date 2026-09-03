@@ -27,7 +27,6 @@ import {
   Search,
   Sparkles
 } from 'lucide-react';
-
 const DEFAULT_RESOURCES = [
   {
     autor: "Dr. Bessel van der Kolk",
@@ -1721,8 +1720,6 @@ export default function MenteView({ user, profile, dailyMoodToday, onMoodSaved, 
           </div>
         </div>
       )}
-
-
 
       {/* TAB 5: RECURSOS Y EVIDENCIA CIENTÍFICA */}
       {activeTab === 'barkley' && (() => {

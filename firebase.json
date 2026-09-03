@@ -16,7 +16,7 @@
     "indexes": "firestore.indexes.json"
   },
   "hosting": {
-    "site": "ancora-portal",
+    "target": "ancora-portal",
     "public": "dist",
     "ignore": [
       "firebase.json",

@@ -7,10 +7,9 @@
 import { useState, useCallback, useMemo, useRef } from 'react';
 import { CognitiveMemoryEngine } from '../services/memory/CognitiveMemoryEngine.js';
 import { MemoryRepositoryFactory } from '../infrastructure/storage/MemoryRepositoryFactory.js';
-import { generateTherapistResponse } from '../services/aiService.js';
-import { firebaseClient as db, firebaseClient } from '../firebaseAdapter.js';
+import { invokeChatTerapeuta } from '../lib/chatTerapeuta.js';
+import { firebaseClient as db } from '../firebaseAdapter.js';
 import { AuthorityLevel } from '../domain/memory/MemoryTypes.js';
-
 export function usePatientChat(patientId, initialMessages = [], currentMood = null) {
   const [messages, setMessages] = useState(initialMessages);
   const [sending, setSending] = useState(false);
@@ -54,12 +53,13 @@ export function usePatientChat(patientId, initialMessages = [], currentMood = nu
         if (profile) patientProfile = profile;
       } catch (_) {}
 
-      const replyText = await generateTherapistResponse({
-        userMessage: trimmedText,
+      // Pasa por el chat clínico completo, no por una llamada suelta: así
+      // este camino también lleva protocolo de riesgo y mapa de anamnesis.
+      const { reply: replyText } = await invokeChatTerapeuta({
+        patientId,
         patientProfile,
-        chatHistory: messages,
+        messages: [...messages, { role: 'user', content: trimmedText }],
         currentMood,
-        mode: 'auto',
         systemPromptOverride: contextPayload.systemPrompt
       });
 

@@ -1,10 +1,16 @@
 import { useState, useEffect } from 'react';
+import { DEFAULT_PSICOLOGO_ID } from '../../appConfig';
 import { firebaseClient as db, firebaseClient } from '../../firebaseAdapter.js';
-import { 
-  Calendar, Clock, Video, ChevronLeft, ChevronRight, 
-  CheckCircle2, User, AlertCircle, CreditCard, ShieldCheck, RefreshCw, Landmark, Star, Award, Check, X
+import {
+  Calendar,
+  ChevronLeft,
+  ChevronRight,
+  CheckCircle2,
+  RefreshCw,
+  Star,
+  Check,
+  X
 } from 'lucide-react';
-
 export default function PacienteSesionesView({ profile, user, isVirtualDemo, onProfileUpdated }) {
   const [selectedDate, setSelectedDate] = useState(null);
   const [selectedSlot, setSelectedSlot] = useState(null);
@@ -34,9 +40,8 @@ export default function PacienteSesionesView({ profile, user, isVirtualDemo, onP
   // Catálogo oficial de psicólogos colegiados
   const OFFICIAL_PSYCHOLOGISTS = [
     {
-      id: '2TOfkVIRccgIgz5WamAIVmUPtD63',
+      id: DEFAULT_PSICOLOGO_ID,
       name: 'José Fernández',
-      email: 'usajosefernan@gmail.com',
       license: 'M-49ccc',
       photo_url: 'https://lh3.googleusercontent.com/a/ACg8ocKTiCRCGtON7UckYXir1hkqxQPP9jHgd0A8aQx3mqswe2yNcA=s96-c',
       rating: '5.0',
@@ -79,8 +84,7 @@ export default function PacienteSesionesView({ profile, user, isVirtualDemo, onP
         const { data, error } = await db.from('psychologist_profiles').select('*');
         if (!error && data && data.length > 0) {
           const mapped = data.map(p => ({
-            id: p.id || p.user_id || '2TOfkVIRccgIgz5WamAIVmUPtD63',
-            email: p.email || 'usajosefernan@gmail.com',
+            id: p.id || p.user_id || DEFAULT_PSICOLOGO_ID,
             name: p.name || 'José Fernández',
             license: p.license_number || 'M-49ccc',
             photo_url: p.image_url || p.photo_url || 'https://lh3.googleusercontent.com/a/ACg8ocKTiCRCGtON7UckYXir1hkqxQPP9jHgd0A8aQx3mqswe2yNcA=s96-c',
@@ -282,7 +286,7 @@ export default function PacienteSesionesView({ profile, user, isVirtualDemo, onP
       const newAppt = {
         id: 'appt_' + Math.random().toString(36).substring(2, 10),
         patient_id: user.id,
-        psychologist_id: assignedPsychoId || '2TOfkVIRccgIgz5WamAIVmUPtD63',
+        psychologist_id: assignedPsychoId || DEFAULT_PSICOLOGO_ID,
         appointment_date: dateStr,
         appointment_time: selectedSlot,
         duration_minutes: duration,

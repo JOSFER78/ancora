@@ -1,24 +1,17 @@
 import { useState, useEffect } from 'react';
-import { firebaseClient as db, firebaseClient } from '../firebaseAdapter.js';
-import { 
-  ShieldAlert, 
-  ShieldCheck, 
-  Heart, 
-  Brain, 
-  Landmark, 
-  FileText, 
-  Activity, 
-  AlertTriangle, 
-  TrendingDown, 
-  Clock,
+import { firebaseClient } from '../firebaseAdapter.js';
+import {
+  ShieldCheck,
+  Heart,
+  Brain,
+  FileText,
+  AlertTriangle,
   CreditCard,
   RefreshCw,
-  Sparkles,
   Calendar,
   Star,
-  ExternalLink
+  User
 } from 'lucide-react';
-
 export default function DashboardView({ user, profile, dailyMoodToday, totalDebts, appMode, onProfileUpdated }) {
   // Estado local para cargar gastos y calcular caja libre real en el panel
   const [cajaLibreData, setCajaLibreData] = useState({ efeSalary: 2800, monthlyExpenses: 1500 });
@@ -42,7 +35,8 @@ export default function DashboardView({ user, profile, dailyMoodToday, totalDebt
         if (!appMode?.isGeneric) {
           const { data: expData } = await firebaseClient
             .from('expenses')
-            .select('amount');
+            .select('amount')
+            .eq('user_id', user.id);
           const expensesTotal = (expData || []).reduce((sum, item) => sum + parseFloat(item.amount || 0), 0);
           const savedSalary = parseFloat(localStorage.getItem('efe_salary')) || 2800;
           
@@ -658,8 +652,6 @@ export default function DashboardView({ user, profile, dailyMoodToday, totalDebt
             )}
           </div>
         </div>
-
-
 
         {/* BLOQUE 3: ESCUDO LABORAL (INSS) */}
         <div className="glass-panel" style={{ padding: '16px', borderTop: '4px solid var(--color-amber)', background: 'rgba(245, 158, 11, 0.01)' }}>

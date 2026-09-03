@@ -11,7 +11,6 @@ import { TokenBudgetManager } from '../services/memory/TokenBudgetManager.js';
 import { MemoryStateMachine } from '../domain/memory/MemoryStateMachine.js';
 import { MemoryState, AuthorityLevel, ASYMPTOTIC_RECENCY_FLOOR } from '../domain/memory/MemoryTypes.js';
 import { IMemoryRepository } from '../infrastructure/storage/IMemoryRepository.js';
-
 // Adaptador de memoria de prueba en memoria real (100% aislado, cumpliendo IMemoryRepository)
 class InMemoryRealRepository extends IMemoryRepository {
   constructor() {
